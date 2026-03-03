@@ -42,3 +42,46 @@ _waz_predict_fill() {
 
 # Bind Ctrl+Space to trigger prediction fill
 bind -x '"\C-@": _waz_predict_fill'
+
+# ── Natural language via command_not_found_handle ───────────────────
+command_not_found_handle() {
+    local full_input="$*"
+
+    if command waz check-nl -- $full_input 2>/dev/null; then
+        local response
+        response=$(command waz ask --cwd "$PWD" --session "$WAZ_SESSION_ID" -- $full_input 2>/dev/null)
+
+        if [[ -n "$response" ]]; then
+            local suggested_cmd=""
+            local display_text=""
+
+            if [[ "$response" == *"__WAZ_CMD__:"* ]]; then
+                display_text="${response%%__WAZ_CMD__:*}"
+                suggested_cmd="${response##*__WAZ_CMD__:}"
+                suggested_cmd="${suggested_cmd%%$'\n'*}"
+                suggested_cmd="${suggested_cmd# }"
+            else
+                display_text="$response"
+            fi
+
+            echo ""
+            echo -e "\033[0;33m🔮 waz:\033[0m"
+            echo "$display_text" | sed 's/^/  /'
+
+            if [[ -n "$suggested_cmd" ]]; then
+                echo ""
+                echo -e "\033[0;32m  → $suggested_cmd\033[0m"
+                echo ""
+                read -rp $'\033[0;90m  Run this command? [Y/n] \033[0m' reply
+                if [[ "$reply" =~ ^[Yy]?$ ]]; then
+                    eval "$suggested_cmd"
+                fi
+            fi
+
+            return 0
+        fi
+    fi
+
+    echo "bash: command not found: $1"
+    return 127
+}

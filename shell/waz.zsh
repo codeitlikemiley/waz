@@ -139,3 +139,53 @@ zle -N zle-line-init _waz_line_init
 # --- Keybindings ---
 bindkey '^[[C' _waz_accept
 bindkey '^[f'  _waz_accept_word
+
+# --- Natural language via command_not_found_handler ---
+command_not_found_handler() {
+    local full_input="$*"
+
+    # Check if this looks like natural language
+    if command waz check-nl -- $full_input 2>/dev/null; then
+        # It's natural language — ask the AI
+        local response
+        response=$(command waz ask --cwd "$PWD" --session "$WAZ_SESSION_ID" -- $full_input 2>/dev/null)
+
+        if [[ -n "$response" ]]; then
+            # Extract suggested command if present
+            local suggested_cmd=""
+            local display_text=""
+
+            if [[ "$response" == *"__WAZ_CMD__:"* ]]; then
+                display_text="${response%%__WAZ_CMD__:*}"
+                suggested_cmd="${response##*__WAZ_CMD__:}"
+                suggested_cmd="${suggested_cmd%%$'\n'*}"
+                suggested_cmd="${suggested_cmd## }"
+            else
+                display_text="$response"
+            fi
+
+            # Print the response with color
+            echo ""
+            echo "\033[0;33m🔮 waz:\033[0m"
+            echo "$display_text" | sed 's/^/  /'
+
+            # If there's a suggested command, offer to run it
+            if [[ -n "$suggested_cmd" ]]; then
+                echo ""
+                echo "\033[0;32m  → $suggested_cmd\033[0m"
+                echo ""
+                echo -n "\033[0;90m  Run this command? [Y/n] \033[0m"
+                read -r reply
+                if [[ "$reply" =~ ^[Yy]?$ ]]; then
+                    eval "$suggested_cmd"
+                fi
+            fi
+
+            return 0
+        fi
+    fi
+
+    # Not natural language or no LLM available — show default error
+    echo "zsh: command not found: $1"
+    return 127
+}

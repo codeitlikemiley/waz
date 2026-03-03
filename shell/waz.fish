@@ -29,3 +29,39 @@ end
 
 # Bind Ctrl+Space to prediction
 bind \c@ '_waz_predict'
+
+# ── Natural language via fish_command_not_found ─────────────────────
+function fish_command_not_found
+    set -l full_input $argv
+
+    if command waz check-nl -- $full_input 2>/dev/null
+        set -l response (command waz ask --cwd "$PWD" --session "$WAZ_SESSION_ID" -- $full_input 2>/dev/null)
+
+        if test -n "$response"
+            echo ""
+            set_color yellow
+            echo "🔮 waz:"
+            set_color normal
+            echo "$response" | sed 's/^/  /' | sed 's/__WAZ_CMD__:.*//'
+            
+            # Extract suggested command
+            set -l cmd_line (echo "$response" | grep '__WAZ_CMD__:' | sed 's/.*__WAZ_CMD__://')
+            if test -n "$cmd_line"
+                echo ""
+                set_color green
+                echo "  → $cmd_line"
+                set_color normal
+                echo ""
+                read -P (set_color brblack)"  Run this command? [Y/n] "(set_color normal) reply
+                if test -z "$reply" -o "$reply" = "Y" -o "$reply" = "y"
+                    eval $cmd_line
+                end
+            end
+
+            return 0
+        end
+    end
+
+    echo "fish: Unknown command: $argv[1]"
+    return 127
+end
