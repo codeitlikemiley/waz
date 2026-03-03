@@ -1,3 +1,4 @@
+mod ask;
 mod config;
 mod db;
 mod import;
@@ -77,6 +78,28 @@ enum Commands {
 
     /// Show database statistics.
     Stats,
+
+    /// Ask a natural language question (used by command_not_found_handler).
+    Ask {
+        /// The natural language query.
+        #[arg(required = true)]
+        query: Vec<String>,
+
+        /// Current working directory.
+        #[arg(long, env = "PWD")]
+        cwd: String,
+
+        /// Session ID.
+        #[arg(long, env = "WAZ_SESSION_ID")]
+        session: Option<String>,
+    },
+
+    /// Check if input looks like natural language (returns exit code 0 if yes).
+    CheckNl {
+        /// The input text to check.
+        #[arg(required = true)]
+        input: Vec<String>,
+    },
 }
 
 fn get_db_path() -> PathBuf {
@@ -183,6 +206,44 @@ fn main() {
             eprintln!("  Database path: {}", db_path.display());
             eprintln!("  Database size: {:.1} KB", size as f64 / 1024.0);
             eprintln!("  Total commands: {}", count);
+        }
+
+        Commands::Ask { query, cwd, session } => {
+            let query_str = query.join(" ");
+            if query_str.is_empty() {
+                eprintln!("No query provided.");
+                std::process::exit(1);
+            }
+
+            let config = config::Config::load();
+            let db = HistoryDb::open(&get_db_path()).expect("Failed to open database");
+            let session_id = session.unwrap_or_else(session::get_session_id);
+
+            // Gather recent commands for context
+            let recent = db.get_session_commands(&session_id).unwrap_or_default();
+
+            match ask::ask(&config, &query_str, &cwd, &recent) {
+                Some(result) => {
+                    println!("{}", result.response);
+                    if let Some(cmd) = &result.suggested_command {
+                        // Print suggested command on a special line for the shell to parse
+                        println!("\n__WAZ_CMD__:{}", cmd);
+                    }
+                }
+                None => {
+                    eprintln!("No LLM provider configured. Set an API key or configure ~/.config/waz/config.toml");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::CheckNl { input } => {
+            let text = input.join(" ");
+            if ask::is_natural_language(&text) {
+                std::process::exit(0);
+            } else {
+                std::process::exit(1);
+            }
         }
     }
 }

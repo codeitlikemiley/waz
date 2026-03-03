@@ -6,7 +6,7 @@ use std::time::Duration;
 
 /// Rotation state persisted between invocations.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-struct RotationState {
+pub struct RotationState {
     /// Index of the last provider used (for round-robin)
     provider_index: usize,
     /// Per-provider key index (for key rotation within a provider)
@@ -14,7 +14,7 @@ struct RotationState {
 }
 
 impl RotationState {
-    fn load() -> Self {
+    pub fn load() -> Self {
         let path = Config::rotation_state_path();
         if path.exists() {
             fs::read_to_string(&path)
@@ -26,7 +26,7 @@ impl RotationState {
         }
     }
 
-    fn save(&self) {
+    pub fn save(&self) {
         let path = Config::rotation_state_path();
         if let Some(parent) = path.parent() {
             let _ = fs::create_dir_all(parent);
@@ -34,7 +34,7 @@ impl RotationState {
         let _ = fs::write(&path, serde_json::to_string(self).unwrap_or_default());
     }
 
-    fn next_key_for(&mut self, provider_name: &str, num_keys: usize) -> usize {
+    pub fn next_key_for(&mut self, provider_name: &str, num_keys: usize) -> usize {
         if num_keys == 0 {
             return 0;
         }
@@ -43,6 +43,11 @@ impl RotationState {
         *idx = (current + 1) % num_keys;
         current
     }
+}
+
+/// Public helper to load rotation state (used by ask module).
+pub fn load_rotation_state() -> RotationState {
+    RotationState::load()
 }
 
 /// Tier 3: LLM-based command prediction with multi-provider rotation.
@@ -138,6 +143,11 @@ fn call_single(
 
 /// Get providers sorted by the configured order.
 fn get_ordered_providers(llm: &crate::config::LlmConfig) -> Vec<&ProviderConfig> {
+    get_ordered_providers_pub(llm)
+}
+
+/// Public version for use by the ask module.
+pub fn get_ordered_providers_pub(llm: &crate::config::LlmConfig) -> Vec<&ProviderConfig> {
     let mut result: Vec<&ProviderConfig> = Vec::new();
 
     // Add providers in the configured order
