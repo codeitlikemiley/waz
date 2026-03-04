@@ -23,8 +23,16 @@ Waz uses a **multi-tier prediction system** (same approach as Warp terminal):
 ### Build & Install
 
 ```bash
+make install
+```
+
+This builds the release binary, installs it to `~/.cargo/bin` and `~/.local/bin`, and reminds you to reload your shell.
+
+Or manually:
+
+```bash
 cargo build --release
-cp target/release/waz ~/.local/bin/   # or /usr/local/bin/
+cp target/release/waz ~/.local/bin/
 ```
 
 ### Shell Integration
@@ -45,6 +53,16 @@ eval "$(waz init bash)"
 ```fish
 waz init fish | source
 ```
+
+### Ghostty Keybinding (Recommended)
+
+For Ghostty users, add this to your config to launch the TUI with **Cmd+I**:
+
+```
+keybind = super+i=text:\x1b[119;97;122~
+```
+
+This sends a custom escape sequence that the waz shell integration picks up.
 
 ### Import Existing History
 
@@ -82,27 +100,74 @@ waz session-id                             # Generate a new session ID
 
 ---
 
-## Command Mode (TUI)
+## Command Palette (TUI)
 
-A **Warp-like command palette** built with `ratatui` — press `/` at an empty prompt to launch it.
+A **Warp-like unified command palette** built with `ratatui`. Launch it with:
+
+| Trigger | Where |
+|---------|-------|
+| **Cmd+I** | Ghostty (via custom escape sequence) |
+| **Ctrl+T** | Any terminal |
+| `waz tui` | Manual launch |
+
+The TUI starts in an **Empty** state showing mode hints. Type a prefix to enter a mode:
 
 ### Three Modes
 
-| Mode | Trigger | What it does |
-|------|---------|------|
-| **TMP** | `/` at empty prompt | Token-aware command builder |
-| **AI** | Natural language | Chat with AI, get commands |
-| **Shell** | `!` at empty prompt | Fuzzy search command history |
+| Mode | Prefix | What it does |
+|------|--------|------|
+| **TMP** | `/` | Context-aware command palette with token forms |
+| **Shell** | `!` | Direct shell command input |
+| **AI** | *(any text)* | Natural language → AI suggests runnable commands |
 
-### Context-Aware Commands
+### Navigation
 
-The TUI auto-detects your project and loads relevant commands:
+| Key | Action |
+|-----|--------|
+| **Esc** | Go back one layer (see below) |
+| **Backspace** (empty input) | Return to Empty mode |
+| **Cmd+Backspace** / **Ctrl+U** | Clear entire input line |
+| **↑ / ↓** | Navigate command list |
+| **Tab** | Select command / next token field |
+| **Shift+Tab** | Previous token field |
+| **Enter** | Run selected command |
+| **1-9** | Quick-select AI command by number |
 
-- **`Cargo.toml`** → `cargo build`, `run`, `test`, `add`, `clippy`, `fmt` with package tokens from workspace members
-- **`package.json`** → `npm install`, `npm run` with script names from `scripts`
-- **`.git`** → `git status`, `add`, `commit`, `checkout`, `push`, `pull`, `log` with branch names
+### Layered Escape
 
-### Token Form
+Each Esc press peels back one layer — never dumps you out unexpectedly:
+
+```
+Placeholder editing → Command selection → AI conversation → Empty mode → Quit
+```
+
+---
+
+### TMP Mode (`/`)
+
+Context-aware command palette that auto-detects your project tools:
+
+| Detected File | Commands Loaded |
+|---------------|----------------|
+| `Cargo.toml` | `cargo build`, `run`, `test`, `add`, `clippy`, `fmt` with workspace member tokens |
+| `package.json` | `npm install`, `npm run` with script names |
+| `.git` | `git status`, `add`, `commit`, `checkout`, `push`, `pull`, `log` with branch tokens |
+
+**Git commands are always available globally**, even outside Git repos.
+
+#### Smart Filtering
+
+Type to filter — uses **score-based ranking** that prioritizes subcommand names:
+
+```
+/commit   → git commit (exact match, ranked first)
+/git com  → git commit (full command match)
+/build    → cargo build (subcommand match)
+```
+
+Description-only matches are excluded to avoid false positives.
+
+#### Token Form
 
 When selecting a command with arguments:
 - **Boolean tokens** → toggle with `Space`/`y`/`n`, `Tab` cycles
@@ -110,18 +175,65 @@ When selecting a command with arguments:
 - **String tokens** → free-text input
 - **Live preview** → shows the resolved command as you fill tokens
 
-### Direct CLI
+---
 
-```bash
-waz tui              # TMP mode (default)
-waz tui ai           # AI mode
-waz tui shell        # Shell history mode
-waz tui --query git  # Pre-filtered
+### AI Mode (natural language)
+
+Just start typing a question — waz auto-detects natural language:
+
 ```
+how to create a new database in psql
+find large files over 100mb
+```
+
+The AI responds with an explanation and **numbered command suggestions**.
+
+#### Selecting Commands
+
+- Press **1-9** to quick-select by number
+- Use **↑/↓** and **Enter** to select
+
+#### Placeholder Editing
+
+If the AI suggests a command with placeholders (e.g., `psql -U <username> -c "CREATE DATABASE <db_name>"`), waz detects them and shows an **inline editing form**:
+
+```
+⌨ Fill in placeholders:
+
+→ psql -U postgres -c "CREATE DATABASE <db_name>"
+
+  username: postgres█
+  db_name:
+```
+
+- **Tab** / **Shift+Tab** → navigate between fields
+- **Live preview** updates as you type
+- **Enter** → run the resolved command
+- **Esc** → back to command selection (pick a different command)
+
+#### Continuing the Conversation
+
+After getting AI results:
+- Press **Esc** once → exit command selection, type a new question
+- Press **Esc** twice → clear AI conversation, start fresh
+- Just start typing → clears old response, asks new question
 
 ---
 
-## AI Assistant
+### Shell Mode (`!`)
+
+Direct shell command input — type `!` followed by any command:
+
+```
+!docker compose up -d
+!kubectl get pods
+```
+
+Press **Enter** to execute immediately.
+
+---
+
+## AI Assistant (CLI)
 
 Ask natural language questions directly from the command line:
 
@@ -133,15 +245,6 @@ how to find large files
 waz ask "how to uninstall a package with homebrew"
 waz ask --json "how to search in files"   # Structured JSON output
 ```
-
-### Interactive Command Resolver
-
-When AI suggests commands, waz provides an interactive resolver:
-- **Numbered menu** — select from multiple suggestions
-- **Placeholder filling** — interactively fill `<filename>`, `<package_name>` etc.
-- **Tab completion** — file path completion for file-type placeholders
-- **Run all** — execute all suggested commands in sequence
-- **Edit mode** — pre-fill the command in your prompt for tweaking
 
 ### History Management
 
@@ -335,7 +438,8 @@ model = "your-model-name"
 │  │  (ZLE)  │  │(readline)│  │  (events)  │         │
 │  └────┬────┘  └────┬─────┘  └─────┬──────┘         │
 │       │            │              │                 │
-│  / → TMP mode   ! → Shell mode   NL → AI mode      │
+│  Cmd+I / Ctrl+T launches unified TUI                │
+│  Ghost-text autosuggestions via predictions          │
 └───────┼────────────┼───────────────┼────────────────┘
         └────────────┼───────────────┘
                      │
@@ -346,10 +450,12 @@ model = "your-model-name"
          │  │  Tier 1: Sequence  │
          │  │  Tier 2: CWD      │
          │  │  Tier 3: LLM      │
-         │  ├─ Command Mode ────┤
-         │  │  TUI (ratatui)    │
-         │  │  Token forms      │
-         │  │  Context-aware    │
+         │  ├─ Unified TUI ─────┤
+         │  │  / → TMP mode     │
+         │  │  ! → Shell mode   │
+         │  │  text → AI mode   │
+         │  │  Placeholder edit │
+         │  │  Score filtering  │
          │  ├─ AI Assistant ────┤
          │  │  Structured JSON  │
          │  │  Command resolver │
