@@ -2,26 +2,158 @@ use crate::config::Config;
 use serde_json::json;
 use std::time::Duration;
 
-/// Result from asking the LLM a natural language question.
+/// A suggested command from the AI with metadata.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SuggestedCommand {
+    pub cmd: String,
+    pub desc: String,
+    #[serde(default)]
+    pub placeholders: Vec<String>,
+}
+
+/// Structured AI response with explanation and suggested commands.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct StructuredResponse {
+    pub explanation: String,
+    pub commands: Vec<SuggestedCommand>,
+}
+
+/// Result from asking the LLM a natural language question (legacy).
 #[derive(Debug)]
 pub struct AskResult {
     pub response: String,
     pub suggested_command: Option<String>,
 }
 
-/// Ask the LLM a natural language question in the context of a shell session.
+/// Ask the LLM and return a structured response with commands array.
+pub fn ask_structured(
+    config: &Config,
+    query: &str,
+    cwd: &str,
+    recent_commands: &[String],
+) -> Option<StructuredResponse> {
+    let prompt = build_structured_prompt(query, cwd, recent_commands);
+    let raw = call_ask_llm(config, &prompt)?;
+
+    // Try JSON parsing first
+    if let Some(parsed) = parse_structured_json(&raw) {
+        return Some(parsed);
+    }
+
+    // Fallback: parse text format (extract $ commands)
+    Some(fallback_parse(&raw))
+}
+
+/// Ask the LLM a natural language question (legacy text format).
 pub fn ask(config: &Config, query: &str, cwd: &str, recent_commands: &[String]) -> Option<AskResult> {
     let prompt = build_ask_prompt(query, cwd, recent_commands);
-
-    // Try providers using the same rotation logic
     let response = call_ask_llm(config, &prompt)?;
-
     let suggested_command = extract_command(&response);
-
     Some(AskResult {
         response,
         suggested_command,
     })
+}
+
+fn build_structured_prompt(query: &str, cwd: &str, recent_commands: &[String]) -> String {
+    let history = if recent_commands.is_empty() {
+        String::new()
+    } else {
+        let cmds: Vec<String> = recent_commands
+            .iter()
+            .enumerate()
+            .map(|(i, cmd)| format!("{}. {}", i + 1, cmd))
+            .collect();
+        format!("\nRecent commands:\n{}", cmds.join("\n"))
+    };
+
+    format!(
+        r#"You are a shell assistant. The user typed a query into their terminal.
+
+Working directory: {}{}
+
+User query: "{}"
+
+Respond ONLY with valid JSON (no markdown, no backticks, no extra text) in this exact format:
+{{
+  "explanation": "Brief explanation of what to do",
+  "commands": [
+    {{"cmd": "the_command --with <placeholder>", "desc": "short description"}}
+  ]
+}}
+
+Rules:
+- For variable parts use angle-bracket placeholders: <filename>, <search_term>, <package_name>
+- Include 1-4 relevant command variations
+- Keep explanation to 1-2 sentences
+- Each command should be a single runnable shell command
+- If the query is a factual question with NO commands, use an empty commands array"#,
+        cwd, history, query
+    )
+}
+
+/// Try to parse the LLM response as structured JSON.
+fn parse_structured_json(raw: &str) -> Option<StructuredResponse> {
+    // Strip markdown code fences if present
+    let cleaned = raw
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+
+    let mut resp: StructuredResponse = serde_json::from_str(cleaned).ok()?;
+
+    // Auto-detect placeholders from angle brackets in each command
+    for cmd in &mut resp.commands {
+        cmd.placeholders = extract_placeholders(&cmd.cmd);
+    }
+
+    Some(resp)
+}
+
+/// Extract <placeholder> names from a command string.
+fn extract_placeholders(cmd: &str) -> Vec<String> {
+    let mut placeholders = Vec::new();
+    let mut rest = cmd;
+    while let Some(start) = rest.find('<') {
+        if let Some(end) = rest[start..].find('>') {
+            let name = &rest[start + 1..start + end];
+            if !name.is_empty() && !placeholders.contains(&name.to_string()) {
+                placeholders.push(name.to_string());
+            }
+            rest = &rest[start + end + 1..];
+        } else {
+            break;
+        }
+    }
+    placeholders
+}
+
+/// Fallback: parse plain text response into StructuredResponse.
+fn fallback_parse(raw: &str) -> StructuredResponse {
+    let mut explanation_lines = Vec::new();
+    let mut commands = Vec::new();
+
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if let Some(cmd_str) = trimmed.strip_prefix("$ ") {
+            let cmd_str = cmd_str.trim().to_string();
+            let placeholders = extract_placeholders(&cmd_str);
+            commands.push(SuggestedCommand {
+                cmd: cmd_str,
+                desc: String::new(),
+                placeholders,
+            });
+        } else if !trimmed.is_empty() {
+            explanation_lines.push(trimmed.to_string());
+        }
+    }
+
+    StructuredResponse {
+        explanation: explanation_lines.join("\n"),
+        commands,
+    }
 }
 
 fn build_ask_prompt(query: &str, cwd: &str, recent_commands: &[String]) -> String {

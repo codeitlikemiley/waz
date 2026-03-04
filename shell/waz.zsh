@@ -148,60 +148,164 @@ command_not_found_handler() {
         # Don't record NL queries in command history
         _WAZ_LAST_CMD=""
 
-        local response
-        response=$(command waz ask --cwd "$PWD" --session "$WAZ_SESSION_ID" -- $full_input 2>/dev/null)
+        # Try structured JSON mode first
+        local json_resp
+        json_resp=$(command waz ask --json --cwd "$PWD" --session "$WAZ_SESSION_ID" -- $full_input 2>/dev/null)
 
-        if [[ -n "$response" ]]; then
-            local suggested_cmd=""
-            local display_text=""
-
-            if [[ "$response" == *"__WAZ_CMD__:"* ]]; then
-                display_text="${response%%__WAZ_CMD__:*}"
-                suggested_cmd="${response##*__WAZ_CMD__:}"
-                suggested_cmd="${suggested_cmd%%$'\n'*}"
-                suggested_cmd="${suggested_cmd## }"
-            else
-                display_text="$response"
-            fi
-
-            echo ""
-            echo "\033[0;33m🔮 waz:\033[0m"
-            echo "$display_text" | sed 's/^/  /'
-
-            if [[ -n "$suggested_cmd" ]]; then
-                echo ""
-                echo "\033[0;32m  → $suggested_cmd\033[0m"
-                echo ""
-
-                # Detect if command has placeholders or if query is educational
-                local is_template=0
-                # Angle-bracket placeholders: <package_name>
-                [[ "$suggested_cmd" == *"<"*">"* ]] && is_template=1
-                # Quoted example values: "search_term", 'pattern'
-                [[ "$suggested_cmd" == *'"'*'"'* ]] && is_template=1
-                # Educational queries: always template (user wants to learn, not run blindly)
-                [[ "$full_input" == how\ * || "$full_input" == what\ * || \
-                   "$full_input" == explain\ * || "$full_input" == show\ me\ * || \
-                   "$full_input" == whats\ * || "$full_input" == what\'s\ * ]] && is_template=1
-
-                if (( is_template )); then
-                    # Pre-fill for editing — user needs to customize
-                    echo "\033[0;90m  ⌨  Copied to prompt — edit before running:\033[0m"
-                    print -z "$suggested_cmd"
-                else
-                    # Action query with concrete command — offer to run
-                    echo -n "\033[0;90m  Run this command? [Y/n] \033[0m"
-                    read -r reply
-                    if [[ "$reply" =~ ^[Yy]?$ ]]; then
-                        eval "$suggested_cmd"
-                    fi
-                fi
-            fi
-
-            return 0
+        if [[ -n "$json_resp" ]]; then
+            _waz_interactive_resolver "$json_resp" "$full_input"
+            return $?
         fi
     fi
 
     echo "zsh: command not found: $1"
     return 127
+}
+
+# --- Interactive command resolver ---
+_waz_interactive_resolver() {
+    local json="$1"
+    local query="$2"
+
+    # Parse JSON fields using waz's own JSON (no dependency on jq)
+    local explanation
+    explanation=$(echo "$json" | sed -n 's/.*"explanation":"\([^"]*\)".*/\1/p')
+
+    # Print explanation
+    echo ""
+    echo "\033[0;33m🔮 waz:\033[0m"
+    if [[ -n "$explanation" ]]; then
+        echo "  $explanation"
+        echo ""
+    fi
+
+    # Extract commands into arrays
+    local -a cmds descs
+    local -a placeholder_lists
+    local i=0
+
+    # Parse commands from JSON using simple pattern matching
+    local remaining="$json"
+    while [[ "$remaining" == *'"cmd":'* ]]; do
+        # Extract cmd
+        local cmd_part="${remaining#*\"cmd\":\"}"
+        local cmd_val="${cmd_part%%\"*}"
+        cmds+=("$cmd_val")
+
+        # Extract desc
+        local desc_part="${remaining#*\"desc\":\"}"
+        local desc_val="${desc_part%%\"*}"
+        descs+=("$desc_val")
+
+        # Move past this command object
+        remaining="${cmd_part#*\}}"
+        i=$((i + 1))
+    done
+
+    local num_cmds=$i
+
+    if (( num_cmds == 0 )); then
+        # No commands — just show the explanation
+        return 0
+    fi
+
+    # Display numbered menu
+    for (( i=1; i<=num_cmds; i++ )); do
+        local cmd="${cmds[$i]}"
+        local desc="${descs[$i]}"
+        if [[ -n "$desc" ]]; then
+            printf "  \033[0;36m[%d]\033[0m %s  \033[0;90m— %s\033[0m\n" "$i" "$cmd" "$desc"
+        else
+            printf "  \033[0;36m[%d]\033[0m %s\n" "$i" "$cmd"
+        fi
+    done
+
+    echo ""
+
+    if (( num_cmds == 1 )); then
+        _waz_resolve_command "${cmds[1]}"
+    else
+        # Multi-command menu
+        echo -n "\033[0;90m  Pick command (1-$num_cmds), [a]ll, or [q]uit: \033[0m"
+        local choice
+        read -r choice
+
+        case "$choice" in
+            q|Q) return 0 ;;
+            a|A)
+                # Run all commands sequentially
+                for (( i=1; i<=num_cmds; i++ )); do
+                    _waz_resolve_command "${cmds[$i]}"
+                done
+                ;;
+            *)
+                if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= num_cmds )); then
+                    _waz_resolve_command "${cmds[$choice]}"
+                else
+                    echo "  Invalid choice."
+                fi
+                ;;
+        esac
+    fi
+}
+
+# --- Resolve a single command: fill placeholders, then run or pre-fill ---
+_waz_resolve_command() {
+    local cmd="$1"
+    local resolved="$cmd"
+
+    # Extract placeholders <...> from the command
+    local -a placeholders
+    local tmp="$cmd"
+    while [[ "$tmp" == *"<"*">"* ]]; do
+        local ph="${tmp#*<}"
+        ph="${ph%%>*}"
+        placeholders+=("$ph")
+        tmp="${tmp#*>}"
+    done
+
+    if (( ${#placeholders} > 0 )); then
+        echo ""
+        echo "\033[0;90m  ⌨  Fill in placeholders:\033[0m"
+
+        for ph in "${placeholders[@]}"; do
+            local value=""
+            # Use vared for file-related placeholders (enables tab completion)
+            if [[ "$ph" == *file* || "$ph" == *path* || "$ph" == *dir* ]]; then
+                echo -n "    $ph: "
+                vared -c value
+            else
+                echo -n "    $ph: "
+                read -r value
+            fi
+
+            if [[ -z "$value" ]]; then
+                echo "  ⚠  Skipped — copied to prompt for editing."
+                print -z "$resolved"
+                return 0
+            fi
+
+            # Replace ALL occurrences of this placeholder
+            resolved="${resolved//<$ph>/$value}"
+        done
+    fi
+
+    echo ""
+    echo "\033[0;32m  → $resolved\033[0m"
+    echo ""
+    echo -n "\033[0;90m  Run this command? [Y/n/e(dit)] \033[0m"
+    local reply
+    read -r reply
+
+    case "$reply" in
+        e|E)
+            print -z "$resolved"
+            ;;
+        n|N)
+            return 0
+            ;;
+        *)
+            eval "$resolved"
+            ;;
+    esac
 }
