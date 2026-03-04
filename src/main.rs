@@ -130,17 +130,17 @@ enum Commands {
 
     /// Launch interactive TUI command palette.
     Tui {
-        /// Mode: tmp, ai, or shell.
-        #[arg(default_value = "tmp")]
-        mode: String,
-
-        /// Pre-fill query.
+        /// Pre-fill query (enters AI mode).
         #[arg(long)]
         query: Option<String>,
 
         /// Working directory.
         #[arg(long, env = "PWD")]
         cwd: String,
+
+        /// File to write the selected command to (used by ZLE widget).
+        #[arg(long)]
+        result_file: Option<String>,
     },
 }
 
@@ -331,17 +331,33 @@ fn main() {
             }
         }
 
-        Commands::Tui { mode, query, cwd } => {
-            let tui_mode = match mode.as_str() {
-                "ai" => tui::app::Mode::Ai,
-                "shell" => tui::app::Mode::Shell,
-                _ => tui::app::Mode::Tmp,
-            };
-
-            match tui::launch(tui_mode, cwd, query) {
+        Commands::Tui { query, cwd, result_file } => {
+            match tui::launch(cwd, query) {
                 Ok(Some(cmd)) => {
-                    // Output the resolved command for the shell to eval
-                    println!("{}", cmd);
+                    if let Some(ref path) = result_file {
+                        // ZLE widget mode — write to temp file
+                        std::fs::write(path, &cmd).ok();
+                    } else {
+                        use std::io::IsTerminal;
+                        if std::io::stdout().is_terminal() {
+                            // Manual invocation — execute directly
+                            eprintln!("\x1b[0;32m→ {}\x1b[0m", cmd);
+                            let status = std::process::Command::new("sh")
+                                .arg("-c")
+                                .arg(&cmd)
+                                .status();
+                            match status {
+                                Ok(s) => std::process::exit(s.code().unwrap_or(0)),
+                                Err(e) => {
+                                    eprintln!("Failed to execute: {}", e);
+                                    std::process::exit(1);
+                                }
+                            }
+                        } else {
+                            // Captured by some other mechanism
+                            println!("{}", cmd);
+                        }
+                    }
                 }
                 Ok(None) => {
                     // User cancelled
