@@ -53,11 +53,13 @@ impl<'a> PredictionEngine<'a> {
     /// - `session_id`: current shell session for sequence analysis
     /// - `cwd`: current working directory
     /// - `prefix`: what the user has typed so far (can be empty)
+    /// - `fast`: if true, skip the LLM tier (for interactive typing)
     pub fn predict(
         &self,
         session_id: &str,
         cwd: &str,
         prefix: Option<&str>,
+        fast: bool,
     ) -> Option<Prediction> {
         // Tier 1: Sequence-based prediction
         if let Some(pred) = self.predict_by_sequence(session_id, prefix) {
@@ -69,8 +71,12 @@ impl<'a> PredictionEngine<'a> {
             return Some(pred);
         }
 
-        // Tier 3: LLM fallback
-        self.predict_by_llm(session_id, cwd, prefix)
+        // Tier 3: LLM fallback (skip in fast mode to avoid keystroke lag)
+        if !fast {
+            return self.predict_by_llm(session_id, cwd, prefix);
+        }
+
+        None
     }
 
     /// Tier 1: Look at the last command in this session and predict the next one
@@ -182,7 +188,7 @@ mod tests {
             .unwrap();
 
         let engine = PredictionEngine::new(&db);
-        let pred = engine.predict("current", "/proj", None);
+        let pred = engine.predict("current", "/proj", None, false);
         assert!(pred.is_some());
         let pred = pred.unwrap();
         assert_eq!(pred.command, "git push");
@@ -202,7 +208,7 @@ mod tests {
 
         // New session with no prior commands
         let engine = PredictionEngine::new(&db);
-        let pred = engine.predict("new_session", "/frontend", None);
+        let pred = engine.predict("new_session", "/frontend", None, false);
         assert!(pred.is_some());
         let pred = pred.unwrap();
         assert_eq!(pred.command, "npm run build"); // most recent
@@ -218,7 +224,7 @@ mod tests {
             .unwrap();
 
         let engine = PredictionEngine::new(&db);
-        let pred = engine.predict("new_session", "/frontend", Some("npm"));
+        let pred = engine.predict("new_session", "/frontend", Some("npm"), false);
         assert!(pred.is_some());
         assert_eq!(pred.unwrap().command, "npm test");
     }
@@ -227,7 +233,7 @@ mod tests {
     fn test_no_local_prediction() {
         let db = HistoryDb::open_in_memory().unwrap();
         let engine = PredictionEngine::new(&db);
-        let pred = engine.predict("empty", "/nowhere", None);
+        let pred = engine.predict("empty", "/nowhere", None, false);
         // With empty DB, tiers 1 & 2 return nothing.
         // Tier 3 (LLM) may or may not return something depending on API availability.
         if let Some(ref p) = pred {

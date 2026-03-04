@@ -36,11 +36,11 @@ _waz_suggest() {
     local prediction
 
     if [[ -z "${buf// /}" ]]; then
-        # Empty buffer: proactive prediction (no prefix)
+        # Empty buffer: proactive prediction with LLM (full mode)
         prediction=$(command waz predict --cwd "$PWD" --session "$WAZ_SESSION_ID" 2>/dev/null)
     else
-        # User is typing: prefix-based prediction
-        prediction=$(command waz predict --cwd "$PWD" --session "$WAZ_SESSION_ID" --prefix "$buf" 2>/dev/null)
+        # User is typing: fast prediction (skip LLM to avoid lag)
+        prediction=$(command waz predict --cwd "$PWD" --session "$WAZ_SESSION_ID" --prefix "$buf" --fast 2>/dev/null)
     fi
 
     if [[ -n "$prediction" && "$prediction" != "$buf" ]]; then

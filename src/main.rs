@@ -58,6 +58,10 @@ enum Commands {
         /// Output format: "plain" (default) or "json".
         #[arg(long, default_value = "plain")]
         format: String,
+
+        /// Skip LLM tier for fast interactive predictions.
+        #[arg(long)]
+        fast: bool,
     },
 
     /// Import existing shell history into the waz database.
@@ -133,12 +137,13 @@ fn main() {
             prefix,
             session,
             format,
+            fast,
         } => {
             let db = HistoryDb::open(&get_db_path()).expect("Failed to open database");
             let session_id = session.unwrap_or_else(session::get_session_id);
             let engine = PredictionEngine::new(&db);
 
-            match engine.predict(&session_id, &cwd, prefix.as_deref()) {
+            match engine.predict(&session_id, &cwd, prefix.as_deref(), fast) {
                 Some(pred) => {
                     if format == "json" {
                         println!(
