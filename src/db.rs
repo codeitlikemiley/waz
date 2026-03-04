@@ -155,16 +155,28 @@ impl HistoryDb {
 
     /// Build bigram frequency table: (prev_command, next_command) -> count.
     /// Only considers successful commands (exit_code = 0) within the same session.
-    pub fn get_bigram_frequencies(&self) -> Result<HashMap<(String, String), u32>> {
+    /// When `cwd` is provided, only considers commands from that directory.
+    pub fn get_bigram_frequencies(&self, cwd: Option<&str>) -> Result<HashMap<(String, String), u32>> {
         // Get all sessions with their commands in order
-        let mut stmt = self.conn.prepare(
-            "SELECT session_id, command FROM commands
-             WHERE exit_code = 0
-             ORDER BY session_id, timestamp ASC",
-        )?;
+        let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match cwd {
+            Some(dir) => (
+                "SELECT session_id, command FROM commands
+                 WHERE exit_code = 0 AND cwd = ?1
+                 ORDER BY session_id, timestamp ASC".to_string(),
+                vec![Box::new(dir.to_string()) as Box<dyn rusqlite::types::ToSql>],
+            ),
+            None => (
+                "SELECT session_id, command FROM commands
+                 WHERE exit_code = 0
+                 ORDER BY session_id, timestamp ASC".to_string(),
+                vec![],
+            ),
+        };
+
+        let mut stmt = self.conn.prepare(&sql)?;
 
         let rows = stmt
-            .query_map([], |row| {
+            .query_map(rusqlite::params_from_iter(params.iter()), |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -187,11 +199,13 @@ impl HistoryDb {
 
     /// Get the most likely next command after `prev_command` based on bigram frequency.
     /// Returns (next_command, count, total) where total is all occurrences after prev_command.
+    /// When `cwd` is provided, only considers sequences from that directory.
     pub fn get_next_command_by_sequence(
         &self,
         prev_command: &str,
+        cwd: Option<&str>,
     ) -> Result<Option<(String, u32, u32)>> {
-        let bigrams = self.get_bigram_frequencies()?;
+        let bigrams = self.get_bigram_frequencies(cwd)?;
 
         let mut candidates: Vec<(String, u32)> = Vec::new();
         let mut total = 0u32;
@@ -293,7 +307,7 @@ mod tests {
         db.insert_command_with_timestamp("git push", "/proj", "s2", 0, 2002)
             .unwrap();
 
-        let bigrams = db.get_bigram_frequencies().unwrap();
+        let bigrams = db.get_bigram_frequencies(None).unwrap();
         // "git add ." -> "git commit *" should appear twice (different exact commands)
         let count_add_to_commit: u32 = bigrams
             .iter()
@@ -318,7 +332,7 @@ mod tests {
         }
 
         let result = db
-            .get_next_command_by_sequence("git commit -m 'msg'")
+            .get_next_command_by_sequence("git commit -m 'msg'", Some("/proj"))
             .unwrap();
         assert!(result.is_some());
         let (cmd, count, total) = result.unwrap();

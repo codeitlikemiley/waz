@@ -61,8 +61,8 @@ impl<'a> PredictionEngine<'a> {
         prefix: Option<&str>,
         fast: bool,
     ) -> Option<Prediction> {
-        // Tier 1: Sequence-based prediction
-        if let Some(pred) = self.predict_by_sequence(session_id, prefix) {
+        // Tier 1: Sequence-based prediction (scoped to CWD)
+        if let Some(pred) = self.predict_by_sequence(session_id, cwd, prefix) {
             return Some(pred);
         }
 
@@ -81,11 +81,11 @@ impl<'a> PredictionEngine<'a> {
 
     /// Tier 1: Look at the last command in this session and predict the next one
     /// based on historical command sequences (bigram frequency).
-    fn predict_by_sequence(&self, session_id: &str, prefix: Option<&str>) -> Option<Prediction> {
+    fn predict_by_sequence(&self, session_id: &str, cwd: &str, prefix: Option<&str>) -> Option<Prediction> {
         let session_cmds = self.db.get_session_commands(session_id).ok()?;
         let last_cmd = session_cmds.last()?;
 
-        let (next_cmd, count, total) = self.db.get_next_command_by_sequence(last_cmd).ok()??;
+        let (next_cmd, count, total) = self.db.get_next_command_by_sequence(last_cmd, Some(cwd)).ok()??;
 
         // Check minimum thresholds
         if count < SEQUENCE_MIN_COUNT {
