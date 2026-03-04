@@ -2,8 +2,15 @@
 name = "waz"
 version = "0.1.0"
 edition = "2021"
-description = "Warp-style command prediction for any terminal"
+description = "Warp-style command prediction and command palette for any terminal — ghost-text autosuggestions, AI assistant, and interactive TUI"
 license = "MIT"
+repository = "https://github.com/codeitlikemiley/waz"
+homepage = "https://github.com/codeitlikemiley/waz"
+readme = "README.md"
+keywords = ["terminal", "command-prediction", "shell", "tui", "ai"]
+categories = ["command-line-utilities", "command-line-interface"]
+authors = ["Uriah Galang"]
+rust-version = "1.70"
 
 [dependencies]
 clap = { version = "4", features = ["derive", "env"] }
