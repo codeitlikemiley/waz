@@ -53,7 +53,7 @@ pub struct App {
     pub tmp_loaded: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CommandEntry {
     pub command: String,
     pub description: String,
@@ -61,7 +61,7 @@ pub struct CommandEntry {
     pub group: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TokenDef {
     pub name: String,
     pub description: String,
@@ -71,9 +71,23 @@ pub struct TokenDef {
     pub values: Option<Vec<String>>,
     /// CLI flag override (e.g. "-p", "--bin", "-F"). If None, derives from name.
     pub flag: Option<String>,
+    /// Dynamic data source: run a shell command at load time to populate `values`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_source: Option<DataSource>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DataSource {
+    /// Shell command to execute (e.g. "brew list --formula")
+    pub command: String,
+    /// How to parse output: "lines" (split by newline) or "words" (split by whitespace)
+    #[serde(default = "default_parse_mode")]
+    pub parse: String,
+}
+
+fn default_parse_mode() -> String { "lines".to_string() }
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum TokenType {
     String,
     Boolean,

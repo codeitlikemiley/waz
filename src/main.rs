@@ -1,6 +1,7 @@
 mod ask;
 mod config;
 mod db;
+pub mod generate;
 pub mod hint;
 mod import;
 mod llm;
@@ -149,6 +150,16 @@ enum Commands {
         /// The command output to parse (last N lines of stdout/stderr).
         #[arg(long)]
         output: String,
+    },
+
+    /// Generate a TMP schema for a CLI tool using AI.
+    Generate {
+        /// Name of the CLI tool (e.g. brew, kubectl, docker).
+        tool: String,
+
+        /// Force regeneration even if schema exists.
+        #[arg(long)]
+        force: bool,
     },
 }
 
@@ -380,6 +391,26 @@ fn main() {
         Commands::Hint { output } => {
             if let Some(cmd) = hint::extract_hint(&output) {
                 hint::save_hint(&cmd);
+            }
+        }
+
+        Commands::Generate { tool, force } => {
+            if !force && generate::schema_exists(&tool) {
+                eprintln!("Schema for '{}' already exists at {:?}", tool,
+                    generate::schemas_dir().join(format!("{}.json", tool)));
+                eprintln!("Use --force to regenerate.");
+                std::process::exit(0);
+            }
+
+            let config = config::Config::load();
+            match generate::generate_schema(&config, &tool) {
+                Ok(commands) => {
+                    eprintln!("\n🎉 Generated {} commands for '{}'", commands.len(), tool);
+                }
+                Err(e) => {
+                    eprintln!("❌ Failed to generate schema: {}", e);
+                    std::process::exit(1);
+                }
             }
         }
     }

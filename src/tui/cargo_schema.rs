@@ -323,7 +323,7 @@ fn pkg_token(ctx: &CargoContext) -> TokenDef {
         token_type: if ctx.packages.len() > 1 { TokenType::Enum } else { TokenType::String },
         default: ctx.package_name.clone(),
         values: if ctx.packages.len() > 1 { Some(ctx.packages.clone()) } else { None },
-        flag: Some("-p".to_string()),
+        flag: Some("-p".to_string()), data_source: None,
     }
 }
 
@@ -335,7 +335,7 @@ fn bin_token(ctx: &CargoContext) -> TokenDef {
         token_type: if !ctx.bins.is_empty() { TokenType::Enum } else { TokenType::String },
         default: if ctx.bins.len() == 1 { Some(ctx.bins[0].clone()) } else { None },
         values: if !ctx.bins.is_empty() { Some(ctx.bins.clone()) } else { None },
-        flag: Some("--bin".to_string()),
+        flag: Some("--bin".to_string()), data_source: None,
     }
 }
 
@@ -347,7 +347,7 @@ fn example_token(ctx: &CargoContext) -> TokenDef {
         token_type: if !ctx.examples.is_empty() { TokenType::Enum } else { TokenType::String },
         default: None,
         values: if !ctx.examples.is_empty() { Some(ctx.examples.clone()) } else { None },
-        flag: Some("--example".to_string()),
+        flag: Some("--example".to_string()), data_source: None,
     }
 }
 
@@ -359,7 +359,7 @@ fn features_token(ctx: &CargoContext) -> TokenDef {
         token_type: if !ctx.features.is_empty() { TokenType::Enum } else { TokenType::String },
         default: None,
         values: if !ctx.features.is_empty() { Some(ctx.features.clone()) } else { None },
-        flag: Some("-F".to_string()),
+        flag: Some("-F".to_string()), data_source: None,
     }
 }
 
@@ -371,7 +371,7 @@ fn release_token() -> TokenDef {
         token_type: TokenType::Boolean,
         default: Some("false".to_string()),
         values: None,
-        flag: Some("--release".to_string()),
+        flag: Some("--release".to_string()), data_source: None,
     }
 }
 
@@ -383,7 +383,7 @@ fn profile_token(ctx: &CargoContext) -> TokenDef {
         token_type: TokenType::Enum,
         default: None,
         values: Some(ctx.profiles.clone()),
-        flag: Some("--profile".to_string()),
+        flag: Some("--profile".to_string()), data_source: None,
     }
 }
 
@@ -395,7 +395,7 @@ fn test_name_token(ctx: &CargoContext) -> TokenDef {
         token_type: if !ctx.tests.is_empty() { TokenType::Enum } else { TokenType::String },
         default: None,
         values: if !ctx.tests.is_empty() { Some(ctx.tests.clone()) } else { None },
-        flag: Some("--test".to_string()),
+        flag: Some("--test".to_string()), data_source: None,
     }
 }
 
@@ -407,7 +407,7 @@ fn bench_token(ctx: &CargoContext) -> TokenDef {
         token_type: if !ctx.benches.is_empty() { TokenType::Enum } else { TokenType::String },
         default: None,
         values: if !ctx.benches.is_empty() { Some(ctx.benches.clone()) } else { None },
-        flag: Some("--bench".to_string()),
+        flag: Some("--bench".to_string()), data_source: None,
     }
 }
 
@@ -419,7 +419,7 @@ fn all_features_token() -> TokenDef {
         token_type: TokenType::Boolean,
         default: Some("false".to_string()),
         values: None,
-        flag: Some("--all-features".to_string()),
+        flag: Some("--all-features".to_string()), data_source: None,
     }
 }
 
@@ -431,7 +431,7 @@ fn workspace_token() -> TokenDef {
         token_type: TokenType::Boolean,
         default: Some("false".to_string()),
         values: None,
-        flag: Some("--workspace".to_string()),
+        flag: Some("--workspace".to_string()), data_source: None,
     }
 }
 
@@ -514,7 +514,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
                     token_type: TokenType::Boolean,
                     default: Some("false".to_string()),
                     values: None,
-                    flag: Some("--open".to_string()),
+                    flag: Some("--open".to_string()), data_source: None,
                 },
                 TokenDef {
                     name: "no-deps".to_string(),
@@ -523,7 +523,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
                     token_type: TokenType::Boolean,
                     default: Some("false".to_string()),
                     values: None,
-                    flag: Some("--no-deps".to_string()),
+                    flag: Some("--no-deps".to_string()), data_source: None,
                 },
                 workspace_token(),
             ],
@@ -549,7 +549,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
                     token_type: TokenType::String,
                     default: None,
                     values: None,
-                    flag: None, // positional
+                    flag: None, data_source: None, // positional
                 },
                 TokenDef {
                     name: "dev".to_string(),
@@ -558,7 +558,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
                     token_type: TokenType::Boolean,
                     default: Some("false".to_string()),
                     values: None,
-                    flag: Some("--dev".to_string()),
+                    flag: Some("--dev".to_string()), data_source: None,
                 },
                 TokenDef {
                     name: "build".to_string(),
@@ -567,7 +567,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
                     token_type: TokenType::Boolean,
                     default: Some("false".to_string()),
                     values: None,
-                    flag: Some("--build".to_string()),
+                    flag: Some("--build".to_string()), data_source: None,
                 },
                 features_token(ctx),
             ],
@@ -584,7 +584,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
                     token_type: TokenType::String,
                     default: None,
                     values: None,
-                    flag: None, // positional
+                    flag: None, data_source: None, // positional
                 },
             ],
         },
@@ -601,7 +601,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
                     token_type: TokenType::Boolean,
                     default: Some("false".to_string()),
                     values: None,
-                    flag: Some("--fix".to_string()),
+                    flag: Some("--fix".to_string()), data_source: None,
                 },
                 workspace_token(),
             ],
@@ -618,7 +618,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
                     token_type: TokenType::Boolean,
                     default: Some("false".to_string()),
                     values: None,
-                    flag: Some("--check".to_string()),
+                    flag: Some("--check".to_string()), data_source: None,
                 },
             ],
         },
@@ -635,7 +635,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
                     token_type: TokenType::Boolean,
                     default: Some("false".to_string()),
                     values: None,
-                    flag: Some("--dry-run".to_string()),
+                    flag: Some("--dry-run".to_string()), data_source: None,
                 },
                 TokenDef {
                     name: "allow-dirty".to_string(),
@@ -644,7 +644,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
                     token_type: TokenType::Boolean,
                     default: Some("false".to_string()),
                     values: None,
-                    flag: Some("--allow-dirty".to_string()),
+                    flag: Some("--allow-dirty".to_string()), data_source: None,
                 },
             ],
         },

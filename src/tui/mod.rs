@@ -526,6 +526,10 @@ fn load_tmp_commands(app: &mut App) {
     // Global tools: always available regardless of CWD
     if which_exists("git") { load_git_commands(app); }
 
+    // External schemas from ~/.config/waz/schemas/*.json
+    let external = crate::generate::load_all_schemas();
+    app.command_list.extend(external);
+
     app.filter_commands();
 }
 
@@ -574,7 +578,7 @@ fn load_npm_commands(app: &mut App) {
                     token_type: TokenType::Enum,
                     default: None,
                     values: Some(scripts),
-                    flag: None,
+                    flag: None, data_source: None,
                 },
             ],
         });
@@ -620,7 +624,7 @@ fn load_git_commands(app: &mut App) {
                     token_type: TokenType::File,
                     default: Some(".".to_string()),
                     values: None,
-                    flag: None,
+                    flag: None, data_source: None,
                 },
             ],
         },
@@ -636,7 +640,7 @@ fn load_git_commands(app: &mut App) {
                     token_type: TokenType::String,
                     default: None,
                     values: None,
-                    flag: None,
+                    flag: None, data_source: None,
                 },
             ],
         },
@@ -652,7 +656,7 @@ fn load_git_commands(app: &mut App) {
                     token_type: if branches.is_empty() { TokenType::String } else { TokenType::Enum },
                     default: None,
                     values: if branches.is_empty() { None } else { Some(branches.clone()) },
-                    flag: None,
+                    flag: None, data_source: None,
                 },
             ],
         },
@@ -680,7 +684,7 @@ fn load_git_commands(app: &mut App) {
                     token_type: TokenType::Number,
                     default: Some("10".to_string()),
                     values: None,
-                    flag: None,
+                    flag: None, data_source: None,
                 },
                 TokenDef {
                     name: "oneline".to_string(),
@@ -689,7 +693,7 @@ fn load_git_commands(app: &mut App) {
                     token_type: TokenType::Boolean,
                     default: Some("true".to_string()),
                     values: None,
-                    flag: None,
+                    flag: None, data_source: None,
                 },
             ],
         },
