@@ -1,5 +1,6 @@
 use crate::config::Config;
 use crate::db::HistoryDb;
+use crate::hint;
 use crate::llm;
 
 /// A prediction result with confidence.
@@ -12,7 +13,9 @@ pub struct Prediction {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PredictionTier {
-    /// Tier 1: Based on command sequence patterns (highest confidence)
+    /// Tier 0: Extracted from previous command's output (highest priority)
+    OutputHint,
+    /// Tier 1: Based on command sequence patterns
     Sequence,
     /// Tier 2: Based on CWD-filtered history
     CwdHistory,
@@ -23,6 +26,7 @@ pub enum PredictionTier {
 impl std::fmt::Display for PredictionTier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            PredictionTier::OutputHint => write!(f, "output_hint"),
             PredictionTier::Sequence => write!(f, "sequence"),
             PredictionTier::CwdHistory => write!(f, "cwd_history"),
             PredictionTier::Llm => write!(f, "llm"),
@@ -61,6 +65,11 @@ impl<'a> PredictionEngine<'a> {
         prefix: Option<&str>,
         fast: bool,
     ) -> Option<Prediction> {
+        // Tier 0: Output hint from previous command's output
+        if let Some(pred) = self.predict_by_output_hint(prefix) {
+            return Some(pred);
+        }
+
         // Tier 1: Sequence-based prediction (scoped to CWD)
         if let Some(pred) = self.predict_by_sequence(session_id, cwd, prefix) {
             return Some(pred);
@@ -77,6 +86,25 @@ impl<'a> PredictionEngine<'a> {
         }
 
         None
+    }
+
+    /// Tier 0: Check if the previous command's output suggested a follow-up command.
+    /// One-shot: the hint file is consumed (deleted) after reading.
+    fn predict_by_output_hint(&self, prefix: Option<&str>) -> Option<Prediction> {
+        let cmd = hint::consume_hint()?;
+
+        // If user has typed a prefix, check it matches
+        if let Some(pfx) = prefix {
+            if !pfx.is_empty() && !cmd.starts_with(pfx) {
+                return None;
+            }
+        }
+
+        Some(Prediction {
+            command: cmd,
+            confidence: 1.0,
+            tier: PredictionTier::OutputHint,
+        })
     }
 
     /// Tier 1: Look at the last command in this session and predict the next one

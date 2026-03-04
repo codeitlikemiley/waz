@@ -1,6 +1,7 @@
 mod ask;
 mod config;
 mod db;
+pub mod hint;
 mod import;
 mod llm;
 mod predict;
@@ -141,6 +142,13 @@ enum Commands {
         /// File to write the selected command to (used by ZLE widget).
         #[arg(long)]
         result_file: Option<String>,
+    },
+
+    /// Parse command output for suggested follow-up commands.
+    Hint {
+        /// The command output to parse (last N lines of stdout/stderr).
+        #[arg(long)]
+        output: String,
     },
 }
 
@@ -366,6 +374,12 @@ fn main() {
                     eprintln!("TUI error: {}", e);
                     std::process::exit(1);
                 }
+            }
+        }
+
+        Commands::Hint { output } => {
+            if let Some(cmd) = hint::extract_hint(&output) {
+                hint::save_hint(&cmd);
             }
         }
     }
