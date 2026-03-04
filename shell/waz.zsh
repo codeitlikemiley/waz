@@ -148,7 +148,17 @@ command_not_found_handler() {
         # Don't record NL queries in command history
         _WAZ_LAST_CMD=""
 
-        # Try structured JSON mode first
+        # Try TUI AI mode first (interactive, with selectable commands)
+        local tui_result
+        tui_result=$(command waz tui ai --cwd "$PWD" --query "$full_input" 2>/dev/null)
+
+        if [[ -n "$tui_result" ]]; then
+            # Pre-fill the prompt so user can review before executing
+            print -z "$tui_result"
+            return 0
+        fi
+
+        # Fallback: inline JSON resolver (for non-interactive contexts)
         local json_resp
         json_resp=$(command waz ask --json --cwd "$PWD" --session "$WAZ_SESSION_ID" -- $full_input 2>/dev/null)
 
