@@ -169,10 +169,20 @@ command_not_found_handler() {
                 echo ""
                 echo "\033[0;32m  → $suggested_cmd\033[0m"
                 echo ""
-                echo -n "\033[0;90m  Run this command? [Y/n] \033[0m"
-                read -r reply
-                if [[ "$reply" =~ ^[Yy]?$ ]]; then
-                    eval "$suggested_cmd"
+
+                if [[ "$suggested_cmd" == *"<"*">"* ]]; then
+                    # Command has placeholders like <package_name> — pre-fill for editing
+                    # Strip placeholder text, leave cursor where user needs to type
+                    local editable_cmd="${suggested_cmd//<*>/}"
+                    echo "\033[0;90m  ⌨  Copied to prompt — fill in the blanks:\033[0m"
+                    print -z "$editable_cmd"
+                else
+                    # Runnable command — offer to execute
+                    echo -n "\033[0;90m  Run this command? [Y/n] \033[0m"
+                    read -r reply
+                    if [[ "$reply" =~ ^[Yy]?$ ]]; then
+                        eval "$suggested_cmd"
+                    fi
                 fi
             fi
 
