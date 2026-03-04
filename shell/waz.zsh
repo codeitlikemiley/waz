@@ -41,19 +41,8 @@ _waz_suggest() {
         # Empty buffer: proactive prediction (full mode w/ LLM)
         prediction=$(command waz predict --cwd "$PWD" --session "$WAZ_SESSION_ID" 2>/dev/null)
     elif (( ${#buf} >= _WAZ_MIN_CHARS )); then
-        # Check if this looks like natural language (3+ words)
-        local word_count=${#${=buf}}
-        if (( word_count >= 3 )) && command waz check-nl -- $buf 2>/dev/null; then
-            # NL detected → AI sentence completion
-            local completion
-            completion=$(command waz complete -- $buf 2>/dev/null)
-            if [[ -n "$completion" ]]; then
-                prediction="${buf} ${completion}"
-            fi
-        else
-            # Regular command prediction (fast, local DB only)
-            prediction=$(command waz predict --cwd "$PWD" --session "$WAZ_SESSION_ID" --prefix "$buf" --fast 2>/dev/null)
-        fi
+        # Fast local prediction only (no LLM, no blocking)
+        prediction=$(command waz predict --cwd "$PWD" --session "$WAZ_SESSION_ID" --prefix "$buf" --fast 2>/dev/null)
     else
         return
     fi
