@@ -22,80 +22,71 @@ autoload -Uz add-zsh-hook
 add-zsh-hook preexec _waz_preexec
 add-zsh-hook precmd _waz_precmd
 
-# --- Async prediction with debounce via FIFO + zle -F ---
+# --- Async debounced predictions ---
+# Architecture:
+#   1. Each keystroke cancels pending prediction, starts 500ms bg timer
+#   2. After 500ms, bg process runs `waz predict`, writes result to temp file
+#   3. BG process sends SIGUSR1 to parent shell
+#   4. TRAPUSR1 reads the file and updates POSTDISPLAY (ghost text)
+#   5. zle -R redraws the line — all non-blocking, typing is never delayed
+
 typeset -g _WAZ_SUGGESTION=""
 typeset -g _WAZ_SHOW_PROACTIVE=""
 typeset -g _WAZ_DEBOUNCE_PID=0
-typeset -g _WAZ_ASYNC_FD=""
+typeset -g _WAZ_RESULT_FILE="${TMPDIR:-/tmp}/waz_result_$$"
 
-# Setup async FIFO for non-blocking prediction results
-_waz_setup_async() {
-    local fifo="${TMPDIR:-/tmp}/waz_fifo_$$"
-    [[ -p "$fifo" ]] && rm -f "$fifo"
-    mkfifo "$fifo" 2>/dev/null || return
+# --- Signal handler: async prediction result arrived ---
+TRAPUSR1() {
+    if [[ -f "$_WAZ_RESULT_FILE" ]]; then
+        local pred
+        pred=$(<"$_WAZ_RESULT_FILE")
+        rm -f "$_WAZ_RESULT_FILE"
 
-    # Open FIFO for read+write so we don't block
-    exec {_WAZ_ASYNC_FD}<>"$fifo"
-    rm -f "$fifo"  # Remove from filesystem; fd stays open
+        if [[ -n "$pred" && "$pred" != "$BUFFER" ]]; then
+            _WAZ_SUGGESTION="$pred"
+            POSTDISPLAY=""
+            region_highlight=("${(@)region_highlight:#*fg=#6c6c6c*}")
 
-    # Register ZLE callback — fires when bg process writes to the FIFO
-    zle -F $_WAZ_ASYNC_FD _waz_async_callback
+            local buf="$BUFFER"
+            if [[ -z "${buf// /}" ]]; then
+                POSTDISPLAY="$pred"
+            elif [[ "$pred" == "$buf"* ]]; then
+                POSTDISPLAY="${pred#$buf}"
+            else
+                POSTDISPLAY="  ← $pred"
+            fi
+
+            if [[ -n "$POSTDISPLAY" ]]; then
+                local start=${#BUFFER}
+                local end=$((start + ${#POSTDISPLAY}))
+                region_highlight+=("$start $end fg=#6c6c6c")
+            fi
+
+            zle && zle -R
+        fi
+    fi
 }
 
-# Called by ZLE when prediction result arrives on the FIFO
-_waz_async_callback() {
-    local prediction=""
-    if ! read -r -u $1 prediction 2>/dev/null; then
-        return
-    fi
-    [[ -z "$prediction" ]] && return
-
-    # Clear old ghost text
-    POSTDISPLAY=""
-    region_highlight=("${(@)region_highlight:#*fg=#6c6c6c*}")
-
-    local buf="$BUFFER"
-    if [[ "$prediction" == "$buf" ]]; then
-        return
-    fi
-
-    _WAZ_SUGGESTION="$prediction"
-
-    if [[ -z "${buf// /}" ]]; then
-        POSTDISPLAY="$prediction"
-    elif [[ "$prediction" == "$buf"* ]]; then
-        POSTDISPLAY="${prediction#$buf}"
-    else
-        POSTDISPLAY="  ← $prediction"
-    fi
-
-    if [[ -n "$POSTDISPLAY" ]]; then
-        local start=${#BUFFER}
-        local end=$((start + ${#POSTDISPLAY}))
-        region_highlight+=("$start $end fg=#6c6c6c")
-    fi
-
-    zle -R  # Redraw the line
-}
-
-# Cancel any pending debounce timer
+# --- Cancel pending prediction bg process ---
 _waz_cancel_pending() {
     if (( _WAZ_DEBOUNCE_PID > 0 )); then
         kill $_WAZ_DEBOUNCE_PID 2>/dev/null
         _WAZ_DEBOUNCE_PID=0
     fi
+    rm -f "$_WAZ_RESULT_FILE" 2>/dev/null
 }
 
-# Schedule a prediction after 500ms debounce (runs in background, never blocks)
+# --- Schedule a prediction (runs in bg after debounce delay) ---
 _waz_schedule_predict() {
     local buf="$BUFFER"
     local cwd="$PWD"
     local sid="$WAZ_SESSION_ID"
-    local fd=$_WAZ_ASYNC_FD
+    local result_file="$_WAZ_RESULT_FILE"
+    local parent_pid=$$
     local is_proactive="$1"
 
     {
-        # Debounce: wait 500ms (skip delay for proactive on empty prompt)
+        # Debounce: wait 500ms (skip for proactive)
         [[ "$is_proactive" != "1" ]] && sleep 0.5
 
         local pred
@@ -105,8 +96,10 @@ _waz_schedule_predict() {
             pred=$(command waz predict --cwd "$cwd" --session "$sid" 2>/dev/null)
         fi
 
-        # Write result to FIFO → triggers zle -F callback
-        [[ -n "$pred" ]] && print -u $fd "$pred"
+        if [[ -n "$pred" ]]; then
+            echo "$pred" > "$result_file"
+            kill -USR1 $parent_pid 2>/dev/null
+        fi
     } &!
     _WAZ_DEBOUNCE_PID=$!
 }
@@ -118,7 +111,7 @@ _waz_clear() {
     region_highlight=("${(@)region_highlight:#*fg=#6c6c6c*}")
 }
 
-# --- Widget: proactive suggestion when new prompt appears ---
+# --- Widget: proactive suggestion on new prompt ---
 _waz_line_init() {
     if [[ -n "$_WAZ_SHOW_PROACTIVE" ]]; then
         _WAZ_SHOW_PROACTIVE=""
@@ -190,12 +183,9 @@ _waz_send_break() {
 # --- Cleanup on exit ---
 _waz_cleanup() {
     _waz_cancel_pending
-    [[ -n "$_WAZ_ASYNC_FD" ]] && exec {_WAZ_ASYNC_FD}>&- 2>/dev/null
+    rm -f "$_WAZ_RESULT_FILE" 2>/dev/null
 }
 add-zsh-hook zshexit _waz_cleanup
-
-# --- Initialize async FIFO ---
-_waz_setup_async
 
 # --- Register all widgets ---
 zle -N self-insert _waz_self_insert
@@ -214,9 +204,7 @@ bindkey '^[f'  _waz_accept_word
 command_not_found_handler() {
     local full_input="$*"
 
-    # Check if this looks like natural language
     if command waz check-nl -- $full_input 2>/dev/null; then
-        # It's natural language — ask the AI
         local response
         response=$(command waz ask --cwd "$PWD" --session "$WAZ_SESSION_ID" -- $full_input 2>/dev/null)
 
