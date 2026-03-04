@@ -47,6 +47,7 @@ Rules:
 - If the query asks HOW to do something, provide the exact shell command(s) to run
 - If the query asks a factual question, provide a concise answer
 - If suggesting commands, wrap each command in a line starting with exactly `$ ` (dollar-space)
+- For variable parts in commands, ALWAYS use angle-bracket placeholders like <filename>, <search_term>, <package_name> — never use quoted example values like \"search_term\" or bare words like filename
 - Keep responses short and terminal-friendly (no long paragraphs)
 - Use plain text, no markdown formatting",
         cwd, history, query

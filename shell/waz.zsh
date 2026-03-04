@@ -173,14 +173,23 @@ command_not_found_handler() {
                 echo "\033[0;32m  → $suggested_cmd\033[0m"
                 echo ""
 
-                if [[ "$suggested_cmd" == *"<"*">"* ]]; then
-                    # Command has placeholders like <package_name> — pre-fill for editing
-                    # Strip placeholder text, leave cursor where user needs to type
-                    local editable_cmd="${suggested_cmd//<*>/}"
-                    echo "\033[0;90m  ⌨  Copied to prompt — fill in the blanks:\033[0m"
-                    print -z "$editable_cmd"
+                # Detect if command has placeholders or if query is educational
+                local is_template=0
+                # Angle-bracket placeholders: <package_name>
+                [[ "$suggested_cmd" == *"<"*">"* ]] && is_template=1
+                # Quoted example values: "search_term", 'pattern'
+                [[ "$suggested_cmd" == *'"'*'"'* ]] && is_template=1
+                # Educational queries: always template (user wants to learn, not run blindly)
+                [[ "$full_input" == how\ * || "$full_input" == what\ * || \
+                   "$full_input" == explain\ * || "$full_input" == show\ me\ * || \
+                   "$full_input" == whats\ * || "$full_input" == what\'s\ * ]] && is_template=1
+
+                if (( is_template )); then
+                    # Pre-fill for editing — user needs to customize
+                    echo "\033[0;90m  ⌨  Copied to prompt — edit before running:\033[0m"
+                    print -z "$suggested_cmd"
                 else
-                    # Runnable command — offer to execute
+                    # Action query with concrete command — offer to run
                     echo -n "\033[0;90m  Run this command? [Y/n] \033[0m"
                     read -r reply
                     if [[ "$reply" =~ ^[Yy]?$ ]]; then
