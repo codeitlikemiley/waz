@@ -42,6 +42,7 @@ pub struct App {
     // Context
     pub cwd: String,
     pub config: Config,
+    pub scroll_offset: u16,
 }
 
 #[derive(Debug, Clone)]
@@ -115,6 +116,7 @@ impl App {
             filtered_history: Vec::new(),
             cwd,
             config,
+            scroll_offset: 0,
         }
     }
 

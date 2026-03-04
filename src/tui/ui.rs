@@ -306,7 +306,7 @@ fn draw_ai_content(f: &mut Frame, app: &App, area: Rect) {
         )));
     }
 
-    let paragraph = Paragraph::new(lines);
+    let paragraph = Paragraph::new(lines).scroll((app.scroll_offset, 0));
     f.render_widget(paragraph, area);
 }
 

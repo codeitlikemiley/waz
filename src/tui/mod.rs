@@ -82,6 +82,12 @@ fn run_event_loop(
 
                 KeyCode::Up => app.move_up(),
                 KeyCode::Down => app.move_down(),
+                KeyCode::PageUp => {
+                    app.scroll_offset = app.scroll_offset.saturating_sub(5);
+                }
+                KeyCode::PageDown => {
+                    app.scroll_offset = app.scroll_offset.saturating_add(5);
+                }
 
                 KeyCode::Enter => {
                     handle_enter(app);

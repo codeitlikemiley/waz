@@ -362,3 +362,30 @@ zle -N _waz_tui_tmp
 zle -N _waz_tui_shell
 bindkey '/' _waz_tui_tmp
 bindkey '!' _waz_tui_shell
+
+# Ctrl+A → AI mode TUI (works with or without buffer content)
+_waz_tui_ai() {
+    _WAZ_SUGGESTION=""
+    POSTDISPLAY=""
+
+    local query_arg=""
+    if [[ -n "$BUFFER" ]]; then
+        query_arg="--query $BUFFER"
+    fi
+
+    local result
+    result=$(eval "command waz tui ai --cwd \"$PWD\" $query_arg" 2>/dev/null)
+
+    zle reset-prompt
+
+    if [[ -n "$result" ]]; then
+        BUFFER="$result"
+        CURSOR=${#BUFFER}
+    else
+        BUFFER=""
+        CURSOR=0
+    fi
+}
+
+zle -N _waz_tui_ai
+bindkey '^A' _waz_tui_ai
