@@ -5,6 +5,7 @@ mod import;
 mod llm;
 mod predict;
 mod session;
+pub mod tui;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -123,6 +124,21 @@ enum Commands {
         all: bool,
 
         /// Directory to clear (defaults to current directory).
+        #[arg(long, env = "PWD")]
+        cwd: String,
+    },
+
+    /// Launch interactive TUI command palette.
+    Tui {
+        /// Mode: tmp, ai, or shell.
+        #[arg(default_value = "tmp")]
+        mode: String,
+
+        /// Pre-fill query.
+        #[arg(long)]
+        query: Option<String>,
+
+        /// Working directory.
         #[arg(long, env = "PWD")]
         cwd: String,
     },
@@ -312,6 +328,28 @@ fn main() {
                 eprintln!("  {} commands deleted", deleted);
                 let remaining = db.command_count().unwrap_or(0);
                 eprintln!("  {} commands remaining (other directories)", remaining);
+            }
+        }
+
+        Commands::Tui { mode, query, cwd } => {
+            let tui_mode = match mode.as_str() {
+                "ai" => tui::app::Mode::Ai,
+                "shell" => tui::app::Mode::Shell,
+                _ => tui::app::Mode::Tmp,
+            };
+
+            match tui::launch(tui_mode, cwd, query) {
+                Ok(Some(cmd)) => {
+                    // Output the resolved command for the shell to eval
+                    println!("{}", cmd);
+                }
+                Ok(None) => {
+                    // User cancelled
+                }
+                Err(e) => {
+                    eprintln!("TUI error: {}", e);
+                    std::process::exit(1);
+                }
             }
         }
     }
