@@ -53,6 +53,64 @@ Rules:
     )
 }
 
+/// Complete a partial natural language sentence (for inline ghost text).
+/// Returns only the CONTINUATION, not the full sentence.
+pub fn complete_sentence(config: &Config, partial: &str) -> Option<String> {
+    let prompt = format!(
+        "Complete this text as if the user is typing a question or request in a terminal. \
+Return ONLY the remaining words to finish the sentence. Do NOT repeat what the user already typed. \
+Keep it short (max 5-8 words to finish the thought).
+
+User is typing: \"{}\"
+Completion (just the remaining words):",
+        partial
+    );
+
+    let llm = &config.llm;
+    if llm.providers.is_empty() {
+        return None;
+    }
+
+    let mut state = crate::llm::load_rotation_state();
+    let ordered = crate::llm::get_ordered_providers_pub(llm);
+
+    for provider in &ordered {
+        if provider.keys.is_empty() && provider.name != "ollama" {
+            continue;
+        }
+        let key_idx = state.next_key_for(&provider.name, provider.keys.len());
+
+        // Short timeout (2s) for inline completion — it's ghost text, not blocking
+        let result = match provider.name.as_str() {
+            "gemini" => call_gemini_ask(provider, key_idx, &prompt, 2),
+            "ollama" => call_ollama_ask(provider, &prompt, 2),
+            _ => call_openai_ask(provider, key_idx, &prompt, 2),
+        };
+
+        if let Some(r) = result {
+            state.save();
+            // Clean up the response — remove quotes, trim, ensure it doesn't repeat the input
+            let cleaned = r.trim().trim_matches('"').trim_matches('\'').trim();
+            if cleaned.is_empty() {
+                continue;
+            }
+            // If the LLM repeated the input, strip it
+            let completion = if cleaned.to_lowercase().starts_with(&partial.to_lowercase()) {
+                cleaned[partial.len()..].trim_start().to_string()
+            } else {
+                cleaned.to_string()
+            };
+            if completion.is_empty() {
+                continue;
+            }
+            return Some(completion);
+        }
+    }
+
+    state.save();
+    None
+}
+
 /// Call the LLM for an ask query (uses longer timeout since user is waiting).
 fn call_ask_llm(config: &Config, prompt: &str) -> Option<String> {
     let llm = &config.llm;

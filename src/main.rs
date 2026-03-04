@@ -104,6 +104,13 @@ enum Commands {
         #[arg(required = true)]
         input: Vec<String>,
     },
+
+    /// Complete a partial natural language sentence (for ghost text autocompletion).
+    Complete {
+        /// The partial text to complete.
+        #[arg(required = true)]
+        text: Vec<String>,
+    },
 }
 
 fn get_db_path() -> PathBuf {
@@ -248,6 +255,18 @@ fn main() {
                 std::process::exit(0);
             } else {
                 std::process::exit(1);
+            }
+        }
+
+        Commands::Complete { text } => {
+            let partial = text.join(" ");
+            if partial.is_empty() {
+                std::process::exit(1);
+            }
+            let config = config::Config::load();
+            match ask::complete_sentence(&config, &partial) {
+                Some(completion) => print!("{}", completion),
+                None => std::process::exit(1),
             }
         }
     }
