@@ -150,7 +150,7 @@ command_not_found_handler() {
 
         # Try TUI AI mode first (interactive, with selectable commands)
         local tui_result
-        tui_result=$(command waz tui ai --cwd "$PWD" --query "$full_input" 2>/dev/null)
+        tui_result=$(command waz tui ai --cwd "$PWD" --query "$full_input" < /dev/tty 2>/dev/null)
 
         if [[ -n "$tui_result" ]]; then
             # Pre-fill the prompt so user can review before executing
@@ -321,59 +321,40 @@ _waz_resolve_command() {
 }
 
 # --- TUI launcher widgets ---
-# `/` at empty prompt → TMP command mode
-# `!` at empty prompt → Shell history mode
+# Ctrl+T → TMP command palette
+# Ctrl+R → Shell history search (replaces default reverse-i-search)
+# Ctrl+G → AI mode
+
 _waz_tui_tmp() {
-    if [[ -z "$BUFFER" ]]; then
-        # Clear suggestion/ghost text
-        _WAZ_SUGGESTION=""
-        POSTDISPLAY=""
+    _WAZ_SUGGESTION=""
+    POSTDISPLAY=""
 
-        # Launch TUI — it takes over the terminal via alternate screen
-        local result
-        result=$(command waz tui tmp --cwd "$PWD" 2>/dev/null)
+    local result
+    result=$(command waz tui tmp --cwd "$PWD" < /dev/tty 2>/dev/null)
 
-        # Re-init the ZLE line
-        zle reset-prompt
+    zle reset-prompt
 
-        if [[ -n "$result" ]]; then
-            # Pre-fill the command into the buffer for user to review/run
-            BUFFER="$result"
-            CURSOR=${#BUFFER}
-        fi
-    else
-        # Normal `/` character when buffer is not empty
-        BUFFER="${BUFFER}/"
-        CURSOR=$((CURSOR + 1))
+    if [[ -n "$result" ]]; then
+        BUFFER="$result"
+        CURSOR=${#BUFFER}
     fi
 }
 
 _waz_tui_shell() {
-    if [[ -z "$BUFFER" ]]; then
-        _WAZ_SUGGESTION=""
-        POSTDISPLAY=""
+    _WAZ_SUGGESTION=""
+    POSTDISPLAY=""
 
-        local result
-        result=$(command waz tui shell --cwd "$PWD" 2>/dev/null)
+    local result
+    result=$(command waz tui shell --cwd "$PWD" < /dev/tty 2>/dev/null)
 
-        zle reset-prompt
+    zle reset-prompt
 
-        if [[ -n "$result" ]]; then
-            BUFFER="$result"
-            CURSOR=${#BUFFER}
-        fi
-    else
-        BUFFER="${BUFFER}!"
-        CURSOR=$((CURSOR + 1))
+    if [[ -n "$result" ]]; then
+        BUFFER="$result"
+        CURSOR=${#BUFFER}
     fi
 }
 
-zle -N _waz_tui_tmp
-zle -N _waz_tui_shell
-bindkey '/' _waz_tui_tmp
-bindkey '!' _waz_tui_shell
-
-# Ctrl+A → AI mode TUI (works with or without buffer content)
 _waz_tui_ai() {
     _WAZ_SUGGESTION=""
     POSTDISPLAY=""
@@ -384,7 +365,7 @@ _waz_tui_ai() {
     fi
 
     local result
-    result=$(eval "command waz tui ai --cwd \"$PWD\" $query_arg" 2>/dev/null)
+    result=$(eval "command waz tui ai --cwd \"$PWD\" $query_arg" < /dev/tty 2>/dev/null)
 
     zle reset-prompt
 
@@ -397,5 +378,10 @@ _waz_tui_ai() {
     fi
 }
 
+zle -N _waz_tui_tmp
+zle -N _waz_tui_shell
 zle -N _waz_tui_ai
-bindkey '^A' _waz_tui_ai
+bindkey '^T' _waz_tui_tmp
+bindkey '^R' _waz_tui_shell
+bindkey '^G' _waz_tui_ai
+
