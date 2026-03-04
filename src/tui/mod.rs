@@ -174,8 +174,28 @@ fn run_event_loop<W: io::Write>(
                 }
 
                 KeyCode::Char(c) => {
-                    if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
-                        app.should_quit = true;
+                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+                        match c {
+                            'c' => app.should_quit = true,
+                            // Ctrl+U = clear line (macOS Cmd+Backspace sends \x15 = Ctrl+U)
+                            'u' => {
+                                if app.ai_editing_placeholders {
+                                    app.ai_placeholder_values[app.ai_active_placeholder].clear();
+                                } else if app.editing_tokens {
+                                    app.token_values[app.active_token].clear();
+                                } else {
+                                    app.input.clear();
+                                    app.cursor_pos = 0;
+                                    if app.mode == Mode::Tmp {
+                                        update_filter(app);
+                                    } else if app.mode != Mode::Empty && app.input.is_empty() {
+                                        app.reset_to_empty();
+                                    }
+                                }
+                            }
+                            // Ignore all other Ctrl combos to prevent stray chars
+                            _ => {}
+                        }
                     } else if app.editing_tokens {
                         handle_token_char(app, c);
                     } else if app.ai_editing_placeholders {
