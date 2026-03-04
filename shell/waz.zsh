@@ -309,3 +309,56 @@ _waz_resolve_command() {
             ;;
     esac
 }
+
+# --- TUI launcher widgets ---
+# `/` at empty prompt → TMP command mode
+# `!` at empty prompt → Shell history mode
+_waz_tui_tmp() {
+    if [[ -z "$BUFFER" ]]; then
+        # Clear suggestion/ghost text
+        _WAZ_SUGGESTION=""
+        POSTDISPLAY=""
+
+        # Launch TUI — it takes over the terminal via alternate screen
+        local result
+        result=$(command waz tui tmp --cwd "$PWD" 2>/dev/null)
+
+        # Re-init the ZLE line
+        zle reset-prompt
+
+        if [[ -n "$result" ]]; then
+            # Pre-fill the command into the buffer for user to review/run
+            BUFFER="$result"
+            CURSOR=${#BUFFER}
+        fi
+    else
+        # Normal `/` character when buffer is not empty
+        BUFFER="${BUFFER}/"
+        CURSOR=$((CURSOR + 1))
+    fi
+}
+
+_waz_tui_shell() {
+    if [[ -z "$BUFFER" ]]; then
+        _WAZ_SUGGESTION=""
+        POSTDISPLAY=""
+
+        local result
+        result=$(command waz tui shell --cwd "$PWD" 2>/dev/null)
+
+        zle reset-prompt
+
+        if [[ -n "$result" ]]; then
+            BUFFER="$result"
+            CURSOR=${#BUFFER}
+        fi
+    else
+        BUFFER="${BUFFER}!"
+        CURSOR=$((CURSOR + 1))
+    fi
+}
+
+zle -N _waz_tui_tmp
+zle -N _waz_tui_shell
+bindkey '/' _waz_tui_tmp
+bindkey '!' _waz_tui_shell
