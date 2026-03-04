@@ -115,6 +115,17 @@ enum Commands {
         #[arg(required = true)]
         text: Vec<String>,
     },
+
+    /// Clear command history. Defaults to current directory only.
+    Clear {
+        /// Clear ALL history across all directories.
+        #[arg(long)]
+        all: bool,
+
+        /// Directory to clear (defaults to current directory).
+        #[arg(long, env = "PWD")]
+        cwd: String,
+    },
 }
 
 fn get_db_path() -> PathBuf {
@@ -282,6 +293,25 @@ fn main() {
             match ask::complete_sentence(&config, &partial) {
                 Some(completion) => print!("{}", completion),
                 None => std::process::exit(1),
+            }
+        }
+
+        Commands::Clear { all, cwd } => {
+            let db = HistoryDb::open(&get_db_path()).expect("Failed to open database");
+
+            if all {
+                let total = db.command_count().unwrap_or(0);
+                let deleted = db.clear_all().unwrap_or(0);
+                eprintln!("🗑  Cleared all history ({} commands deleted)", deleted);
+                if total != deleted as i64 {
+                    eprintln!("  (had {} total)", total);
+                }
+            } else {
+                let deleted = db.clear_by_cwd(&cwd).unwrap_or(0);
+                eprintln!("🗑  Cleared history for {}", cwd);
+                eprintln!("  {} commands deleted", deleted);
+                let remaining = db.command_count().unwrap_or(0);
+                eprintln!("  {} commands remaining (other directories)", remaining);
             }
         }
     }

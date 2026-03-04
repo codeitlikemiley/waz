@@ -216,6 +216,23 @@ impl HistoryDb {
         self.conn
             .query_row("SELECT COUNT(*) FROM commands", [], |row| row.get(0))
     }
+
+    /// Delete all history for a specific working directory.
+    pub fn clear_by_cwd(&self, cwd: &str) -> Result<usize> {
+        self.conn
+            .execute("DELETE FROM commands WHERE cwd = ?1", params![cwd])
+    }
+
+    /// Delete all history.
+    pub fn clear_all(&self) -> Result<usize> {
+        self.conn.execute("DELETE FROM commands", [])
+    }
+
+    /// Count commands for a specific working directory.
+    pub fn count_by_cwd(&self, cwd: &str) -> Result<i64> {
+        self.conn
+            .query_row("SELECT COUNT(*) FROM commands WHERE cwd = ?1", params![cwd], |row| row.get(0))
+    }
 }
 
 #[cfg(test)]
