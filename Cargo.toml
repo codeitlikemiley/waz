@@ -23,4 +23,5 @@ uuid = { version = "1", features = ["v4"] }
 ureq = { version = "2", features = ["json"] }
 toml = "0.8"
 ratatui = "0.29"
-crossterm = "0.28"
+crossterm = { version = "0.28", features = ["use-dev-tty"] }
+libc = "0.2"

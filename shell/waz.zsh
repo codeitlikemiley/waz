@@ -68,12 +68,25 @@ _waz_clear() {
 }
 
 # --- Widget: show proactive suggestion when line editor starts ---
-_waz_line_init() {
-    if [[ -n "$_WAZ_SHOW_PROACTIVE" ]]; then
-        _WAZ_SHOW_PROACTIVE=""
-        _waz_suggest
-    fi
-}
+# Note: We chain with any existing zle-line-init (e.g. vi-mode cursor setup)
+if (( ${+functions[zle-line-init]} )); then
+    # Save existing zle-line-init and chain ours
+    functions[_waz_original_line_init]=$functions[zle-line-init]
+    _waz_line_init() {
+        _waz_original_line_init "$@"
+        if [[ -n "$_WAZ_SHOW_PROACTIVE" ]]; then
+            _WAZ_SHOW_PROACTIVE=""
+            _waz_suggest
+        fi
+    }
+else
+    _waz_line_init() {
+        if [[ -n "$_WAZ_SHOW_PROACTIVE" ]]; then
+            _WAZ_SHOW_PROACTIVE=""
+            _waz_suggest
+        fi
+    }
+fi
 
 # --- Widget: self-insert + suggest ---
 _waz_self_insert() {
@@ -150,7 +163,7 @@ command_not_found_handler() {
 
         # Try TUI AI mode first (interactive, with selectable commands)
         local tui_result
-        tui_result=$(command waz tui ai --cwd "$PWD" --query "$full_input" < /dev/tty 2>/dev/null)
+        tui_result=$(command waz tui --cwd "$PWD" --query "$full_input" < /dev/tty 2>/dev/null)
 
         if [[ -n "$tui_result" ]]; then
             # Pre-fill the prompt so user can review before executing
@@ -320,68 +333,44 @@ _waz_resolve_command() {
     esac
 }
 
-# --- TUI launcher widgets ---
-# Ctrl+T → TMP command palette
-# Ctrl+R → Shell history search (replaces default reverse-i-search)
-# Ctrl+G → AI mode
+# --- TUI launcher widget ---
+# Ctrl+T → Unified waz TUI (command palette + AI + shell)
 
-_waz_tui_tmp() {
+_waz_tui() {
     _WAZ_SUGGESTION=""
     POSTDISPLAY=""
 
-    local result
-    result=$(command waz tui tmp --cwd "$PWD" < /dev/tty 2>/dev/null)
+    # Use a temp file to pass the selected command — avoids $() subshell
+    # which breaks crossterm's stdin event reader.
+    local tmpfile="${TMPDIR:-/tmp}/.waz_result.$$"
+
+    # Run waz tui with ALL fds on /dev/tty (clean terminal, no subshell)
+    command waz tui --cwd "$PWD" --result-file "$tmpfile" </dev/tty >/dev/tty 2>/dev/tty
 
     zle reset-prompt
 
-    if [[ -n "$result" ]]; then
-        BUFFER="$result"
-        CURSOR=${#BUFFER}
+    # Read the result from temp file
+    if [[ -f "$tmpfile" ]]; then
+        local result
+        result=$(<"$tmpfile")
+        rm -f "$tmpfile"
+
+        if [[ -n "$result" ]]; then
+            BUFFER="$result"
+            CURSOR=${#BUFFER}
+            zle accept-line
+        fi
     fi
 }
 
-_waz_tui_shell() {
-    _WAZ_SUGGESTION=""
-    POSTDISPLAY=""
+zle -N _waz_tui
 
-    local result
-    result=$(command waz tui shell --cwd "$PWD" < /dev/tty 2>/dev/null)
+# Bind Ctrl+T in ALL keymaps (main, viins, vicmd) — works in most terminals
+bindkey '^T' _waz_tui
+bindkey -M viins '^T' _waz_tui
+bindkey -M vicmd '^T' _waz_tui
 
-    zle reset-prompt
-
-    if [[ -n "$result" ]]; then
-        BUFFER="$result"
-        CURSOR=${#BUFFER}
-    fi
-}
-
-_waz_tui_ai() {
-    _WAZ_SUGGESTION=""
-    POSTDISPLAY=""
-
-    local query_arg=""
-    if [[ -n "$BUFFER" ]]; then
-        query_arg="--query $BUFFER"
-    fi
-
-    local result
-    result=$(eval "command waz tui ai --cwd \"$PWD\" $query_arg" < /dev/tty 2>/dev/null)
-
-    zle reset-prompt
-
-    if [[ -n "$result" ]]; then
-        BUFFER="$result"
-        CURSOR=${#BUFFER}
-    else
-        BUFFER=""
-        CURSOR=0
-    fi
-}
-
-zle -N _waz_tui_tmp
-zle -N _waz_tui_shell
-zle -N _waz_tui_ai
-bindkey '^T' _waz_tui_tmp
-bindkey '^R' _waz_tui_shell
-bindkey '^G' _waz_tui_ai
-
+# Bind Cmd+I via Ghostty's custom escape sequence
+bindkey '\e[119;97;122~' _waz_tui
+bindkey -M viins '\e[119;97;122~' _waz_tui
+bindkey -M vicmd '\e[119;97;122~' _waz_tui
