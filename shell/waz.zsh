@@ -36,34 +36,39 @@ typeset -g _WAZ_DEBOUNCE_PID=0
 typeset -g _WAZ_RESULT_FILE="${TMPDIR:-/tmp}/waz_result_$$"
 
 # --- Signal handler: async prediction result arrived ---
+# TRAPUSR1 runs outside ZLE widget context, so POSTDISPLAY is read-only.
+# We call a ZLE widget instead, which has proper write access.
 TRAPUSR1() {
-    if [[ -f "$_WAZ_RESULT_FILE" ]]; then
-        local pred
-        pred=$(<"$_WAZ_RESULT_FILE")
-        rm -f "$_WAZ_RESULT_FILE"
+    zle && zle _waz_apply_result
+}
 
-        if [[ -n "$pred" && "$pred" != "$BUFFER" ]]; then
-            _WAZ_SUGGESTION="$pred"
-            POSTDISPLAY=""
-            region_highlight=("${(@)region_highlight:#*fg=#6c6c6c*}")
+# --- ZLE widget: apply async prediction result ---
+_waz_apply_result() {
+    [[ ! -f "$_WAZ_RESULT_FILE" ]] && return
 
-            local buf="$BUFFER"
-            if [[ -z "${buf// /}" ]]; then
-                POSTDISPLAY="$pred"
-            elif [[ "$pred" == "$buf"* ]]; then
-                POSTDISPLAY="${pred#$buf}"
-            else
-                POSTDISPLAY="  ← $pred"
-            fi
+    local pred
+    pred=$(<"$_WAZ_RESULT_FILE")
+    rm -f "$_WAZ_RESULT_FILE"
 
-            if [[ -n "$POSTDISPLAY" ]]; then
-                local start=${#BUFFER}
-                local end=$((start + ${#POSTDISPLAY}))
-                region_highlight+=("$start $end fg=#6c6c6c")
-            fi
+    [[ -z "$pred" || "$pred" == "$BUFFER" ]] && return
 
-            zle && zle -R
-        fi
+    _WAZ_SUGGESTION="$pred"
+    POSTDISPLAY=""
+    region_highlight=("${(@)region_highlight:#*fg=#6c6c6c*}")
+
+    local buf="$BUFFER"
+    if [[ -z "${buf// /}" ]]; then
+        POSTDISPLAY="$pred"
+    elif [[ "$pred" == "$buf"* ]]; then
+        POSTDISPLAY="${pred#$buf}"
+    else
+        POSTDISPLAY="  ← $pred"
+    fi
+
+    if [[ -n "$POSTDISPLAY" ]]; then
+        local start=${#BUFFER}
+        local end=$((start + ${#POSTDISPLAY}))
+        region_highlight+=("$start $end fg=#6c6c6c")
     fi
 }
 
@@ -192,6 +197,7 @@ zle -N self-insert _waz_self_insert
 zle -N backward-delete-char _waz_backward_delete
 zle -N _waz_accept
 zle -N _waz_accept_word
+zle -N _waz_apply_result
 zle -N accept-line _waz_accept_line
 zle -N send-break _waz_send_break
 zle -N zle-line-init _waz_line_init
