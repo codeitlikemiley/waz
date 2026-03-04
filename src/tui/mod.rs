@@ -71,6 +71,10 @@ fn run_event_loop(
                         // Exit token editing, back to command list
                         app.editing_tokens = false;
                         app.selected_command = None;
+                    } else if app.ai_selecting {
+                        // Exit AI command selection, back to input
+                        app.ai_selecting = false;
+                        app.ai_selected_cmd = 0;
                     } else {
                         app.should_quit = true;
                     }
@@ -173,23 +177,71 @@ fn handle_enter(app: &mut App) {
             }
         }
         Mode::Ai => {
-            // Submit AI query (handled in Phase 3)
-            if !app.input.is_empty() {
+            if app.ai_selecting {
+                // User selected an AI command
+                if !app.ai_commands.is_empty() {
+                    let cmd = app.ai_commands[app.ai_selected_cmd].cmd.clone();
+                    // If command has placeholders, output for editing
+                    app.output_command = Some(cmd);
+                    app.should_quit = true;
+                }
+            } else if !app.input.is_empty() {
+                let query = app.input.clone();
                 app.ai_messages.push(app::AiMessage {
                     role: "user".to_string(),
-                    content: app.input.clone(),
+                    content: query.clone(),
                 });
-                app.ai_loading = true;
-
-                // For now, just show a placeholder
-                // Phase 3 will integrate ask_structured()
-                app.ai_messages.push(app::AiMessage {
-                    role: "assistant".to_string(),
-                    content: "AI mode coming in Phase 3...".to_string(),
-                });
-                app.ai_loading = false;
                 app.input.clear();
                 app.cursor_pos = 0;
+                app.ai_loading = true;
+
+                // Get recent commands for context
+                let db_path = crate::get_db_path();
+                let recent = crate::db::HistoryDb::open(&db_path)
+                    .ok()
+                    .and_then(|db| db.get_recent_by_cwd(&app.cwd, None, 10).ok())
+                    .unwrap_or_default();
+
+                // Call the LLM
+                let result = crate::ask::ask_structured(
+                    &app.config,
+                    &query,
+                    &app.cwd,
+                    &recent,
+                );
+
+                app.ai_loading = false;
+
+                match result {
+                    Some(resp) => {
+                        // Store explanation
+                        app.ai_messages.push(app::AiMessage {
+                            role: "assistant".to_string(),
+                            content: resp.explanation,
+                        });
+
+                        // Store commands for selection
+                        app.ai_commands = resp.commands.into_iter().map(|c| {
+                            app::AiCommand {
+                                cmd: c.cmd,
+                                desc: c.desc,
+                                placeholders: c.placeholders,
+                            }
+                        }).collect();
+
+                        if !app.ai_commands.is_empty() {
+                            app.ai_selecting = true;
+                            app.ai_selected_cmd = 0;
+                            app.selected_index = 0;
+                        }
+                    }
+                    None => {
+                        app.ai_messages.push(app::AiMessage {
+                            role: "assistant".to_string(),
+                            content: "No response from AI. Check your API keys.".to_string(),
+                        });
+                    }
+                }
             }
         }
     }

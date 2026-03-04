@@ -221,7 +221,7 @@ fn draw_token_form(f: &mut Frame, app: &App, area: Rect) {
 fn draw_ai_content(f: &mut Frame, app: &App, area: Rect) {
     let mut lines: Vec<Line> = Vec::new();
 
-    if app.ai_messages.is_empty() {
+    if app.ai_messages.is_empty() && !app.ai_loading {
         lines.push(Line::from(Span::styled(
             "  Type a question and press Enter...",
             Style::default().fg(Color::DarkGray),
@@ -235,16 +235,68 @@ fn draw_ai_content(f: &mut Frame, app: &App, area: Rect) {
                     Span::styled("  You: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
                     Span::raw(&msg.content),
                 ]));
+                lines.push(Line::from(""));
             }
             "assistant" => {
-                lines.push(Line::from(vec![
-                    Span::styled("  🔮  ", Style::default().fg(Color::Yellow)),
-                    Span::raw(&msg.content),
-                ]));
+                lines.push(Line::from(Span::styled(
+                    "  🔮 waz:",
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                )));
+                // Render explanation as multi-line
+                for line in msg.content.lines() {
+                    lines.push(Line::from(Span::styled(
+                        format!("    {}", line),
+                        Style::default().fg(Color::White),
+                    )));
+                }
+                lines.push(Line::from(""));
             }
             _ => {}
         }
-        lines.push(Line::from(""));
+    }
+
+    // Render AI-suggested commands as a selectable list
+    if !app.ai_commands.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  Commands:",
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        )));
+
+        for (i, cmd) in app.ai_commands.iter().enumerate() {
+            let is_selected = app.ai_selecting && i == app.ai_selected_cmd;
+
+            let prefix = if is_selected { "  ▸ " } else { "    " };
+            let style = if is_selected {
+                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            };
+
+            lines.push(Line::from(vec![
+                Span::styled(prefix, style),
+                Span::styled(format!("[{}] ", i + 1), Style::default().fg(Color::DarkGray)),
+                Span::styled(&cmd.cmd, style),
+            ]));
+
+            // Show description for selected command
+            if is_selected && !cmd.desc.is_empty() {
+                lines.push(Line::from(vec![
+                    Span::raw("        "),
+                    Span::styled(&cmd.desc, Style::default().fg(Color::DarkGray)),
+                ]));
+            }
+
+            // Show placeholders warning for selected command
+            if is_selected && !cmd.placeholders.is_empty() {
+                lines.push(Line::from(vec![
+                    Span::raw("        "),
+                    Span::styled(
+                        format!("⚠ placeholders: {}", cmd.placeholders.join(", ")),
+                        Style::default().fg(Color::Yellow),
+                    ),
+                ]));
+            }
+        }
     }
 
     if app.ai_loading {

@@ -31,6 +31,9 @@ pub struct App {
     // AI mode state
     pub ai_messages: Vec<AiMessage>,
     pub ai_loading: bool,
+    pub ai_commands: Vec<AiCommand>,
+    pub ai_selected_cmd: usize,
+    pub ai_selecting: bool,
 
     // Shell mode state
     pub history_entries: Vec<String>,
@@ -74,6 +77,13 @@ pub struct AiMessage {
     pub content: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct AiCommand {
+    pub cmd: String,
+    pub desc: String,
+    pub placeholders: Vec<String>,
+}
+
 impl App {
     pub fn new(mode: Mode, cwd: String, config: Config) -> Self {
         Self {
@@ -98,6 +108,9 @@ impl App {
             editing_tokens: false,
             ai_messages: Vec::new(),
             ai_loading: false,
+            ai_commands: Vec::new(),
+            ai_selected_cmd: 0,
+            ai_selecting: false,
             history_entries: Vec::new(),
             filtered_history: Vec::new(),
             cwd,
@@ -209,6 +222,10 @@ impl App {
             if self.active_token > 0 {
                 self.active_token -= 1;
             }
+        } else if self.ai_selecting {
+            if self.ai_selected_cmd > 0 {
+                self.ai_selected_cmd -= 1;
+            }
         } else if self.selected_index > 0 {
             self.selected_index -= 1;
         }
@@ -219,6 +236,10 @@ impl App {
             let max = self.token_values.len().saturating_sub(1);
             if self.active_token < max {
                 self.active_token += 1;
+            }
+        } else if self.ai_selecting {
+            if self.ai_selected_cmd + 1 < self.ai_commands.len() {
+                self.ai_selected_cmd += 1;
             }
         } else {
             let max = match self.mode {
