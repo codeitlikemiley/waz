@@ -1,13 +1,15 @@
 use crate::config::Config;
 
-/// TUI operating mode.
+/// TUI operating mode — determined by the first character typed.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Mode {
+    /// No prefix typed yet — show instructions
+    Empty,
     /// TMP command palette (triggered by `/`)
     Tmp,
-    /// AI chat mode (natural language)
+    /// AI chat mode (natural language — any text without prefix)
     Ai,
-    /// Shell history browser (triggered by `!`)
+    /// Shell command mode (triggered by `!`)
     Shell,
 }
 
@@ -35,14 +37,20 @@ pub struct App {
     pub ai_selected_cmd: usize,
     pub ai_selecting: bool,
 
-    // Shell mode state
-    pub history_entries: Vec<String>,
-    pub filtered_history: Vec<usize>,
+    // AI placeholder editing state
+    pub ai_editing_placeholders: bool,
+    pub ai_placeholder_names: Vec<String>,
+    pub ai_placeholder_values: Vec<String>,
+    pub ai_active_placeholder: usize,
+    pub ai_editing_cmd: String,
 
     // Context
     pub cwd: String,
     pub config: Config,
     pub scroll_offset: u16,
+
+    /// Whether TMP commands have been loaded (lazy loading on first `/`)
+    pub tmp_loaded: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -88,18 +96,11 @@ pub struct AiCommand {
 }
 
 impl App {
-    pub fn new(mode: Mode, cwd: String, config: Config) -> Self {
+    pub fn new(cwd: String, config: Config) -> Self {
         Self {
-            mode,
-            input: match mode {
-                Mode::Tmp => "/".to_string(),
-                Mode::Shell => "!".to_string(),
-                Mode::Ai => String::new(),
-            },
-            cursor_pos: match mode {
-                Mode::Tmp | Mode::Shell => 1,
-                Mode::Ai => 0,
-            },
+            mode: Mode::Empty,
+            input: String::new(),
+            cursor_pos: 0,
             should_quit: false,
             output_command: None,
             command_list: Vec::new(),
@@ -114,62 +115,79 @@ impl App {
             ai_commands: Vec::new(),
             ai_selected_cmd: 0,
             ai_selecting: false,
-            history_entries: Vec::new(),
-            filtered_history: Vec::new(),
+            ai_editing_placeholders: false,
+            ai_placeholder_names: Vec::new(),
+            ai_placeholder_values: Vec::new(),
+            ai_active_placeholder: 0,
+            ai_editing_cmd: String::new(),
             cwd,
             config,
             scroll_offset: 0,
+            tmp_loaded: false,
         }
     }
 
-    /// Filter commands based on current input.
+    /// Reset back to Empty mode, clearing all state.
+    pub fn reset_to_empty(&mut self) {
+        self.mode = Mode::Empty;
+        self.input.clear();
+        self.cursor_pos = 0;
+        self.selected_index = 0;
+        self.selected_command = None;
+        self.editing_tokens = false;
+        self.token_values.clear();
+        self.active_token = 0;
+        self.filtered_commands.clear();
+        self.ai_selecting = false;
+        self.ai_selected_cmd = 0;
+        self.ai_editing_placeholders = false;
+        self.ai_placeholder_names.clear();
+        self.ai_placeholder_values.clear();
+        self.ai_active_placeholder = 0;
+        self.ai_editing_cmd.clear();
+        self.scroll_offset = 0;
+    }
+
+    /// Filter commands based on current input, prioritizing subcommand name matches.
     pub fn filter_commands(&mut self) {
-        let query = if self.input.starts_with('/') {
-            &self.input[1..]
+        let query = self.input.to_lowercase();
+
+        if query.is_empty() {
+            self.filtered_commands = (0..self.command_list.len()).collect();
         } else {
-            &self.input
-        }.to_lowercase();
+            // Score each command for relevance — higher is better
+            let mut scored: Vec<(usize, u8)> = self.command_list.iter().enumerate()
+                .filter_map(|(i, cmd)| {
+                    let subcommand = cmd.command
+                        .strip_prefix(&format!("{} ", cmd.group))
+                        .unwrap_or(&cmd.command)
+                        .to_lowercase();
+                    let full_cmd = cmd.command.to_lowercase();
 
-        self.filtered_commands = self.command_list.iter().enumerate()
-            .filter(|(_, cmd)| {
-                if query.is_empty() {
-                    true
-                } else {
-                    cmd.command.to_lowercase().contains(&query)
-                        || cmd.description.to_lowercase().contains(&query)
-                }
-            })
-            .map(|(i, _)| i)
-            .collect();
+                    // Scoring: prioritize subcommand name over description
+                    if subcommand == query {
+                        Some((i, 10)) // Exact subcommand match
+                    } else if subcommand.starts_with(&query) {
+                        Some((i, 5)) // Subcommand starts with query
+                    } else if subcommand.contains(&query) {
+                        Some((i, 3)) // Subcommand contains query
+                    } else if full_cmd.starts_with(&query) {
+                        Some((i, 4)) // Full command starts with query (e.g. "git commit")
+                    } else if full_cmd.contains(&query) {
+                        Some((i, 2)) // Full command contains query
+                    } else {
+                        None // Don't match on description alone — too noisy
+                    }
+                })
+                .collect();
 
-        // Reset selection if out of bounds
-        if self.selected_index >= self.filtered_commands.len() {
-            self.selected_index = 0;
+            // Sort by score descending so best matches come first
+            scored.sort_by(|a, b| b.1.cmp(&a.1));
+            self.filtered_commands = scored.into_iter().map(|(i, _)| i).collect();
         }
-    }
 
-    /// Filter history entries based on input.
-    pub fn filter_history(&mut self) {
-        let query = if self.input.starts_with('!') {
-            &self.input[1..]
-        } else {
-            &self.input
-        }.to_lowercase();
-
-        self.filtered_history = self.history_entries.iter().enumerate()
-            .filter(|(_, entry)| {
-                if query.is_empty() {
-                    true
-                } else {
-                    entry.to_lowercase().contains(&query)
-                }
-            })
-            .map(|(i, _)| i)
-            .collect();
-
-        if self.selected_index >= self.filtered_history.len() {
-            self.selected_index = 0;
-        }
+        // Always reset selection when filter changes
+        self.selected_index = 0;
     }
 
     /// Select a command and prepare token editing.
@@ -254,7 +272,6 @@ impl App {
         } else {
             let max = match self.mode {
                 Mode::Tmp => self.filtered_commands.len(),
-                Mode::Shell => self.filtered_history.len(),
                 _ => 0,
             };
             if self.selected_index + 1 < max {

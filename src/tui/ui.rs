@@ -1,6 +1,6 @@
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Rect, Alignment},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
@@ -15,7 +15,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     // Semi-transparent overlay effect: clear the area
     f.render_widget(Clear, area);
 
-    // Main layout: header + content + input
+    // Main layout: header + content + input + footer
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -34,32 +34,65 @@ pub fn draw(f: &mut Frame, app: &App) {
 
 fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     let mode_label = match app.mode {
-        Mode::Tmp => ("TMP Mode", Color::Cyan),
-        Mode::Ai => ("AI Mode", Color::Yellow),
-        Mode::Shell => ("Shell Mode", Color::Green),
+        Mode::Empty => None,
+        Mode::Tmp => Some(("TMP Mode", Color::Cyan)),
+        Mode::Ai => Some(("AI Mode", Color::Yellow)),
+        Mode::Shell => Some(("Shell Mode", Color::Green)),
     };
 
-    let header = Paragraph::new(Line::from(vec![
+    let mut spans = vec![
         Span::styled("🔮 waz", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-        Span::raw("  "),
-        Span::styled(
-            format!("[{}]", mode_label.0),
-            Style::default().fg(mode_label.1),
-        ),
-    ]))
-    .block(Block::default()
-        .borders(Borders::BOTTOM)
-        .border_style(Style::default().fg(Color::DarkGray)));
+    ];
+
+    if let Some((label, color)) = mode_label {
+        spans.push(Span::raw("  "));
+        spans.push(Span::styled(
+            format!("[{}]", label),
+            Style::default().fg(color),
+        ));
+    }
+
+    let header = Paragraph::new(Line::from(spans))
+        .block(Block::default()
+            .borders(Borders::BOTTOM)
+            .border_style(Style::default().fg(Color::DarkGray)));
 
     f.render_widget(header, area);
 }
 
 fn draw_content(f: &mut Frame, app: &App, area: Rect) {
     match app.mode {
+        Mode::Empty => draw_empty_content(f, area),
         Mode::Tmp => draw_tmp_content(f, app, area),
         Mode::Ai => draw_ai_content(f, app, area),
         Mode::Shell => draw_shell_content(f, app, area),
     }
+}
+
+fn draw_empty_content(f: &mut Frame, area: Rect) {
+    let lines = vec![
+        Line::from(""),
+        Line::from(""),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  /", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled("   Command palette", Style::default().fg(Color::DarkGray)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  !", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::styled("   Shell command", Style::default().fg(Color::DarkGray)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  …", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled("   Just type for AI", Style::default().fg(Color::DarkGray)),
+        ]),
+    ];
+
+    let paragraph = Paragraph::new(lines)
+        .alignment(Alignment::Left);
+    f.render_widget(paragraph, area);
 }
 
 fn draw_tmp_content(f: &mut Frame, app: &App, area: Rect) {
@@ -75,14 +108,49 @@ fn draw_tmp_content(f: &mut Frame, app: &App, area: Rect) {
 
         // Right: token form
         draw_token_form(f, app, chunks[1]);
+    } else if app.filtered_commands.is_empty() {
+        // No commands found — show helpful message
+        let msg = if app.command_list.is_empty() {
+            "  No tools detected in this directory.\n  Navigate to a project with Cargo.toml, package.json, or .git"
+        } else {
+            "  No commands match your filter."
+        };
+        let lines: Vec<Line> = msg.lines().map(|l| {
+            Line::from(Span::styled(l, Style::default().fg(Color::DarkGray)))
+        }).collect();
+        let paragraph = Paragraph::new(lines);
+        f.render_widget(paragraph, area);
     } else {
         draw_command_list(f, app, area, false);
     }
 }
 
 fn draw_command_list(f: &mut Frame, app: &App, area: Rect, dimmed: bool) {
-    let items: Vec<ListItem> = app.filtered_commands.iter().enumerate().map(|(i, &cmd_idx)| {
+    // Build items with group headers
+    let mut items: Vec<ListItem> = Vec::new();
+    let mut last_group: Option<String> = None;
+
+    for (i, &cmd_idx) in app.filtered_commands.iter().enumerate() {
         let cmd = &app.command_list[cmd_idx];
+
+        // Insert group header when group changes
+        if last_group.as_ref() != Some(&cmd.group) {
+            if last_group.is_some() {
+                // Spacer between groups
+                items.push(ListItem::new(Line::from("")));
+            }
+            let header = Line::from(vec![
+                Span::styled(
+                    format!("  {}", cmd.group),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]);
+            items.push(ListItem::new(header));
+            last_group = Some(cmd.group.clone());
+        }
+
         let is_selected = i == app.selected_index;
 
         let style = if dimmed {
@@ -93,19 +161,24 @@ fn draw_command_list(f: &mut Frame, app: &App, area: Rect, dimmed: bool) {
             Style::default().fg(Color::White)
         };
 
-        let prefix = if is_selected && !dimmed { "▸ " } else { "  " };
+        let prefix = if is_selected && !dimmed { "  ▸ " } else { "    " };
+
+        // Show subcommand only (strip the group prefix)
+        let display_name = cmd.command
+            .strip_prefix(&format!("{} ", cmd.group))
+            .unwrap_or(&cmd.command);
 
         let line = Line::from(vec![
             Span::styled(prefix, style),
-            Span::styled(&cmd.command, style),
+            Span::styled(display_name, style),
             Span::styled(
                 format!("  — {}", cmd.description),
                 Style::default().fg(Color::DarkGray),
             ),
         ]);
 
-        ListItem::new(line)
-    }).collect();
+        items.push(ListItem::new(line));
+    }
 
     let list = List::new(items).block(
         Block::default()
@@ -299,6 +372,60 @@ fn draw_ai_content(f: &mut Frame, app: &App, area: Rect) {
         }
     }
 
+    // Render AI placeholder editing form
+    if app.ai_editing_placeholders {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "  ⌨ Fill in placeholders:",
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        )));
+        lines.push(Line::from(""));
+
+        // Show the command with live preview
+        let mut preview = app.ai_editing_cmd.clone();
+        for (i, name) in app.ai_placeholder_names.iter().enumerate() {
+            let val = &app.ai_placeholder_values[i];
+            if !val.is_empty() {
+                preview = preview.replace(&format!("<{}>", name), val);
+            }
+        }
+        lines.push(Line::from(vec![
+            Span::styled("  → ", Style::default().fg(Color::Green)),
+            Span::styled(preview, Style::default().fg(Color::Green)),
+        ]));
+        lines.push(Line::from(""));
+
+        // Show placeholder input fields
+        for (i, name) in app.ai_placeholder_names.iter().enumerate() {
+            let is_active = i == app.ai_active_placeholder;
+            let val = &app.ai_placeholder_values[i];
+
+            let label_style = if is_active {
+                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::DarkGray)
+            };
+            let val_style = if is_active {
+                Style::default().fg(Color::White)
+            } else {
+                Style::default().fg(Color::DarkGray)
+            };
+            let cursor = if is_active { "█" } else { "" };
+
+            lines.push(Line::from(vec![
+                Span::styled(format!("    {}: ", name), label_style),
+                Span::styled(val, val_style),
+                Span::styled(cursor, Style::default().fg(Color::Green)),
+            ]));
+        }
+
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "  Tab next field  Enter run  Esc cancel",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
     if app.ai_loading {
         lines.push(Line::from(Span::styled(
             "  ⏳ Thinking...",
@@ -311,32 +438,41 @@ fn draw_ai_content(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_shell_content(f: &mut Frame, app: &App, area: Rect) {
-    let items: Vec<ListItem> = app.filtered_history.iter().enumerate().map(|(i, &hist_idx)| {
-        let entry = &app.history_entries[hist_idx];
-        let is_selected = i == app.selected_index;
+    let mut lines: Vec<Line> = Vec::new();
 
-        let style = if is_selected {
-            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(Color::White)
-        };
+    if app.input.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  Type a shell command and press Enter to run it...",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else {
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![
+            Span::styled("  → ", Style::default().fg(Color::Green)),
+            Span::styled(
+                &app.input,
+                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+            ),
+        ]));
+    }
 
-        let prefix = if is_selected { "▸ " } else { "  " };
-        ListItem::new(Line::from(vec![
-            Span::styled(prefix, style),
-            Span::styled(entry.as_str(), style),
-        ]))
-    }).collect();
-
-    let list = List::new(items).block(Block::default().borders(Borders::NONE));
-    f.render_widget(list, area);
+    let paragraph = Paragraph::new(lines);
+    f.render_widget(paragraph, area);
 }
 
 fn draw_input(f: &mut Frame, app: &App, area: Rect) {
     let input_style = Style::default().fg(Color::White);
 
+    // Mode prefix (visual-only, not part of editable input)
+    let (prefix, prefix_style, prefix_len) = match app.mode {
+        Mode::Empty => ("❯ ", Style::default().fg(Color::Green), 2),
+        Mode::Tmp => ("❯ /", Style::default().fg(Color::Cyan), 3),
+        Mode::Shell => ("❯ !", Style::default().fg(Color::Green), 3),
+        Mode::Ai => ("❯ ", Style::default().fg(Color::Yellow), 2),
+    };
+
     let input_widget = Paragraph::new(Line::from(vec![
-        Span::styled("❯ ", Style::default().fg(Color::Green)),
+        Span::styled(prefix, prefix_style),
         Span::styled(&app.input, input_style),
     ]))
     .block(
@@ -347,24 +483,50 @@ fn draw_input(f: &mut Frame, app: &App, area: Rect) {
 
     f.render_widget(input_widget, area);
 
-    // Position cursor
+    // Position cursor (offset by visual prefix width)
     f.set_cursor_position((
-        area.x + 2 + app.cursor_pos as u16,
+        area.x + prefix_len + app.cursor_pos as u16,
         area.y + 1,
     ));
 }
 
-fn draw_footer(f: &mut Frame, _app: &App, area: Rect) {
-    let help = Line::from(vec![
-        Span::styled(" ↑↓", Style::default().fg(Color::Cyan)),
-        Span::styled(" navigate  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("Tab", Style::default().fg(Color::Cyan)),
-        Span::styled(" fill  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("Enter", Style::default().fg(Color::Cyan)),
-        Span::styled(" run  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("Esc", Style::default().fg(Color::Cyan)),
-        Span::styled(" quit", Style::default().fg(Color::DarkGray)),
-    ]);
+fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
+    let help = match app.mode {
+        Mode::Empty => Line::from(vec![
+            Span::styled(" /", Style::default().fg(Color::Cyan)),
+            Span::styled(" commands  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("!", Style::default().fg(Color::Green)),
+            Span::styled(" shell  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("text", Style::default().fg(Color::Yellow)),
+            Span::styled(" ai  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::styled(" quit", Style::default().fg(Color::DarkGray)),
+        ]),
+        Mode::Tmp => Line::from(vec![
+            Span::styled(" ↑↓", Style::default().fg(Color::Cyan)),
+            Span::styled(" navigate  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::styled(" fill  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Enter", Style::default().fg(Color::Cyan)),
+            Span::styled(" run  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::styled(" back", Style::default().fg(Color::DarkGray)),
+        ]),
+        Mode::Shell => Line::from(vec![
+            Span::styled(" Enter", Style::default().fg(Color::Cyan)),
+            Span::styled(" run  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::styled(" back", Style::default().fg(Color::DarkGray)),
+        ]),
+        Mode::Ai => Line::from(vec![
+            Span::styled(" Enter", Style::default().fg(Color::Cyan)),
+            Span::styled(" send  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("↑↓", Style::default().fg(Color::Cyan)),
+            Span::styled(" select cmd  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::styled(" back", Style::default().fg(Color::DarkGray)),
+        ]),
+    };
 
     f.render_widget(Paragraph::new(help), area);
 }
