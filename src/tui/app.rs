@@ -61,6 +61,8 @@ pub struct TokenDef {
     pub token_type: TokenType,
     pub default: Option<String>,
     pub values: Option<Vec<String>>,
+    /// CLI flag override (e.g. "-p", "--bin", "-F"). If None, derives from name.
+    pub flag: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -202,11 +204,17 @@ impl App {
             match token.token_type {
                 TokenType::Boolean => {
                     if value == "true" || value == "yes" {
-                        parts.push(format!("--{}", token.name));
+                        if let Some(ref f) = token.flag {
+                            parts.push(f.clone());
+                        } else {
+                            parts.push(format!("--{}", token.name));
+                        }
                     }
                 }
                 TokenType::Enum | TokenType::String | TokenType::File | TokenType::Number => {
-                    if token.name.len() == 1 {
+                    if let Some(ref f) = token.flag {
+                        parts.push(f.clone());
+                    } else if token.name.len() == 1 {
                         parts.push(format!("-{}", token.name));
                     } else {
                         parts.push(format!("--{}", token.name));

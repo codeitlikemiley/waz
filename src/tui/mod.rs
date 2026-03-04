@@ -1,4 +1,5 @@
 pub mod app;
+pub mod cargo_schema;
 pub mod ui;
 
 use std::io;
@@ -331,137 +332,14 @@ fn load_tmp_commands(app: &mut App) {
         || find_git_root(std::path::Path::new(&app.cwd)).is_some();
 
     // Now load commands (mutable borrow of app)
-    if has_cargo { load_cargo_commands(app); }
+    if has_cargo { cargo_schema::load(app); }
     if has_npm { load_npm_commands(app); }
     if has_git { load_git_commands(app); }
 
     app.filter_commands();
 }
 
-fn load_cargo_commands(app: &mut App) {
-    // Read package name from Cargo.toml
-    let cargo_path = std::path::Path::new(&app.cwd).join("Cargo.toml");
-    let package_name = if let Ok(content) = std::fs::read_to_string(&cargo_path) {
-        content.parse::<toml::Value>().ok()
-            .and_then(|v| v.get("package")?.get("name")?.as_str().map(|s| s.to_string()))
-    } else {
-        None
-    };
-
-    // Detect workspace members
-    let workspace_packages = detect_workspace_packages(&cargo_path);
-
-    let pkg_values = if !workspace_packages.is_empty() {
-        Some(workspace_packages)
-    } else if let Some(ref name) = package_name {
-        Some(vec![name.clone()])
-    } else {
-        None
-    };
-
-    use app::{CommandEntry, TokenDef};
-
-    let commands = vec![
-        CommandEntry {
-            command: "cargo build".to_string(),
-            description: "Compile the current package".to_string(),
-            group: "cargo".to_string(),
-            tokens: vec![
-                TokenDef {
-                    name: "package".to_string(),
-                    description: "Package to build".to_string(),
-                    required: false,
-                    token_type: if pkg_values.is_some() { TokenType::Enum } else { TokenType::String },
-                    default: package_name.clone(),
-                    values: pkg_values.clone(),
-                },
-                TokenDef {
-                    name: "release".to_string(),
-                    description: "Build with optimizations".to_string(),
-                    required: false,
-                    token_type: TokenType::Boolean,
-                    default: Some("false".to_string()),
-                    values: None,
-                },
-            ],
-        },
-        CommandEntry {
-            command: "cargo run".to_string(),
-            description: "Run the main binary".to_string(),
-            group: "cargo".to_string(),
-            tokens: vec![
-                TokenDef {
-                    name: "package".to_string(),
-                    description: "Package to run".to_string(),
-                    required: false,
-                    token_type: if pkg_values.is_some() { TokenType::Enum } else { TokenType::String },
-                    default: package_name.clone(),
-                    values: pkg_values.clone(),
-                },
-                TokenDef {
-                    name: "release".to_string(),
-                    description: "Run with optimizations".to_string(),
-                    required: false,
-                    token_type: TokenType::Boolean,
-                    default: Some("false".to_string()),
-                    values: None,
-                },
-                TokenDef {
-                    name: "example".to_string(),
-                    description: "Run a specific example".to_string(),
-                    required: false,
-                    token_type: TokenType::String,
-                    default: None,
-                    values: None,
-                },
-            ],
-        },
-        CommandEntry {
-            command: "cargo test".to_string(),
-            description: "Run tests".to_string(),
-            group: "cargo".to_string(),
-            tokens: vec![
-                TokenDef {
-                    name: "package".to_string(),
-                    description: "Package to test".to_string(),
-                    required: false,
-                    token_type: if pkg_values.is_some() { TokenType::Enum } else { TokenType::String },
-                    default: package_name.clone(),
-                    values: pkg_values.clone(),
-                },
-            ],
-        },
-        CommandEntry {
-            command: "cargo add".to_string(),
-            description: "Add a dependency".to_string(),
-            group: "cargo".to_string(),
-            tokens: vec![
-                TokenDef {
-                    name: "crate".to_string(),
-                    description: "Crate name to add".to_string(),
-                    required: true,
-                    token_type: TokenType::String,
-                    default: None,
-                    values: None,
-                },
-            ],
-        },
-        CommandEntry {
-            command: "cargo clippy".to_string(),
-            description: "Run linter".to_string(),
-            group: "cargo".to_string(),
-            tokens: vec![],
-        },
-        CommandEntry {
-            command: "cargo fmt".to_string(),
-            description: "Format code".to_string(),
-            group: "cargo".to_string(),
-            tokens: vec![],
-        },
-    ];
-
-    app.command_list.extend(commands);
-}
+// load_cargo_commands removed — now in cargo_schema.rs
 
 fn load_npm_commands(app: &mut App) {
     use app::{CommandEntry, TokenDef};
@@ -500,6 +378,7 @@ fn load_npm_commands(app: &mut App) {
                     token_type: TokenType::Enum,
                     default: None,
                     values: Some(scripts),
+                    flag: None,
                 },
             ],
         });
@@ -545,6 +424,7 @@ fn load_git_commands(app: &mut App) {
                     token_type: TokenType::File,
                     default: Some(".".to_string()),
                     values: None,
+                    flag: None,
                 },
             ],
         },
@@ -560,6 +440,7 @@ fn load_git_commands(app: &mut App) {
                     token_type: TokenType::String,
                     default: None,
                     values: None,
+                    flag: None,
                 },
             ],
         },
@@ -575,6 +456,7 @@ fn load_git_commands(app: &mut App) {
                     token_type: if branches.is_empty() { TokenType::String } else { TokenType::Enum },
                     default: None,
                     values: if branches.is_empty() { None } else { Some(branches.clone()) },
+                    flag: None,
                 },
             ],
         },
@@ -602,6 +484,7 @@ fn load_git_commands(app: &mut App) {
                     token_type: TokenType::Number,
                     default: Some("10".to_string()),
                     values: None,
+                    flag: None,
                 },
                 TokenDef {
                     name: "oneline".to_string(),
@@ -610,6 +493,7 @@ fn load_git_commands(app: &mut App) {
                     token_type: TokenType::Boolean,
                     default: Some("true".to_string()),
                     values: None,
+                    flag: None,
                 },
             ],
         },
@@ -628,50 +512,8 @@ fn load_history(app: &mut App, cwd: &str) {
     app.filter_history();
 }
 
-fn detect_workspace_packages(cargo_path: &std::path::Path) -> Vec<String> {
-    let content = match std::fs::read_to_string(cargo_path) {
-        Ok(c) => c,
-        Err(_) => return vec![],
-    };
 
-    let value: toml::Value = match content.parse() {
-        Ok(v) => v,
-        Err(_) => return vec![],
-    };
 
-    // Check if it's a workspace
-    if let Some(workspace) = value.get("workspace") {
-        if let Some(members) = workspace.get("members") {
-            if let Some(arr) = members.as_array() {
-                let cwd = cargo_path.parent().unwrap_or_else(|| std::path::Path::new("."));
-                let mut packages = Vec::new();
-
-                for member in arr {
-                    if let Some(pattern) = member.as_str() {
-                        // Simple glob: just check directories
-                        if let Ok(entries) = std::fs::read_dir(cwd.join(
-                            pattern.trim_end_matches("/*").trim_end_matches("/**")
-                        )) {
-                            for entry in entries.flatten() {
-                                if entry.path().join("Cargo.toml").exists() {
-                                    if let Some(name) = entry.file_name().to_str() {
-                                        packages.push(name.to_string());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if !packages.is_empty() {
-                    return packages;
-                }
-            }
-        }
-    }
-
-    vec![]
-}
 
 fn find_git_root(path: &std::path::Path) -> Option<std::path::PathBuf> {
     let mut current = path;
