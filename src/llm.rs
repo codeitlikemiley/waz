@@ -310,7 +310,10 @@ Recent commands:
 Rules:
 - Respond with ONLY the predicted command, nothing else
 - No explanation, no quotes, no markdown
-- Just the raw shell command on a single line",
+- Just the raw shell command on a single line
+- ONLY suggest commands from the recent history list above or very common variants of them
+- Do NOT invent flags, options, or arguments the user has not used before
+- If unsure, pick the most recently used command from the list",
         cwd, history, prefix_hint
     )
 }
