@@ -1,8 +1,8 @@
 # waz 🔮
 
-**Warp-style command prediction for any terminal.**
+**Warp-style command prediction and command palette for any terminal.**
 
-A Rust-powered command prediction engine that provides ghost-text autosuggestions in any terminal emulator (Ghostty, Alacritty, Kitty, iTerm2, WezTerm, etc.) by integrating at the shell level.
+A Rust-powered command prediction engine with ghost-text autosuggestions, an interactive **command palette TUI**, and **AI-powered command assistance** — works in any terminal emulator (Ghostty, Alacritty, Kitty, iTerm2, WezTerm, etc.).
 
 Inspired by [Warp's multi-tier prediction approach](https://x.com/BHolmesDev/status/2025588198571757892).
 
@@ -78,6 +78,76 @@ waz predict --prefix "git" --format json   # Prediction with prefix
 waz record -- "git push"                   # Manually record a command
 waz stats                                  # Show database statistics
 waz session-id                             # Generate a new session ID
+```
+
+---
+
+## Command Mode (TUI)
+
+A **Warp-like command palette** built with `ratatui` — press `/` at an empty prompt to launch it.
+
+### Three Modes
+
+| Mode | Trigger | What it does |
+|------|---------|------|
+| **TMP** | `/` at empty prompt | Token-aware command builder |
+| **AI** | Natural language | Chat with AI, get commands |
+| **Shell** | `!` at empty prompt | Fuzzy search command history |
+
+### Context-Aware Commands
+
+The TUI auto-detects your project and loads relevant commands:
+
+- **`Cargo.toml`** → `cargo build`, `run`, `test`, `add`, `clippy`, `fmt` with package tokens from workspace members
+- **`package.json`** → `npm install`, `npm run` with script names from `scripts`
+- **`.git`** → `git status`, `add`, `commit`, `checkout`, `push`, `pull`, `log` with branch names
+
+### Token Form
+
+When selecting a command with arguments:
+- **Boolean tokens** → toggle with `Space`/`y`/`n`, `Tab` cycles
+- **Enum tokens** → `Tab` cycles through values (packages, scripts, branches)
+- **String tokens** → free-text input
+- **Live preview** → shows the resolved command as you fill tokens
+
+### Direct CLI
+
+```bash
+waz tui              # TMP mode (default)
+waz tui ai           # AI mode
+waz tui shell        # Shell history mode
+waz tui --query git  # Pre-filtered
+```
+
+---
+
+## AI Assistant
+
+Ask natural language questions directly from the command line:
+
+```bash
+# Just type a question as a command — waz intercepts it automatically
+how to find large files
+
+# Or use the ask command explicitly
+waz ask "how to uninstall a package with homebrew"
+waz ask --json "how to search in files"   # Structured JSON output
+```
+
+### Interactive Command Resolver
+
+When AI suggests commands, waz provides an interactive resolver:
+- **Numbered menu** — select from multiple suggestions
+- **Placeholder filling** — interactively fill `<filename>`, `<package_name>` etc.
+- **Tab completion** — file path completion for file-type placeholders
+- **Run all** — execute all suggested commands in sequence
+- **Edit mode** — pre-fill the command in your prompt for tweaking
+
+### History Management
+
+```bash
+waz clear            # Clear history for current directory
+waz clear --all      # Clear ALL history across all directories
 ```
 
 ---
@@ -258,25 +328,31 @@ model = "your-model-name"
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────┐
-│          Shell Integration Layer            │
-│  ┌─────────┐  ┌──────────┐  ┌────────────┐ │
-│  │   Zsh   │  │   Bash   │  │    Fish    │ │
-│  │  (ZLE)  │  │(readline)│  │  (events)  │ │
-│  └────┬────┘  └────┬─────┘  └─────┬──────┘ │
-└───────┼────────────┼───────────────┼────────┘
+┌─────────────────────────────────────────────────────┐
+│              Shell Integration Layer                │
+│  ┌─────────┐  ┌──────────┐  ┌────────────┐         │
+│  │   Zsh   │  │   Bash   │  │    Fish    │         │
+│  │  (ZLE)  │  │(readline)│  │  (events)  │         │
+│  └────┬────┘  └────┬─────┘  └─────┬──────┘         │
+│       │            │              │                 │
+│  / → TMP mode   ! → Shell mode   NL → AI mode      │
+└───────┼────────────┼───────────────┼────────────────┘
         └────────────┼───────────────┘
                      │
          ┌───────────▼───────────┐
          │    waz binary (Rust)  │
          │                       │
-         │  ┌─ Tier 1: Sequence ─┤
-         │  │  (bigram analysis) │
-         │  ├─ Tier 2: CWD ─────┤
-         │  │  (history search)  │
-         │  ├─ Tier 3: LLM ─────┤
-         │  │  Multi-provider    │
-         │  │  Key rotation      │
+         │  ┌─ Prediction ───────┤
+         │  │  Tier 1: Sequence  │
+         │  │  Tier 2: CWD      │
+         │  │  Tier 3: LLM      │
+         │  ├─ Command Mode ────┤
+         │  │  TUI (ratatui)    │
+         │  │  Token forms      │
+         │  │  Context-aware    │
+         │  ├─ AI Assistant ────┤
+         │  │  Structured JSON  │
+         │  │  Command resolver │
          │  └────────────────────┤
          │                       │
          │     SQLite History    │
