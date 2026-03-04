@@ -22,123 +22,69 @@ autoload -Uz add-zsh-hook
 add-zsh-hook preexec _waz_preexec
 add-zsh-hook precmd _waz_precmd
 
-# --- Async debounced predictions ---
-# Architecture:
-#   1. Each keystroke cancels pending prediction, starts 500ms bg timer
-#   2. After 500ms, bg process runs `waz predict`, writes result to temp file
-#   3. BG process sends SIGUSR1 to parent shell
-#   4. TRAPUSR1 reads the file and updates POSTDISPLAY (ghost text)
-#   5. zle -R redraws the line — all non-blocking, typing is never delayed
-
+# --- Ghost text prediction via ZLE ---
 typeset -g _WAZ_SUGGESTION=""
 typeset -g _WAZ_SHOW_PROACTIVE=""
-typeset -g _WAZ_DEBOUNCE_PID=0
-typeset -g _WAZ_RESULT_FILE="${TMPDIR:-/tmp}/waz_result_$$"
 
-# --- Signal handler: async prediction result arrived ---
-# TRAPUSR1 runs outside ZLE widget context, so POSTDISPLAY is read-only.
-# We call a ZLE widget instead, which has proper write access.
-TRAPUSR1() {
-    zle && zle _waz_apply_result
-}
+# Min chars before triggering a prediction (avoids spawning process for every letter)
+typeset -g _WAZ_MIN_CHARS=2
 
-# --- ZLE widget: apply async prediction result ---
-_waz_apply_result() {
-    [[ ! -f "$_WAZ_RESULT_FILE" ]] && return
-
-    local pred
-    pred=$(<"$_WAZ_RESULT_FILE")
-    rm -f "$_WAZ_RESULT_FILE"
-
-    [[ -z "$pred" || "$pred" == "$BUFFER" ]] && return
-
-    _WAZ_SUGGESTION="$pred"
+_waz_suggest() {
+    _WAZ_SUGGESTION=""
     POSTDISPLAY=""
     region_highlight=("${(@)region_highlight:#*fg=#6c6c6c*}")
 
     local buf="$BUFFER"
+    local prediction
+
     if [[ -z "${buf// /}" ]]; then
-        POSTDISPLAY="$pred"
-    elif [[ "$pred" == "$buf"* ]]; then
-        POSTDISPLAY="${pred#$buf}"
+        # Empty buffer: proactive prediction (full mode w/ LLM)
+        prediction=$(command waz predict --cwd "$PWD" --session "$WAZ_SESSION_ID" 2>/dev/null)
+    elif (( ${#buf} >= _WAZ_MIN_CHARS )); then
+        # 2+ chars typed: fast local prediction (no LLM)
+        prediction=$(command waz predict --cwd "$PWD" --session "$WAZ_SESSION_ID" --prefix "$buf" --fast 2>/dev/null)
     else
-        POSTDISPLAY="  ← $pred"
+        return
     fi
 
-    if [[ -n "$POSTDISPLAY" ]]; then
+    if [[ -n "$prediction" && "$prediction" != "$buf" ]]; then
+        _WAZ_SUGGESTION="$prediction"
+        if [[ -z "${buf// /}" ]]; then
+            POSTDISPLAY="$prediction"
+        elif [[ "$prediction" == "$buf"* ]]; then
+            POSTDISPLAY="${prediction#$buf}"
+        else
+            POSTDISPLAY="  ← $prediction"
+        fi
         local start=${#BUFFER}
         local end=$((start + ${#POSTDISPLAY}))
         region_highlight+=("$start $end fg=#6c6c6c")
     fi
 }
 
-# --- Cancel pending prediction bg process ---
-_waz_cancel_pending() {
-    if (( _WAZ_DEBOUNCE_PID > 0 )); then
-        kill $_WAZ_DEBOUNCE_PID 2>/dev/null
-        _WAZ_DEBOUNCE_PID=0
-    fi
-    rm -f "$_WAZ_RESULT_FILE" 2>/dev/null
-}
-
-# --- Schedule a prediction (runs in bg after debounce delay) ---
-_waz_schedule_predict() {
-    local buf="$BUFFER"
-    local cwd="$PWD"
-    local sid="$WAZ_SESSION_ID"
-    local result_file="$_WAZ_RESULT_FILE"
-    local parent_pid=$$
-    local is_proactive="$1"
-
-    {
-        # Debounce: wait 500ms (skip for proactive)
-        [[ "$is_proactive" != "1" ]] && sleep 0.5
-
-        local pred
-        if [[ -n "${buf// /}" ]]; then
-            pred=$(command waz predict --cwd "$cwd" --session "$sid" --prefix "$buf" --fast 2>/dev/null)
-        else
-            pred=$(command waz predict --cwd "$cwd" --session "$sid" 2>/dev/null)
-        fi
-
-        if [[ -n "$pred" ]]; then
-            echo "$pred" > "$result_file"
-            kill -USR1 $parent_pid 2>/dev/null
-        fi
-    } &!
-    _WAZ_DEBOUNCE_PID=$!
-}
-
-# --- Clear ghost text ---
 _waz_clear() {
     _WAZ_SUGGESTION=""
     POSTDISPLAY=""
-    region_highlight=("${(@)region_highlight:#*fg=#6c6c6c*}")
 }
 
-# --- Widget: proactive suggestion on new prompt ---
+# --- Widget: show proactive suggestion when line editor starts ---
 _waz_line_init() {
     if [[ -n "$_WAZ_SHOW_PROACTIVE" ]]; then
         _WAZ_SHOW_PROACTIVE=""
-        _waz_cancel_pending
-        _waz_schedule_predict 1
+        _waz_suggest
     fi
 }
 
-# --- Widget: self-insert (type a character) ---
+# --- Widget: self-insert + suggest ---
 _waz_self_insert() {
     zle .self-insert
-    _waz_clear
-    _waz_cancel_pending
-    _waz_schedule_predict
+    _waz_suggest
 }
 
-# --- Widget: backward-delete (backspace) ---
+# --- Widget: backward-delete + suggest ---
 _waz_backward_delete() {
     zle .backward-delete-char
-    _waz_clear
-    _waz_cancel_pending
-    _waz_schedule_predict
+    _waz_suggest
 }
 
 # --- Widget: accept full suggestion (right arrow) ---
@@ -163,9 +109,7 @@ _waz_accept_word() {
             BUFFER="${BUFFER}${next_word} "
         fi
         CURSOR=${#BUFFER}
-        _waz_clear
-        _waz_cancel_pending
-        _waz_schedule_predict
+        _waz_suggest
     else
         zle .forward-word
     fi
@@ -174,30 +118,20 @@ _waz_accept_word() {
 # --- Widget: enter clears ghost text ---
 _waz_accept_line() {
     _waz_clear
-    _waz_cancel_pending
     zle .accept-line
 }
 
 # --- Widget: ctrl-c clears ghost text ---
 _waz_send_break() {
     _waz_clear
-    _waz_cancel_pending
     zle .send-break
 }
-
-# --- Cleanup on exit ---
-_waz_cleanup() {
-    _waz_cancel_pending
-    rm -f "$_WAZ_RESULT_FILE" 2>/dev/null
-}
-add-zsh-hook zshexit _waz_cleanup
 
 # --- Register all widgets ---
 zle -N self-insert _waz_self_insert
 zle -N backward-delete-char _waz_backward_delete
 zle -N _waz_accept
 zle -N _waz_accept_word
-zle -N _waz_apply_result
 zle -N accept-line _waz_accept_line
 zle -N send-break _waz_send_break
 zle -N zle-line-init _waz_line_init
