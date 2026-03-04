@@ -145,6 +145,9 @@ command_not_found_handler() {
     local full_input="$*"
 
     if command waz check-nl -- $full_input 2>/dev/null; then
+        # Don't record NL queries in command history
+        _WAZ_LAST_CMD=""
+
         local response
         response=$(command waz ask --cwd "$PWD" --session "$WAZ_SESSION_ID" -- $full_input 2>/dev/null)
 
