@@ -35,11 +35,18 @@ pub fn launch(mode: Mode, cwd: String, query: Option<String>) -> io::Result<Opti
         Mode::Ai => {}
     }
 
-    // Enter TUI
+    // Open /dev/tty for TUI rendering (so stdout remains free for command output).
+    // When launched from a ZLE widget via $(command waz tui ...), stdout is captured.
+    // Writing TUI escape codes to stdout would corrupt the shell buffer.
+    let tty = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open("/dev/tty")?;
+    let mut tty_write = tty.try_clone()?;
+
     enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(stdout);
+    execute!(tty_write, EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(tty_write);
     let mut terminal = Terminal::new(backend)?;
 
     let result = run_event_loop(&mut terminal, &mut app);
@@ -52,8 +59,8 @@ pub fn launch(mode: Mode, cwd: String, query: Option<String>) -> io::Result<Opti
     result.map(|_| app.output_command)
 }
 
-fn run_event_loop(
-    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+fn run_event_loop<W: io::Write>(
+    terminal: &mut Terminal<CrosstermBackend<W>>,
     app: &mut App,
 ) -> io::Result<()> {
     loop {
