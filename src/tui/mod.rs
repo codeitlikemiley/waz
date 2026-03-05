@@ -15,9 +15,17 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 use app::{App, Mode, TokenType};
 
 /// Launch the TUI overlay. Returns the resolved command (if any).
-pub fn launch(cwd: String, query: Option<String>) -> io::Result<Option<String>> {
+pub fn launch(cwd: String, query: Option<String>, config_mode: bool) -> io::Result<Option<String>> {
     let config = crate::config::Config::load();
     let mut app = App::new(cwd.clone(), config);
+    app.config_mode = config_mode;
+
+    // Config mode: pre-enter TMP mode with / prefix
+    if config_mode {
+        app.mode = Mode::Tmp;
+        app.input = "/".to_string();
+        app.cursor_pos = 1;
+    }
 
     // Pre-fill input if query provided (enters AI mode)
     if let Some(q) = query {
@@ -517,9 +525,16 @@ fn update_filter(app: &mut App) {
 }
 
 fn load_tmp_commands(app: &mut App) {
-    // Unified schema loading: curated + generated schemas from ~/.config/waz/schemas/
-    // Schemas self-filter based on requires_file (e.g. Cargo.toml) and requires_binary (e.g. git)
-    let commands = crate::generate::load_all_schemas(&app.cwd);
-    app.command_list.extend(commands);
+    if app.config_mode {
+        // Config mode: load only the waz schema (bundled in binary)
+        let waz_schema_bytes = include_str!("../../schemas/curated/waz.json");
+        if let Ok(sf) = serde_json::from_str::<crate::tui::app::SchemaFile>(waz_schema_bytes) {
+            app.command_list.extend(sf.commands);
+        }
+    } else {
+        // Normal mode: load all schemas (curated + generated)
+        let commands = crate::generate::load_all_schemas(&app.cwd);
+        app.command_list.extend(commands);
+    }
     app.filter_commands();
 }

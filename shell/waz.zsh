@@ -403,3 +403,28 @@ bindkey -M vicmd '^T' _waz_tui
 bindkey '\e[119;97;122~' _waz_tui
 bindkey -M viins '\e[119;97;122~' _waz_tui
 bindkey -M vicmd '\e[119;97;122~' _waz_tui
+
+# ─── Config mode (waz commands only) ───
+
+_waz_config() {
+    local tmpfile=$(mktemp /tmp/waz_result.XXXXXX)
+    command waz tui --cwd "$PWD" --config --result-file "$tmpfile" </dev/tty >/dev/tty 2>/dev/tty
+    zle reset-prompt
+    if [[ -f "$tmpfile" ]]; then
+        local result
+        result=$(<"$tmpfile")
+        rm -f "$tmpfile"
+        if [[ -n "$result" ]]; then
+            BUFFER="$result"
+            CURSOR=${#BUFFER}
+            zle accept-line
+        fi
+    fi
+}
+
+zle -N _waz_config
+
+# Bind Cmd+Shift+I via Ghostty's custom escape sequence
+bindkey '\e[119;97;99~' _waz_config
+bindkey -M viins '\e[119;97;99~' _waz_config
+bindkey -M vicmd '\e[119;97;99~' _waz_config

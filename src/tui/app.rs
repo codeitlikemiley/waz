@@ -51,6 +51,7 @@ pub struct App {
 
     /// Whether TMP commands have been loaded (lazy loading on first `/`)
     pub tmp_loaded: bool,
+    pub config_mode: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -189,6 +190,7 @@ impl App {
             config,
             scroll_offset: 0,
             tmp_loaded: false,
+            config_mode: false,
         }
     }
 
