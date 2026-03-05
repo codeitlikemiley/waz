@@ -7,41 +7,19 @@ export WAZ_SESSION_ID="${WAZ_SESSION_ID:-$(command waz session-id)}"
 # --- Record commands after execution + capture output for hints ---
 typeset -g _WAZ_LAST_CMD=""
 typeset -g _WAZ_OUTPUT_FILE=""
-typeset -g _WAZ_CAPTURING=0
 
 _waz_preexec() {
     _WAZ_LAST_CMD="$1"
-    _WAZ_OUTPUT_FILE=$(mktemp /tmp/waz_output.XXXXXX 2>/dev/null || echo "")
-    if [[ -n "$_WAZ_OUTPUT_FILE" ]]; then
-        # Save original stdout/stderr, then tee output to file
-        exec 3>&1 4>&2
-        exec 1> >(tee -a "$_WAZ_OUTPUT_FILE" >&3) 2> >(tee -a "$_WAZ_OUTPUT_FILE" >&4)
-        _WAZ_CAPTURING=1
-    fi
+    # Output capture is done post-hoc via the hint command.
+    # We do NOT redirect shell fds — that breaks interactive programs (nvim, ssh).
+    _WAZ_OUTPUT_FILE=""
 }
 
 _waz_precmd() {
     local exit_code=$?
 
-    # Restore stdout/stderr from capture
-    if (( _WAZ_CAPTURING )); then
-        exec 1>&3 2>&4 3>&- 4>&-
-        _WAZ_CAPTURING=0
-    fi
-
     if [[ -n "$_WAZ_LAST_CMD" ]]; then
         command waz record --cwd "$PWD" --session "$WAZ_SESSION_ID" --exit-code "$exit_code" -- "$_WAZ_LAST_CMD" &>/dev/null &!
-
-        # Extract command hints from captured output
-        if [[ -n "$_WAZ_OUTPUT_FILE" && -f "$_WAZ_OUTPUT_FILE" && -s "$_WAZ_OUTPUT_FILE" ]]; then
-            local last_lines
-            last_lines=$(tail -30 "$_WAZ_OUTPUT_FILE" 2>/dev/null)
-            if [[ -n "$last_lines" ]]; then
-                command waz hint --output "$last_lines" &>/dev/null &!
-            fi
-        fi
-        [[ -f "$_WAZ_OUTPUT_FILE" ]] && rm -f "$_WAZ_OUTPUT_FILE" 2>/dev/null
-        _WAZ_OUTPUT_FILE=""
         _WAZ_LAST_CMD=""
     fi
     _WAZ_SHOW_PROACTIVE=1
@@ -169,6 +147,12 @@ _waz_send_break() {
     zle .send-break
 }
 
+# --- Widget: tab clears ghost text before completing ---
+_waz_complete() {
+    _waz_clear
+    zle .expand-or-complete
+}
+
 # --- Register all widgets ---
 zle -N self-insert _waz_self_insert
 zle -N backward-delete-char _waz_backward_delete
@@ -176,6 +160,7 @@ zle -N _waz_accept
 zle -N _waz_accept_word
 zle -N accept-line _waz_accept_line
 zle -N send-break _waz_send_break
+zle -N expand-or-complete _waz_complete
 zle -N zle-line-init _waz_line_init
 
 # --- Keybindings ---
