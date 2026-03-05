@@ -12,6 +12,7 @@ Waz uses a **multi-tier prediction system** (same approach as Warp terminal):
 
 | Tier | Strategy | Confidence | Description |
 |------|----------|------------|-------------|
+| 0 | **Output Hint** | Highest | Parses command output for suggested follow-up commands (like Warp's ghost text from `npm install` → `npm start`). |
 | 1 | **Sequence** | High | Predicts based on command patterns. If you always run `git push` after `git commit`, it learns that. |
 | 2 | **CWD History** | Medium | Falls back to your most recently used commands in the current directory. |
 | 3 | **LLM** | Low | Uses an LLM to predict based on shell context. Supports multiple providers with key rotation. |
@@ -95,6 +96,8 @@ waz predict --cwd .                        # Proactive prediction (no prefix)
 waz predict --prefix "git" --format json   # Prediction with prefix
 waz record -- "git push"                   # Manually record a command
 waz stats                                  # Show database statistics
+waz generate brew                          # Generate TMP schema for a CLI tool
+waz generate brew --history                # Show schema version history
 waz session-id                             # Generate a new session ID
 ```
 
@@ -152,8 +155,9 @@ Context-aware command palette that auto-detects your project tools:
 | `Cargo.toml` | `cargo build`, `run`, `test`, `add`, `clippy`, `fmt` with workspace member tokens |
 | `package.json` | `npm install`, `npm run` with script names |
 | `.git` | `git status`, `add`, `commit`, `checkout`, `push`, `pull`, `log` with branch tokens |
+| `~/.config/waz/schemas/*.json` | **Any CLI tool** — AI-generated schemas (see [Schema Generation](#schema-generation)) |
 
-**Git commands are always available globally**, even outside Git repos.
+**Git commands are always available globally**, even outside Git repos. Dynamic schemas are also loaded globally.
 
 #### Smart Filtering
 
@@ -163,6 +167,7 @@ Type to filter — uses **score-based ranking** that prioritizes subcommand name
 /commit   → git commit (exact match, ranked first)
 /git com  → git commit (full command match)
 /build    → cargo build (subcommand match)
+/install  → brew install (from generated schema)
 ```
 
 Description-only matches are excluded to avoid false positives.
@@ -230,6 +235,93 @@ Direct shell command input — type `!` followed by any command:
 ```
 
 Press **Enter** to execute immediately.
+
+---
+
+## Schema Generation
+
+Generate TMP command schemas for **any CLI tool** using AI. This lets you add autocomplete support for tools like `brew`, `kubectl`, `docker`, `terraform`, etc. — without writing any code.
+
+### Generate a Schema
+
+```bash
+waz generate brew           # Generates ~/.config/waz/schemas/brew.json
+waz generate kubectl         # Works with any CLI tool on PATH
+waz generate docker --force  # Regenerate with AI (versions old schema first)
+```
+
+How it works:
+1. Runs `<tool> --help` and recursively `<tool> <subcommand> --help` (up to 20 subcommands)
+2. Sends the help output to your configured LLM (Gemini by default)
+3. AI extracts commands, flags, and argument types into a structured JSON schema
+4. Schema is saved to `~/.config/waz/schemas/<tool>.json`
+5. Next TUI launch, the commands appear alongside built-in ones
+
+### Export Built-in Schemas
+
+Export the built-in cargo/git/npm schemas to JSON as a baseline:
+
+```bash
+waz generate cargo --export   # From a Cargo project directory
+waz generate git --export
+waz generate npm --export
+```
+
+### Schema Versioning
+
+Every `--force` regeneration auto-versions the old schema. Full version history:
+
+```bash
+waz generate brew --history
+# 📋 Version history for 'brew' (3 versions):
+# ─────────────────────────────────────────
+#   v1   │ 2h ago          │ 15 commands
+#   v2   │ 1h ago          │ 12 commands
+#   v3   │ 5m ago          │ 14 commands ← latest
+```
+
+Rollback to any version:
+
+```bash
+waz generate brew --rollback       # Restore latest versioned backup
+waz generate brew --rollback 1     # Restore specific version
+```
+
+On `--force`, a **colorized diff** is shown:
+- 🟢 `+ brew search` — new command added
+- 🔴 `- brew cleanup` — command removed
+- 🟡 `~ brew install` — tokens changed
+
+If generation fails, the previous version is **auto-restored**.
+
+### Dynamic Data Sources
+
+Schemas can include `data_source` fields that resolve values at runtime:
+
+```json
+{
+  "name": "formula",
+  "token_type": "Enum",
+  "data_source": { "command": "brew list --formula", "parse": "lines" }
+}
+```
+
+At TUI load time, waz runs the command and populates the dropdown — just like cargo features from `Cargo.toml`.
+
+### Storage Layout
+
+```
+~/.config/waz/schemas/
+├── brew.json                 ← active schema
+├── kubectl.json
+├── versions/
+│   ├── brew/
+│   │   ├── v1.json           ← first generation
+│   │   ├── v2.json           ← second --force
+│   │   └── v3.json
+│   └── kubectl/
+│       └── v1.json
+```
 
 ---
 
@@ -440,6 +532,7 @@ model = "your-model-name"
 │       │            │              │                 │
 │  Cmd+I / Ctrl+T launches unified TUI                │
 │  Ghost-text autosuggestions via predictions          │
+│  Output capture → hint suggestions (Tier 0)         │
 └───────┼────────────┼───────────────┼────────────────┘
         └────────────┼───────────────┘
                      │
@@ -447,6 +540,7 @@ model = "your-model-name"
          │    waz binary (Rust)  │
          │                       │
          │  ┌─ Prediction ───────┤
+         │  │  Tier 0: Output   │
          │  │  Tier 1: Sequence  │
          │  │  Tier 2: CWD      │
          │  │  Tier 3: LLM      │
@@ -456,6 +550,10 @@ model = "your-model-name"
          │  │  text → AI mode   │
          │  │  Placeholder edit │
          │  │  Score filtering  │
+         │  ├─ Schema Generator ─┤
+         │  │  AI-powered gen   │
+         │  │  Version control  │
+         │  │  Dynamic data src │
          │  ├─ AI Assistant ────┤
          │  │  Structured JSON  │
          │  │  Command resolver │
@@ -470,6 +568,8 @@ model = "your-model-name"
 - **History DB**: `~/Library/Application Support/waz/history.db` (macOS) / `~/.local/share/waz/history.db` (Linux)
 - **Rotation state**: `~/Library/Application Support/waz/rotation.json`
 - **Config**: `~/.config/waz/config.toml`
+- **Schemas**: `~/.config/waz/schemas/*.json` (active schemas)
+- **Schema Versions**: `~/.config/waz/schemas/versions/<tool>/v1.json ...` (version history)
 
 ## License
 
