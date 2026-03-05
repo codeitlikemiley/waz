@@ -525,7 +525,14 @@ fn main() {
             };
 
             let config = config::Config::load();
-            match generate::generate_schema(&config, &tool, model.as_deref(), provider.as_deref()) {
+
+            // Merge CLI flags with [generate] config: CLI > config > defaults
+            let effective_model = model.as_deref()
+                .or(config.generate.model.as_deref());
+            let effective_provider = provider.as_deref()
+                .or(config.generate.provider.as_deref());
+
+            match generate::generate_schema(&config, &tool, effective_model, effective_provider) {
                 Ok(commands) => {
                     eprintln!("\n🎉 Generated {} commands for '{}'", commands.len(), tool);
 

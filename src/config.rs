@@ -7,6 +7,9 @@ use std::path::PathBuf;
 pub struct Config {
     #[serde(default)]
     pub llm: LlmConfig,
+
+    #[serde(default)]
+    pub generate: GenerateConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,6 +60,20 @@ fn default_order() -> Vec<String> {
 }
 fn default_timeout() -> u64 { 3 }
 
+/// Config for `waz generate` / `waz schema` commands.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GenerateConfig {
+    /// Default LLM provider for generation (e.g. "gemini", "glm", "openai").
+    /// Overridden by --provider flag.
+    #[serde(default)]
+    pub provider: Option<String>,
+
+    /// Default model for generation (e.g. "gemini-2.5-pro-preview-05-06").
+    /// Overridden by --model flag.
+    #[serde(default)]
+    pub model: Option<String>,
+}
+
 impl Default for LlmConfig {
     fn default() -> Self {
         Self {
@@ -73,6 +90,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             llm: LlmConfig::default(),
+            generate: GenerateConfig::default(),
         }
     }
 }
