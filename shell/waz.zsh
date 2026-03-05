@@ -72,6 +72,7 @@ _waz_suggest() {
 _waz_clear() {
     _WAZ_SUGGESTION=""
     POSTDISPLAY=""
+    region_highlight=("${(@)region_highlight:#*fg=#6c6c6c*}")
 }
 
 # --- Widget: show proactive suggestion when line editor starts ---
@@ -147,12 +148,6 @@ _waz_send_break() {
     zle .send-break
 }
 
-# --- Widget: tab clears ghost text before completing ---
-_waz_complete() {
-    _waz_clear
-    zle .expand-or-complete
-}
-
 # --- Register all widgets ---
 zle -N self-insert _waz_self_insert
 zle -N backward-delete-char _waz_backward_delete
@@ -160,7 +155,6 @@ zle -N _waz_accept
 zle -N _waz_accept_word
 zle -N accept-line _waz_accept_line
 zle -N send-break _waz_send_break
-zle -N expand-or-complete _waz_complete
 zle -N zle-line-init _waz_line_init
 
 # --- Keybindings ---
