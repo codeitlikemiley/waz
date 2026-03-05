@@ -20,11 +20,11 @@ pub fn launch(cwd: String, query: Option<String>, config_mode: bool) -> io::Resu
     let mut app = App::new(cwd.clone(), config);
     app.config_mode = config_mode;
 
-    // Config mode: pre-enter TMP mode with / prefix
+    // Self mode: jump straight into TMP with waz commands loaded
     if config_mode {
         app.mode = Mode::Tmp;
-        app.input = "/".to_string();
-        app.cursor_pos = 1;
+        load_tmp_commands(&mut app);
+        app.tmp_loaded = true;
     }
 
     // Pre-fill input if query provided (enters AI mode)
