@@ -67,12 +67,24 @@ _waz_suggest() {
         local end=$((start + ${#POSTDISPLAY}))
         region_highlight+=("$start $end fg=#6c6c6c")
     fi
+    _WAZ_LAST_BUFFER="$BUFFER"
 }
+
+typeset -g _WAZ_LAST_BUFFER=""
 
 _waz_clear() {
     _WAZ_SUGGESTION=""
     POSTDISPLAY=""
     region_highlight=("${(@)region_highlight:#*fg=#6c6c6c*}")
+}
+
+# --- Pre-redraw hook: clear stale ghost text when BUFFER changes externally ---
+# Catches tab completion, paste, undo, and any other widget we don't wrap.
+_waz_pre_redraw() {
+    if [[ -n "$POSTDISPLAY" && "$BUFFER" != "$_WAZ_LAST_BUFFER" ]]; then
+        _waz_clear
+    fi
+    _WAZ_LAST_BUFFER="$BUFFER"
 }
 
 # --- Widget: show proactive suggestion when line editor starts ---
@@ -156,6 +168,7 @@ zle -N _waz_accept_word
 zle -N accept-line _waz_accept_line
 zle -N send-break _waz_send_break
 zle -N zle-line-init _waz_line_init
+zle -N zle-line-pre-redraw _waz_pre_redraw
 
 # --- Keybindings ---
 bindkey '^[[C' _waz_accept
