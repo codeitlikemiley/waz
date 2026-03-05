@@ -97,7 +97,11 @@ waz predict --prefix "git" --format json   # Prediction with prefix
 waz record -- "git push"                   # Manually record a command
 waz stats                                  # Show database statistics
 waz generate brew                          # Generate TMP schema for a CLI tool
+waz generate brew --verify                 # Review & approve schema in TUI
 waz generate brew --history                # Show schema version history
+waz schema list                            # List all installed schemas
+waz schema share cargo                     # Export shareable schema
+waz schema import ./brew-schema.json       # Install shared schema
 waz session-id                             # Generate a new session ID
 ```
 
@@ -148,16 +152,26 @@ Placeholder editing → Command selection → AI conversation → Empty mode →
 
 ### TMP Mode (`/`)
 
-Context-aware command palette that auto-detects your project tools:
+Context-aware command palette powered by **unified JSON schemas**. On first launch, curated schemas are auto-installed. Additional schemas can be AI-generated or imported.
 
-| Detected File | Commands Loaded |
-|---------------|----------------|
-| `Cargo.toml` | `cargo build`, `run`, `test`, `add`, `clippy`, `fmt` with workspace member tokens |
-| `package.json` | `npm install`, `npm run` with script names |
-| `.git` | `git status`, `add`, `commit`, `checkout`, `push`, `pull`, `log` with branch tokens |
-| `~/.config/waz/schemas/*.json` | **Any CLI tool** — AI-generated schemas (see [Schema Generation](#schema-generation)) |
+#### Built-in Curated Schemas (6)
 
-**Git commands are always available globally**, even outside Git repos. Dynamic schemas are also loaded globally.
+| Schema | Commands | Dynamic Data Sources |
+|--------|----------|---------------------|
+| `cargo` | 12 | bins, features, packages, profiles, tests, benches from `Cargo.toml` |
+| `git` | 12 | branches, remotes from local repo |
+| `npm` | 8 | scripts from `package.json` |
+| `bun` | 8 | scripts from `package.json` |
+| `npx` | 1 | — |
+| `bunx` | 1 | — |
+
+Schemas are **contextual** — cargo commands only appear when `Cargo.toml` exists, npm/bun when `package.json` exists. Git is always available.
+
+#### AI-Generated Schemas
+
+| Source | Commands Loaded |
+|--------|----------------|
+| `~/.config/waz/schemas/*.json` | **Any CLI tool** — AI-generated or imported schemas (see [Schema Generation](#schema-generation)) |
 
 #### Smart Filtering
 
@@ -238,28 +252,86 @@ Press **Enter** to execute immediately.
 
 ---
 
-## Schema Generation
+## Schema System
 
-Generate TMP command schemas for **any CLI tool** using AI. This lets you add autocomplete support for tools like `brew`, `kubectl`, `docker`, `terraform`, etc. — without writing any code.
+Waz uses a **unified JSON schema system** for all CLI tool commands. Six curated schemas ship built-in, and you can generate schemas for any tool using AI, or import schemas shared by others.
 
-### Generate a Schema
+### Curated Schemas
+
+On first TUI launch (or manually with `--init`), curated schemas are auto-installed:
 
 ```bash
-waz generate brew           # Generates ~/.config/waz/schemas/brew.json
-waz generate kubectl         # Works with any CLI tool on PATH
-waz generate docker --force  # Regenerate with AI (versions old schema first)
+waz generate cargo --init    # Install all 6 curated schemas
+```
+
+### AI-Powered Generation
+
+Generate schemas for **any CLI tool** using AI:
+
+```bash
+waz generate brew                              # Generate with default model
+waz generate kubectl --model gemini-2.5-pro    # Use specific AI model
+waz generate docker --force                    # Regenerate (versions old first)
 ```
 
 How it works:
 1. Runs `<tool> --help` and recursively `<tool> <subcommand> --help` (up to 20 subcommands)
 2. Sends the help output to your configured LLM (Gemini by default)
-3. AI extracts commands, flags, and argument types into a structured JSON schema
-4. Schema is saved to `~/.config/waz/schemas/<tool>.json`
-5. Next TUI launch, the commands appear alongside built-in ones
+3. AI extracts commands, flags, and argument types into a structured `SchemaFile`
+4. Schema is saved to `~/.config/waz/schemas/<tool>.json` with metadata
+5. Next TUI launch, the commands appear alongside curated ones
+
+### Schema Verification TUI
+
+Review and approve schemas before using them:
+
+```bash
+waz generate brew --verify
+```
+
+Opens a **two-pane TUI** for human-in-the-loop review:
+
+| Key | Action |
+|-----|--------|
+| `j`/`k` or `↑`/`↓` | Navigate commands/tokens |
+| `Space` | Toggle command verified ✅ |
+| `Tab` | Switch between Commands / Tokens panes |
+| `n`/`d`/`f` | Edit token name / description / flag |
+| `r` | Toggle required / optional |
+| `t` | Cycle token type (String → Boolean → Enum → File → Number) |
+| `x` | Test data source live (runs resolver, shows results) |
+| `a` / `Del` | Add / delete token |
+| `Ctrl+V` | Verify all commands at once |
+| `s` | Save changes to JSON |
+| `q` | Quit |
+
+### Schema Management
+
+List, share, and import schemas:
+
+```bash
+waz schema list                      # Show all installed schemas
+waz schema share cargo               # Export portable .json to CWD
+waz schema import ./brew-schema.json  # Install from file
+waz schema import https://example.com/schema.json  # Install from URL
+```
+
+`waz schema list` output:
+```
+Tool         Ver    Status     Cmds     Source Coverage
+────────────────────────────────────────────────────────
+bun          v1    ✅ verified 8/8      curated full
+cargo        v1    ✅ verified 12/12    curated full
+git          v1    ✅ verified 12/12    curated full
+npm          v1    ✅ verified 8/8      curated full
+```
+
+**Share** strips runtime-resolved values (keeps data source definitions so importers resolve locally).  
+**Import** auto-backups existing schemas before overwriting.
 
 ### Export Built-in Schemas
 
-Export the built-in cargo/git/npm schemas to JSON as a baseline:
+Export the battle-tested Rust-based cargo/git/npm schemas to JSON:
 
 ```bash
 waz generate cargo --export   # From a Cargo project directory
@@ -296,8 +368,9 @@ If generation fails, the previous version is **auto-restored**.
 
 ### Dynamic Data Sources
 
-Schemas can include `data_source` fields that resolve values at runtime:
+Schemas support two kinds of dynamic data sources:
 
+**Shell commands** — run at TUI load time:
 ```json
 {
   "name": "formula",
@@ -306,20 +379,50 @@ Schemas can include `data_source` fields that resolve values at runtime:
 }
 ```
 
-At TUI load time, waz runs the command and populates the dropdown — just like cargo features from `Cargo.toml`.
+**Built-in resolvers** — use waz's optimized Rust parsers:
+```json
+{
+  "name": "feature",
+  "token_type": "Enum",
+  "data_source": { "resolver": "cargo:features", "parse": "lines" }
+}
+```
+
+Available resolvers: `cargo:bins`, `cargo:examples`, `cargo:packages`, `cargo:features`, `cargo:profiles`, `cargo:tests`, `cargo:benches`, `git:branches`, `git:remotes`, `npm:scripts`.
+
+### SchemaFile Format
+
+All schemas use a unified `SchemaFile` format with metadata:
+
+```json
+{
+  "meta": {
+    "tool": "cargo",
+    "version": 1,
+    "generated_by": "human",
+    "verified": true,
+    "coverage": "full",
+    "requires_file": "Cargo.toml",
+    "requires_binary": "cargo"
+  },
+  "commands": [ ... ]
+}
+```
 
 ### Storage Layout
 
 ```
 ~/.config/waz/schemas/
-├── brew.json                 ← active schema
-├── kubectl.json
+├── cargo.json                ← active curated schema
+├── git.json
+├── npm.json
+├── bun.json
+├── brew.json                 ← AI-generated
 ├── versions/
 │   ├── brew/
-│   │   ├── v1.json           ← first generation
-│   │   ├── v2.json           ← second --force
-│   │   └── v3.json
-│   └── kubectl/
+│   │   ├── v1.json
+│   │   └── v2.json
+│   └── cargo/
 │       └── v1.json
 ```
 
@@ -550,10 +653,13 @@ model = "your-model-name"
          │  │  text → AI mode   │
          │  │  Placeholder edit │
          │  │  Score filtering  │
-         │  ├─ Schema Generator ─┤
+         │  ├─ Schema System ───┤
+         │  │  6 curated JSON   │
          │  │  AI-powered gen   │
+         │  │  Verify TUI       │
+         │  │  Share/import     │
          │  │  Version control  │
-         │  │  Dynamic data src │
+         │  │  Built-in resolvers│
          │  ├─ AI Assistant ────┤
          │  │  Structured JSON  │
          │  │  Command resolver │
@@ -568,8 +674,9 @@ model = "your-model-name"
 - **History DB**: `~/Library/Application Support/waz/history.db` (macOS) / `~/.local/share/waz/history.db` (Linux)
 - **Rotation state**: `~/Library/Application Support/waz/rotation.json`
 - **Config**: `~/.config/waz/config.toml`
-- **Schemas**: `~/.config/waz/schemas/*.json` (active schemas)
-- **Schema Versions**: `~/.config/waz/schemas/versions/<tool>/v1.json ...` (version history)
+- **Curated Schemas**: `schemas/curated/*.json` (bundled in repo, auto-copied on first run)
+- **Active Schemas**: `~/Library/Application Support/waz/schemas/*.json` (installed schemas)
+- **Schema Versions**: `~/Library/Application Support/waz/schemas/versions/<tool>/v1.json ...`
 
 ## License
 
