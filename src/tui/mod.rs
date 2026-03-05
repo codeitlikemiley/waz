@@ -528,8 +528,13 @@ fn load_tmp_commands(app: &mut App) {
     if app.config_mode {
         // Config mode: load only the waz schema (bundled in binary)
         let waz_schema_bytes = include_str!("../../schemas/curated/waz.json");
-        if let Ok(sf) = serde_json::from_str::<crate::tui::app::SchemaFile>(waz_schema_bytes) {
-            app.command_list.extend(sf.commands);
+        match serde_json::from_str::<crate::tui::app::SchemaFile>(waz_schema_bytes) {
+            Ok(sf) => {
+                app.command_list.extend(sf.commands);
+            }
+            Err(e) => {
+                eprintln!("Failed to parse embedded waz schema: {}", e);
+            }
         }
     } else {
         // Normal mode: load all schemas (curated + generated)

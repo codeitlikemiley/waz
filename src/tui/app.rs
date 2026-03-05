@@ -113,11 +113,15 @@ pub struct CommandEntry {
 pub struct TokenDef {
     pub name: String,
     pub description: String,
+    #[serde(default)]
     pub required: bool,
     pub token_type: TokenType,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub values: Option<Vec<String>>,
     /// CLI flag override (e.g. "-p", "--bin", "-F"). If None, derives from name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flag: Option<String>,
     /// Dynamic data source: run a shell command or built-in resolver at load time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
