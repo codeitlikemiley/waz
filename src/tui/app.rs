@@ -48,6 +48,7 @@ pub struct App {
     pub cwd: String,
     pub config: Config,
     pub scroll_offset: u16,
+    pub spinner_tick: usize,
 
     /// Whether TMP commands have been loaded (lazy loading on first `/`)
     pub tmp_loaded: bool,
@@ -193,6 +194,7 @@ impl App {
             cwd,
             config,
             scroll_offset: 0,
+            spinner_tick: 0,
             tmp_loaded: false,
             config_mode: false,
         }

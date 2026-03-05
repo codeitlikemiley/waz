@@ -4,6 +4,7 @@ pub mod ui;
 pub mod verify;
 
 use std::io;
+use std::sync::mpsc;
 
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
@@ -63,12 +64,37 @@ fn run_event_loop<W: io::Write>(
     terminal: &mut Terminal<CrosstermBackend<W>>,
     app: &mut App,
 ) -> io::Result<()> {
+    // Channel for async AI results
+    let (ai_tx, ai_rx) = mpsc::channel::<AiResult>();
+
     loop {
         // Render
         terminal.draw(|f| ui::draw(f, app))?;
 
         if app.should_quit {
             break;
+        }
+
+        // Check for AI results from background thread
+        if app.ai_loading {
+            if let Ok(result) = ai_rx.try_recv() {
+                app.ai_loading = false;
+                apply_ai_result(app, result);
+            } else {
+                // Advance spinner tick for animation
+                app.spinner_tick = app.spinner_tick.wrapping_add(1);
+            }
+        }
+
+        // Non-blocking event poll (100ms timeout for spinner animation)
+        let timeout = if app.ai_loading {
+            std::time::Duration::from_millis(100)
+        } else {
+            std::time::Duration::from_secs(60)
+        };
+
+        if !event::poll(timeout)? {
+            continue; // No event — just redraw (for spinner)
         }
 
         // Handle events
@@ -154,7 +180,7 @@ fn run_event_loop<W: io::Write>(
                 }
 
                 KeyCode::Enter => {
-                    handle_enter(app);
+                    handle_enter(app, &ai_tx);
                 }
 
 
@@ -303,7 +329,7 @@ fn handle_char_input(app: &mut App, c: char) {
     }
 }
 
-fn handle_enter(app: &mut App) {
+fn handle_enter(app: &mut App, ai_tx: &mpsc::Sender<AiResult>) {
     match app.mode {
         Mode::Empty => {
             // Nothing to do
@@ -386,88 +412,102 @@ fn handle_enter(app: &mut App) {
                 app.input.clear();
                 app.cursor_pos = 0;
                 app.ai_loading = true;
+                app.spinner_tick = 0;
 
-                // Get recent commands for context
-                let db_path = crate::get_db_path();
-                let recent = crate::db::HistoryDb::open(&db_path)
-                    .ok()
-                    .and_then(|db| db.get_recent_by_cwd(&app.cwd, None, 10).ok())
-                    .unwrap_or_default();
+                // Spawn AI call in background thread
+                let config = app.config.clone();
+                let cwd = app.cwd.clone();
+                let tx = ai_tx.clone();
 
-                // Try TMP resolve first (grounded in schemas + real data sources)
-                let resolve_result = crate::resolve::resolve(
-                    &app.config,
-                    &query,
-                    &app.cwd,
-                    None, // no tool filter — let it search all schemas
-                );
+                std::thread::spawn(move || {
+                    // Get recent commands for context
+                    let db_path = crate::get_db_path();
+                    let recent = crate::db::HistoryDb::open(&db_path)
+                        .ok()
+                        .and_then(|db| db.get_recent_by_cwd(&cwd, None, 10).ok())
+                        .unwrap_or_default();
 
-                let used_resolve = if let Ok(ref res) = resolve_result {
-                    res.confidence == "high" || res.confidence == "medium"
-                } else {
-                    false
-                };
-
-                if used_resolve {
-                    let res = resolve_result.unwrap();
-                    app.ai_loading = false;
-
-                    app.ai_messages.push(app::AiMessage {
-                        role: "assistant".to_string(),
-                        content: format!("[TMP] {}", res.explanation),
-                    });
-
-                    app.ai_commands = vec![app::AiCommand {
-                        cmd: res.command,
-                        desc: res.tokens_filled.iter()
-                            .map(|t| format!("{} = {}", t.name, t.value))
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                        placeholders: vec![],
-                    }];
-
-                    app.ai_selecting = true;
-                    app.ai_selected_cmd = 0;
-                } else {
-                    // Fallback: pure AI mode (no schema match)
-                    let result = crate::ask::ask_structured(
-                        &app.config,
+                    // Try TMP resolve first (grounded in schemas + real data sources)
+                    let resolve_result = crate::resolve::resolve(
+                        &config,
                         &query,
-                        &app.cwd,
-                        &recent,
+                        &cwd,
+                        None,
                     );
 
-                    app.ai_loading = false;
+                    let used_resolve = if let Ok(ref res) = resolve_result {
+                        res.confidence == "high" || res.confidence == "medium"
+                    } else {
+                        false
+                    };
 
-                    match result {
-                        Some(resp) => {
-                            // Store explanation
-                            app.ai_messages.push(app::AiMessage {
-                                role: "assistant".to_string(),
-                                content: resp.explanation,
-                            });
-
-                            // Store commands for selection
-                            app.ai_commands = resp.commands.into_iter().map(|c| {
-                                app::AiCommand {
-                                    cmd: c.cmd,
-                                    desc: c.desc,
-                                    placeholders: c.placeholders,
-                                }
-                            }).collect();
-
-                            if !app.ai_commands.is_empty() {
-                                app.ai_selecting = true;
-                                app.ai_selected_cmd = 0;
-                            }
-                        }
-                        None => {
-                            app.ai_messages.push(app::AiMessage {
-                                role: "assistant".to_string(),
-                                content: "Sorry, I couldn't process that. Check your API key.".to_string(),
-                            });
-                        }
+                    if used_resolve {
+                        let res = resolve_result.unwrap();
+                        let _ = tx.send(AiResult::Resolve(res));
+                    } else {
+                        let result = crate::ask::ask_structured(
+                            &config,
+                            &query,
+                            &cwd,
+                            &recent,
+                        );
+                        let _ = tx.send(AiResult::Ask(result));
                     }
+                });
+            }
+        }
+    }
+}
+
+/// Result type for async AI calls
+enum AiResult {
+    Resolve(crate::resolve::ResolveResult),
+    Ask(Option<crate::ask::StructuredResponse>),
+}
+
+/// Apply async AI result to app state
+fn apply_ai_result(app: &mut App, result: AiResult) {
+    match result {
+        AiResult::Resolve(res) => {
+            app.ai_messages.push(app::AiMessage {
+                role: "assistant".to_string(),
+                content: format!("[TMP] {}", res.explanation),
+            });
+            app.ai_commands = vec![app::AiCommand {
+                cmd: res.command,
+                desc: res.tokens_filled.iter()
+                    .map(|t| format!("{} = {}", t.name, t.value))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                placeholders: vec![],
+            }];
+            app.ai_selecting = true;
+            app.ai_selected_cmd = 0;
+        }
+        AiResult::Ask(result) => {
+            match result {
+                Some(resp) => {
+                    app.ai_messages.push(app::AiMessage {
+                        role: "assistant".to_string(),
+                        content: resp.explanation,
+                    });
+                    app.ai_commands = resp.commands.into_iter().map(|c| {
+                        app::AiCommand {
+                            cmd: c.cmd,
+                            desc: c.desc,
+                            placeholders: c.placeholders,
+                        }
+                    }).collect();
+                    if !app.ai_commands.is_empty() {
+                        app.ai_selecting = true;
+                        app.ai_selected_cmd = 0;
+                    }
+                }
+                None => {
+                    app.ai_messages.push(app::AiMessage {
+                        role: "assistant".to_string(),
+                        content: "Sorry, I couldn't process that. Check your API key.".to_string(),
+                    });
                 }
             }
         }
