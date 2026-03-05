@@ -6,119 +6,131 @@
     "verified": true,
     "coverage": "full",
     "waz_version": "0.1.3",
-    "requires_file": null,
     "requires_binary": "waz"
   },
   "commands": [
     {
-      "name": "waz generate",
+      "command": "waz generate",
       "description": "Generate a TMP schema for a CLI tool using AI",
+      "group": "waz",
+      "verified": true,
       "tokens": [
-        { "name": "tool", "description": "CLI tool name", "token_type": "String", "required": true, "flag": null, "values": null, "data_source": null, "verified": true },
-        { "name": "force", "description": "Force regeneration even if schema exists", "token_type": "Boolean", "required": false, "flag": "--force", "values": null, "data_source": null, "verified": true },
-        { "name": "model", "description": "Override AI model", "token_type": "String", "required": false, "flag": "--model", "values": null, "data_source": null, "verified": true },
-        { "name": "provider", "description": "Override LLM provider", "token_type": "Enum", "required": false, "flag": "--provider", "values": ["gemini", "glm", "qwen", "minimax", "openai", "ollama"], "data_source": null, "verified": true },
-        { "name": "export", "description": "Export built-in schema to JSON", "token_type": "Boolean", "required": false, "flag": "--export", "values": null, "data_source": null, "verified": true },
-        { "name": "history", "description": "Show version history", "token_type": "Boolean", "required": false, "flag": "--history", "values": null, "data_source": null, "verified": true },
-        { "name": "rollback", "description": "Rollback to previous version", "token_type": "Number", "required": false, "flag": "--rollback", "values": null, "data_source": null, "verified": true },
-        { "name": "verify", "description": "Launch verification TUI", "token_type": "Boolean", "required": false, "flag": "--verify", "values": null, "data_source": null, "verified": true },
-        { "name": "init", "description": "Install curated schemas", "token_type": "Boolean", "required": false, "flag": "--init", "values": null, "data_source": null, "verified": true }
-      ],
-      "verified": true
+        { "name": "tool", "description": "CLI tool name", "token_type": "String", "required": true, "flag": null, "values": null, "data_source": null },
+        { "name": "force", "description": "Force regeneration even if schema exists", "token_type": "Boolean", "required": false, "flag": "--force", "values": null, "data_source": null },
+        { "name": "model", "description": "Override AI model", "token_type": "String", "required": false, "flag": "--model", "values": null, "data_source": null },
+        { "name": "provider", "description": "Override LLM provider", "token_type": "Enum", "required": false, "flag": "--provider", "values": ["gemini", "glm", "qwen", "minimax", "openai", "ollama"], "data_source": null },
+        { "name": "export", "description": "Export built-in schema to JSON", "token_type": "Boolean", "required": false, "flag": "--export", "values": null, "data_source": null },
+        { "name": "history", "description": "Show version history", "token_type": "Boolean", "required": false, "flag": "--history", "values": null, "data_source": null },
+        { "name": "rollback", "description": "Rollback to previous version", "token_type": "Number", "required": false, "flag": "--rollback", "values": null, "data_source": null },
+        { "name": "verify", "description": "Launch verification TUI", "token_type": "Boolean", "required": false, "flag": "--verify", "values": null, "data_source": null },
+        { "name": "init", "description": "Install curated schemas", "token_type": "Boolean", "required": false, "flag": "--init", "values": null, "data_source": null }
+      ]
     },
     {
-      "name": "waz schema list",
+      "command": "waz schema list",
       "description": "List all installed schemas with version and status",
-      "tokens": [],
-      "verified": true
+      "group": "waz",
+      "verified": true,
+      "tokens": []
     },
     {
-      "name": "waz schema share",
+      "command": "waz schema share",
       "description": "Export a schema as a shareable file to CWD",
+      "group": "waz",
+      "verified": true,
       "tokens": [
-        { "name": "tool", "description": "Tool name to export", "token_type": "Enum", "required": true, "flag": null, "values": null, "data_source": { "command": "ls ~/.config/waz/schemas/*.json 2>/dev/null | xargs -I{} basename {} .json", "parse": "lines" }, "verified": true }
-      ],
-      "verified": true
+        { "name": "tool", "description": "Tool name to export", "token_type": "String", "required": true, "flag": null, "values": null, "data_source": null }
+      ]
     },
     {
-      "name": "waz schema import",
+      "command": "waz schema import",
       "description": "Import a schema from a local file or URL",
+      "group": "waz",
+      "verified": true,
       "tokens": [
-        { "name": "source", "description": "Path to .json file or https:// URL", "token_type": "File", "required": true, "flag": null, "values": null, "data_source": null, "verified": true }
-      ],
-      "verified": true
+        { "name": "source", "description": "Path to .json file or https:// URL", "token_type": "File", "required": true, "flag": null, "values": null, "data_source": null }
+      ]
     },
     {
-      "name": "waz init",
+      "command": "waz init",
       "description": "Print shell integration script to stdout",
+      "group": "waz",
+      "verified": true,
       "tokens": [
-        { "name": "shell", "description": "Shell to generate for", "token_type": "Enum", "required": true, "flag": null, "values": ["zsh", "bash", "fish"], "data_source": null, "verified": true }
-      ],
-      "verified": true
+        { "name": "shell", "description": "Shell to generate for", "token_type": "Enum", "required": true, "flag": null, "values": ["zsh", "bash", "fish"], "data_source": null }
+      ]
     },
     {
-      "name": "waz import",
+      "command": "waz import",
       "description": "Import existing shell history into waz database",
+      "group": "waz",
+      "verified": true,
       "tokens": [
-        { "name": "shell", "description": "Shell to import from (auto-detects if omitted)", "token_type": "Enum", "required": false, "flag": "--shell", "values": ["zsh", "bash", "fish"], "data_source": null, "verified": true }
-      ],
-      "verified": true
+        { "name": "shell", "description": "Shell to import from (auto-detects if omitted)", "token_type": "Enum", "required": false, "flag": "--shell", "values": ["zsh", "bash", "fish"], "data_source": null }
+      ]
     },
     {
-      "name": "waz stats",
+      "command": "waz stats",
       "description": "Show database statistics",
-      "tokens": [],
-      "verified": true
+      "group": "waz",
+      "verified": true,
+      "tokens": []
     },
     {
-      "name": "waz clear",
+      "command": "waz clear",
       "description": "Clear command history (defaults to current directory)",
+      "group": "waz",
+      "verified": true,
       "tokens": [
-        { "name": "all", "description": "Clear ALL history across all directories", "token_type": "Boolean", "required": false, "flag": "--all", "values": null, "data_source": null, "verified": true }
-      ],
-      "verified": true
+        { "name": "all", "description": "Clear ALL history across all directories", "token_type": "Boolean", "required": false, "flag": "--all", "values": null, "data_source": null }
+      ]
     },
     {
-      "name": "waz tui",
+      "command": "waz tui",
       "description": "Launch interactive TUI command palette",
+      "group": "waz",
+      "verified": true,
       "tokens": [
-        { "name": "query", "description": "Pre-fill query (enters AI mode)", "token_type": "String", "required": false, "flag": "--query", "values": null, "data_source": null, "verified": true },
-        { "name": "self", "description": "Open self mode (waz commands only)", "token_type": "Boolean", "required": false, "flag": "--self", "values": null, "data_source": null, "verified": true }
-      ],
-      "verified": true
+        { "name": "query", "description": "Pre-fill query (enters AI mode)", "token_type": "String", "required": false, "flag": "--query", "values": null, "data_source": null },
+        { "name": "self", "description": "Open self mode (waz commands only)", "token_type": "Boolean", "required": false, "flag": "--self", "values": null, "data_source": null }
+      ]
     },
     {
-      "name": "waz ask",
+      "command": "waz ask",
       "description": "Ask a natural language question",
+      "group": "waz",
+      "verified": true,
       "tokens": [
-        { "name": "query", "description": "The natural language query", "token_type": "String", "required": true, "flag": null, "values": null, "data_source": null, "verified": true },
-        { "name": "json", "description": "Output structured JSON", "token_type": "Boolean", "required": false, "flag": "--json", "values": null, "data_source": null, "verified": true }
-      ],
-      "verified": true
+        { "name": "query", "description": "The natural language query", "token_type": "String", "required": true, "flag": null, "values": null, "data_source": null },
+        { "name": "json", "description": "Output structured JSON", "token_type": "Boolean", "required": false, "flag": "--json", "values": null, "data_source": null }
+      ]
     },
     {
-      "name": "waz predict",
+      "command": "waz predict",
       "description": "Get a predicted next command",
+      "group": "waz",
+      "verified": true,
       "tokens": [
-        { "name": "prefix", "description": "What the user has typed so far", "token_type": "String", "required": false, "flag": "--prefix", "values": null, "data_source": null, "verified": true },
-        { "name": "format", "description": "Output format", "token_type": "Enum", "required": false, "flag": "--format", "values": ["plain", "json"], "data_source": null, "verified": true },
-        { "name": "fast", "description": "Skip LLM tier for fast predictions", "token_type": "Boolean", "required": false, "flag": "--fast", "values": null, "data_source": null, "verified": true }
-      ],
-      "verified": true
+        { "name": "prefix", "description": "What the user has typed so far", "token_type": "String", "required": false, "flag": "--prefix", "values": null, "data_source": null },
+        { "name": "format", "description": "Output format", "token_type": "Enum", "required": false, "flag": "--format", "values": ["plain", "json"], "data_source": null },
+        { "name": "fast", "description": "Skip LLM tier for fast predictions", "token_type": "Boolean", "required": false, "flag": "--fast", "values": null, "data_source": null }
+      ]
     },
     {
-      "name": "waz hint",
+      "command": "waz hint",
       "description": "Parse command output for suggested follow-up commands",
+      "group": "waz",
+      "verified": true,
       "tokens": [
-        { "name": "output", "description": "The command output to parse", "token_type": "String", "required": true, "flag": "--output", "values": null, "data_source": null, "verified": true }
-      ],
-      "verified": true
+        { "name": "output", "description": "The command output to parse", "token_type": "String", "required": true, "flag": "--output", "values": null, "data_source": null }
+      ]
     },
     {
-      "name": "waz session-id",
+      "command": "waz session-id",
       "description": "Generate a new session ID",
-      "tokens": [],
-      "verified": true
+      "group": "waz",
+      "verified": true,
+      "tokens": []
     }
   ]
 }
