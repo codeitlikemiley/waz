@@ -118,16 +118,10 @@ pub fn load_all_schemas(cwd: &str) -> Vec<CommandEntry> {
                         continue;
                     }
                     let mut cmds = schema_file.commands;
-                    for entry in &mut cmds {
-                        resolve_data_sources(entry, cwd);
-                    }
                     commands.extend(cmds);
                 }
                 // Fallback: legacy Vec<CommandEntry> format
                 else if let Ok(mut entries) = serde_json::from_str::<Vec<CommandEntry>>(&content) {
-                    for entry in &mut entries {
-                        resolve_data_sources(entry, cwd);
-                    }
                     commands.extend(entries);
                 } else {
                     eprintln!("Warning: failed to parse schema {}", path.display());

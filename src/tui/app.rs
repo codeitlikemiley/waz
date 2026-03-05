@@ -262,23 +262,27 @@ impl App {
     }
 
     /// Select a command and prepare token editing.
-    pub fn select_command(&mut self) {
-        if self.filtered_commands.is_empty() {
-            return;
-        }
-        let idx = self.filtered_commands[self.selected_index];
-        self.selected_command = Some(idx);
-        let cmd = &self.command_list[idx];
-
-        // Pre-fill token values with defaults
-        self.token_values = cmd.tokens.iter().map(|t| {
-            t.default.clone().unwrap_or_default()
-        }).collect();
-
-        self.active_token = 0;
-        self.editing_tokens = !cmd.tokens.is_empty();
+pub fn select_command(&mut self) {
+    if self.filtered_commands.is_empty() {
+        return;
     }
+    let idx = self.filtered_commands[self.selected_index];
+    self.selected_command = Some(idx);
+    
+    // Lazily resolve data sources when a command is first selected
+    let cwd = self.cwd.clone();
+    crate::generate::resolve_data_sources_pub(&mut self.command_list[idx], &cwd);
+    
+    let cmd = &self.command_list[idx];
 
+    // Pre-fill token values with defaults
+    self.token_values = cmd.tokens.iter().map(|t| {
+        t.default.clone().unwrap_or_default()
+    }).collect();
+
+    self.active_token = 0;
+    self.editing_tokens = !cmd.tokens.is_empty();
+}
     /// Build the final command string from selected command + token values.
 pub fn build_command(&self) -> Option<String> {
     let idx = self.selected_command?;
