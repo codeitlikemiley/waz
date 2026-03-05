@@ -414,55 +414,168 @@ fn parse_schema_response(tool: &str, response: &str) -> Result<Vec<CommandEntry>
     Ok(commands)
 }
 
-// ──────────────────────────── Backup / Rollback / Diff ────────────────────────────
+// ──────────────────────────── Versioned Backup / Rollback / Diff ────────────────────────────
 
-/// Backup current schema to <tool>.json.bak
-pub fn backup_schema(tool: &str) -> Result<(), String> {
+/// Directory for versioned schemas: `~/.config/waz/schemas/versions/<tool>/`
+fn versions_dir(tool: &str) -> PathBuf {
+    let dir = schemas_dir().join("versions").join(tool);
+    std::fs::create_dir_all(&dir).ok();
+    dir
+}
+
+/// Get the latest version number for a tool (0 if no versions exist).
+fn latest_version(tool: &str) -> u32 {
+    let dir = versions_dir(tool);
+    let mut max = 0u32;
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if let Some(rest) = name.strip_prefix('v') {
+                if let Some(num_str) = rest.strip_suffix(".json") {
+                    if let Ok(n) = num_str.parse::<u32>() {
+                        max = max.max(n);
+                    }
+                }
+            }
+        }
+    }
+    max
+}
+
+/// Save the current schema as a new version. Returns the version number.
+pub fn version_save(tool: &str) -> Result<u32, String> {
     let source = schemas_dir().join(format!("{}.json", tool));
-    let backup = schemas_dir().join(format!("{}.json.bak", tool));
-
     if !source.exists() {
         return Err(format!("No schema found for '{}'", tool));
     }
 
-    std::fs::copy(&source, &backup)
-        .map_err(|e| format!("Failed to backup: {}", e))?;
+    let next = latest_version(tool) + 1;
+    let dest = versions_dir(tool).join(format!("v{}.json", next));
 
-    eprintln!("📦 Backed up to {}", backup.display());
-    Ok(())
+    std::fs::copy(&source, &dest)
+        .map_err(|e| format!("Failed to save version: {}", e))?;
+
+    eprintln!("📦 Saved as v{} → {}", next, dest.display());
+    Ok(next)
 }
 
-/// Restore schema from <tool>.json.bak
-pub fn rollback_schema(tool: &str) -> Result<(), String> {
-    let backup = schemas_dir().join(format!("{}.json.bak", tool));
+/// Rollback to a specific version, or the latest if None.
+pub fn rollback_schema(tool: &str, version: Option<u32>) -> Result<u32, String> {
     let target = schemas_dir().join(format!("{}.json", tool));
+    let v = match version {
+        Some(v) => v,
+        None => {
+            let latest = latest_version(tool);
+            if latest == 0 {
+                return Err(format!("No version history for '{}'. Use --history to check.", tool));
+            }
+            latest
+        }
+    };
 
-    if !backup.exists() {
-        return Err(format!("No backup found for '{}' (expected {})", tool, backup.display()));
+    let source = versions_dir(tool).join(format!("v{}.json", v));
+    if !source.exists() {
+        let latest = latest_version(tool);
+        return Err(format!(
+            "Version v{} not found for '{}'. Latest version: v{}. Use --history to see all.",
+            v, tool, latest
+        ));
     }
 
-    std::fs::copy(&backup, &target)
+    std::fs::copy(&source, &target)
         .map_err(|e| format!("Failed to rollback: {}", e))?;
 
-    Ok(())
+    Ok(v)
 }
 
-/// Show diff between current schema and backup.
-pub fn show_schema_diff(tool: &str) {
+/// Show version history for a tool.
+pub fn show_version_history(tool: &str) {
+    let dir = versions_dir(tool);
+
+    // Collect and sort versions
+    let mut versions: Vec<(u32, std::path::PathBuf)> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if let Some(rest) = name.strip_prefix('v') {
+                if let Some(num_str) = rest.strip_suffix(".json") {
+                    if let Ok(n) = num_str.parse::<u32>() {
+                        versions.push((n, entry.path()));
+                    }
+                }
+            }
+        }
+    }
+
+    if versions.is_empty() {
+        let current = schemas_dir().join(format!("{}.json", tool));
+        if current.exists() {
+            eprintln!("📋 '{}' has a current schema but no version history yet.", tool);
+            eprintln!("   Version history starts when you use --force to regenerate.");
+        } else {
+            eprintln!("📋 No schema or history found for '{}'.", tool);
+        }
+        return;
+    }
+
+    versions.sort_by_key(|(n, _)| *n);
+
+    eprintln!("📋 Version history for '{}' ({} versions):", tool, versions.len());
+    eprintln!("─────────────────────────────────────────");
+
+    for (v, path) in &versions {
+        let meta = std::fs::metadata(path).ok();
+        let modified = meta.as_ref()
+            .and_then(|m| m.modified().ok())
+            .map(|t| {
+                let elapsed = t.elapsed().unwrap_or_default();
+                if elapsed.as_secs() < 60 {
+                    "just now".to_string()
+                } else if elapsed.as_secs() < 3600 {
+                    format!("{}m ago", elapsed.as_secs() / 60)
+                } else if elapsed.as_secs() < 86400 {
+                    format!("{}h ago", elapsed.as_secs() / 3600)
+                } else {
+                    format!("{}d ago", elapsed.as_secs() / 86400)
+                }
+            })
+            .unwrap_or_else(|| "unknown".to_string());
+
+        let size = meta.map(|m| m.len()).unwrap_or(0);
+
+        // Parse to get command count
+        let cmd_count = std::fs::read_to_string(path).ok()
+            .and_then(|c| serde_json::from_str::<Vec<CommandEntry>>(&c).ok())
+            .map(|cmds| format!("{} commands", cmds.len()))
+            .unwrap_or_else(|| format!("{} bytes", size));
+
+        let is_latest = *v == versions.last().map(|(n, _)| *n).unwrap_or(0);
+        let marker = if is_latest { " ← latest" } else { "" };
+
+        eprintln!("  v{:<4} │ {:<15} │ {}{}", v, modified, cmd_count, marker);
+    }
+
+    eprintln!("─────────────────────────────────────────");
+    eprintln!("  Rollback: waz generate {} --rollback        (latest)", tool);
+    eprintln!("  Specific: waz generate {} --rollback <N>", tool);
+}
+
+/// Show diff between current schema and a specific versioned backup.
+pub fn show_schema_diff(tool: &str, version: u32) {
     let current_path = schemas_dir().join(format!("{}.json", tool));
-    let backup_path = schemas_dir().join(format!("{}.json.bak", tool));
+    let version_path = versions_dir(tool).join(format!("v{}.json", version));
 
     let current = match std::fs::read_to_string(&current_path) {
         Ok(c) => c,
         Err(_) => return,
     };
-    let backup = match std::fs::read_to_string(&backup_path) {
+    let backup = match std::fs::read_to_string(&version_path) {
         Ok(b) => b,
         Err(_) => return,
     };
 
     if current == backup {
-        eprintln!("\n✅ Schema is identical to previous version.");
+        eprintln!("\n✅ Schema is identical to v{}.", version);
         return;
     }
 
@@ -475,23 +588,19 @@ pub fn show_schema_diff(tool: &str) {
     let new_names: std::collections::HashSet<String> =
         new_cmds.iter().map(|c| c.command.clone()).collect();
 
-    eprintln!("\n📊 Schema diff for '{}' (old: {} cmds → new: {} cmds):", tool, old_cmds.len(), new_cmds.len());
+    eprintln!("\n📊 Diff: v{} ({} cmds) → current ({} cmds):", version, old_cmds.len(), new_cmds.len());
     eprintln!("─────────────────────────────────────────");
 
     // Added commands
     let added: Vec<&String> = new_names.difference(&old_names).collect();
-    if !added.is_empty() {
-        for cmd in &added {
-            eprintln!("  \x1b[32m+ {}\x1b[0m", cmd); // green
-        }
+    for cmd in &added {
+        eprintln!("  \x1b[32m+ {}\x1b[0m", cmd);
     }
 
     // Removed commands
     let removed: Vec<&String> = old_names.difference(&new_names).collect();
-    if !removed.is_empty() {
-        for cmd in &removed {
-            eprintln!("  \x1b[31m- {}\x1b[0m", cmd); // red
-        }
+    for cmd in &removed {
+        eprintln!("  \x1b[31m- {}\x1b[0m", cmd);
     }
 
     // Changed commands (same name, different tokens)
@@ -504,8 +613,7 @@ pub fn show_schema_diff(tool: &str) {
         let new_token_names: Vec<&str> = new_cmd.tokens.iter().map(|t| t.name.as_str()).collect();
 
         if old_token_names != new_token_names || old_cmd.description != new_cmd.description {
-            eprintln!("  \x1b[33m~ {}\x1b[0m", cmd_name); // yellow
-            // Token changes
+            eprintln!("  \x1b[33m~ {}\x1b[0m", cmd_name);
             let old_set: std::collections::HashSet<&str> = old_token_names.iter().copied().collect();
             let new_set: std::collections::HashSet<&str> = new_token_names.iter().copied().collect();
             for tok in new_set.difference(&old_set) {
@@ -518,13 +626,10 @@ pub fn show_schema_diff(tool: &str) {
     }
 
     if added.is_empty() && removed.is_empty() {
-        // Only token-level changes
         let mut any_changed = false;
         for cmd_name in &common {
-            let old_cmd = old_cmds.iter().find(|c| &c.command == *cmd_name).unwrap();
-            let new_cmd = new_cmds.iter().find(|c| &c.command == *cmd_name).unwrap();
-            let old_json = serde_json::to_string(&old_cmd).unwrap_or_default();
-            let new_json = serde_json::to_string(&new_cmd).unwrap_or_default();
+            let old_json = serde_json::to_string(old_cmds.iter().find(|c| &c.command == *cmd_name).unwrap()).unwrap_or_default();
+            let new_json = serde_json::to_string(new_cmds.iter().find(|c| &c.command == *cmd_name).unwrap()).unwrap_or_default();
             if old_json != new_json {
                 any_changed = true;
                 break;
@@ -536,7 +641,7 @@ pub fn show_schema_diff(tool: &str) {
     }
 
     eprintln!("─────────────────────────────────────────");
-    eprintln!("  Use --rollback to restore the previous version.");
+    eprintln!("  Use --rollback {} to restore v{}.", version, version);
 }
 
 // ──────────────────────────── Export Built-in Schemas ────────────────────────────

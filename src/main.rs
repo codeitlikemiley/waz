@@ -165,9 +165,13 @@ enum Commands {
         #[arg(long)]
         export: bool,
 
-        /// Rollback to previous schema version (.bak file).
+        /// Rollback to a previous version. Omit number for previous, or specify version (e.g. --rollback 2).
         #[arg(long)]
-        rollback: bool,
+        rollback: Option<Option<u32>>,
+
+        /// Show version history for this tool's schema.
+        #[arg(long)]
+        history: bool,
     },
 }
 
@@ -403,11 +407,17 @@ fn main() {
             }
         }
 
-        Commands::Generate { tool, force, export, rollback } => {
-            // Handle --rollback
-            if rollback {
-                match generate::rollback_schema(&tool) {
-                    Ok(()) => eprintln!("✅ Rolled back '{}' to previous version.", tool),
+        Commands::Generate { tool, force, export, rollback, history } => {
+            // Handle --history
+            if history {
+                generate::show_version_history(&tool);
+                return;
+            }
+
+            // Handle --rollback (Some(None) = no version specified, Some(Some(n)) = specific version)
+            if let Some(version) = rollback {
+                match generate::rollback_schema(&tool, version) {
+                    Ok(v) => eprintln!("✅ Rolled back '{}' to v{}.", tool, v),
                     Err(e) => {
                         eprintln!("❌ Rollback failed: {}", e);
                         std::process::exit(1);
@@ -436,15 +446,15 @@ fn main() {
             if !force && generate::schema_exists(&tool) {
                 eprintln!("Schema for '{}' already exists at {:?}", tool,
                     generate::schemas_dir().join(format!("{}.json", tool)));
-                eprintln!("Use --force to regenerate, or --rollback to restore previous.");
+                eprintln!("Use --force to regenerate, --history to see versions, or --rollback to restore.");
                 std::process::exit(0);
             }
 
-            // Backup existing schema before --force overwrite
-            let had_backup = if force && generate::schema_exists(&tool) {
-                generate::backup_schema(&tool).is_ok()
+            // Version-save existing schema before overwrite
+            let prev_version = if force && generate::schema_exists(&tool) {
+                generate::version_save(&tool).ok()
             } else {
-                false
+                None
             };
 
             let config = config::Config::load();
@@ -452,17 +462,17 @@ fn main() {
                 Ok(commands) => {
                     eprintln!("\n🎉 Generated {} commands for '{}'", commands.len(), tool);
 
-                    // Show diff if we had a backup
-                    if had_backup {
-                        generate::show_schema_diff(&tool);
+                    // Show diff against previous version
+                    if let Some(v) = prev_version {
+                        generate::show_schema_diff(&tool, v);
                     }
                 }
                 Err(e) => {
                     eprintln!("❌ Failed to generate schema: {}", e);
-                    // Restore backup if generation failed
-                    if had_backup {
-                        if generate::rollback_schema(&tool).is_ok() {
-                            eprintln!("↩️  Restored previous schema from backup.");
+                    // Restore from versioned backup if generation failed
+                    if let Some(v) = prev_version {
+                        if generate::rollback_schema(&tool, Some(v)).is_ok() {
+                            eprintln!("↩️  Restored previous schema (v{}).", v);
                         }
                     }
                     std::process::exit(1);
