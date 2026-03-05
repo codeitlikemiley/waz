@@ -144,9 +144,9 @@ enum Commands {
         #[arg(long)]
         result_file: Option<String>,
 
-        /// Config mode: show only waz commands for self-configuration.
-        #[arg(long)]
-        config: bool,
+        /// Self mode: show only waz commands for self-configuration.
+        #[arg(long = "self")]
+        self_mode: bool,
     },
 
     /// Parse command output for suggested follow-up commands.
@@ -407,8 +407,8 @@ fn main() {
             }
         }
 
-        Commands::Tui { query, cwd, result_file, config } => {
-            match tui::launch(cwd, query, config) {
+        Commands::Tui { query, cwd, result_file, self_mode } => {
+            match tui::launch(cwd, query, self_mode) {
                 Ok(Some(cmd)) => {
                     if let Some(ref path) = result_file {
                         // ZLE widget mode — write to temp file

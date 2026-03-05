@@ -83,7 +83,7 @@
       "description": "Launch interactive TUI command palette",
       "tokens": [
         { "name": "query", "description": "Pre-fill query (enters AI mode)", "token_type": "String", "required": false, "flag": "--query", "values": null, "data_source": null, "verified": true },
-        { "name": "config", "description": "Open config mode (waz commands only)", "token_type": "Boolean", "required": false, "flag": "--config", "values": null, "data_source": null, "verified": true }
+        { "name": "self", "description": "Open self mode (waz commands only)", "token_type": "Boolean", "required": false, "flag": "--self", "values": null, "data_source": null, "verified": true }
       ],
       "verified": true
     },

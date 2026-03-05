@@ -408,7 +408,7 @@ bindkey -M vicmd '\e[119;97;122~' _waz_tui
 
 _waz_config() {
     local tmpfile=$(mktemp /tmp/waz_result.XXXXXX)
-    command waz tui --cwd "$PWD" --config --result-file "$tmpfile" </dev/tty >/dev/tty 2>/dev/tty
+    command waz tui --cwd "$PWD" --self --result-file "$tmpfile" </dev/tty >/dev/tty 2>/dev/tty
     zle reset-prompt
     if [[ -f "$tmpfile" ]]; then
         local result
