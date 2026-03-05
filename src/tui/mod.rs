@@ -310,7 +310,18 @@ fn handle_enter(app: &mut App) {
         }
         Mode::Tmp => {
             if app.editing_tokens {
-                // Build and output the command
+                // Validate: all required tokens must have values
+                if let Some(cmd_idx) = app.selected_command {
+                    let tokens = &app.command_list[cmd_idx].tokens;
+                    for (i, token) in tokens.iter().enumerate() {
+                        if token.required && app.token_values[i].trim().is_empty() {
+                            // Jump to the first unfilled required token
+                            app.active_token = i;
+                            return;
+                        }
+                    }
+                }
+                // All required tokens filled — build and output
                 if let Some(cmd) = app.build_command() {
                     app.output_command = Some(cmd);
                     app.should_quit = true;
