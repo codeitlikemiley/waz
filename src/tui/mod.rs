@@ -427,32 +427,13 @@ fn handle_enter(app: &mut App, ai_tx: &mpsc::Sender<AiResult>) {
                         .and_then(|db| db.get_recent_by_cwd(&cwd, None, 10).ok())
                         .unwrap_or_default();
 
-                    // Try TMP resolve first (grounded in schemas + real data sources)
-                    let resolve_result = crate::resolve::resolve(
+                    let result = crate::ask::ask_structured(
                         &config,
                         &query,
                         &cwd,
-                        None,
+                        &recent,
                     );
-
-                    let used_resolve = if let Ok(ref res) = resolve_result {
-                        res.confidence == "high" || res.confidence == "medium"
-                    } else {
-                        false
-                    };
-
-                    if used_resolve {
-                        let res = resolve_result.unwrap();
-                        let _ = tx.send(AiResult::Resolve(res));
-                    } else {
-                        let result = crate::ask::ask_structured(
-                            &config,
-                            &query,
-                            &cwd,
-                            &recent,
-                        );
-                        let _ = tx.send(AiResult::Ask(result));
-                    }
+                    let _ = tx.send(AiResult::Ask(result));
                 });
             }
         }
