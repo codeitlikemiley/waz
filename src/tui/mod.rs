@@ -451,6 +451,28 @@ fn handle_tab(app: &mut App) {
                     let idx = values.iter().position(|v| v == current).unwrap_or(0);
                     let next = (idx + 1) % values.len();
                     app.token_values[app.active_token] = values[next].clone();
+                    
+                    // If this is a "provider" token, re-resolve the "model" token
+                    let token_name = token.name.clone();
+                    let new_value = values[next].clone();
+                    if token_name == "provider" {
+                        let cmd = &mut app.command_list[cmd_idx];
+                        if let Some(model_idx) = cmd.tokens.iter().position(|t| t.name == "model") {
+                            // Update the resolver to use the new provider
+                            if let Some(ref mut ds) = cmd.tokens[model_idx].data_source {
+                                ds.resolver = Some(format!("waz:models:{}", new_value));
+                            }
+                            // Re-resolve: fetch models from the provider's API
+                            let cwd = app.cwd.clone();
+                            crate::generate::resolve_data_sources_pub(&mut app.command_list[cmd_idx], &cwd);
+                            // Reset model value to first available option
+                            if let Some(ref vals) = app.command_list[cmd_idx].tokens[model_idx].values {
+                                if !vals.is_empty() {
+                                    app.token_values[model_idx] = vals[0].clone();
+                                }
+                            }
+                        }
+                    }
                 }
             }
             _ => {

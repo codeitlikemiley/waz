@@ -15,15 +15,15 @@
       "group": "waz",
       "verified": true,
       "tokens": [
-        { "name": "tool", "description": "CLI tool name", "token_type": "String", "required": true, "flag": null, "values": null, "data_source": null },
-        { "name": "force", "description": "Force regeneration even if schema exists", "token_type": "Boolean", "required": false, "flag": "--force", "values": null, "data_source": null },
-        { "name": "model", "description": "Override AI model", "token_type": "String", "required": false, "flag": "--model", "values": null, "data_source": null },
-        { "name": "provider", "description": "Override LLM provider", "token_type": "Enum", "required": false, "flag": "--provider", "values": ["gemini", "glm", "qwen", "minimax", "openai", "ollama"], "data_source": null },
-        { "name": "export", "description": "Export built-in schema to JSON", "token_type": "Boolean", "required": false, "flag": "--export", "values": null, "data_source": null },
-        { "name": "history", "description": "Show version history", "token_type": "Boolean", "required": false, "flag": "--history", "values": null, "data_source": null },
-        { "name": "rollback", "description": "Rollback to previous version", "token_type": "Number", "required": false, "flag": "--rollback", "values": null, "data_source": null },
-        { "name": "verify", "description": "Launch verification TUI", "token_type": "Boolean", "required": false, "flag": "--verify", "values": null, "data_source": null },
-        { "name": "init", "description": "Install curated schemas", "token_type": "Boolean", "required": false, "flag": "--init", "values": null, "data_source": null }
+        { "name": "tool", "description": "CLI tool name", "token_type": "String", "required": true },
+        { "name": "provider", "description": "LLM provider", "token_type": "Enum", "flag": "--provider", "values": ["gemini", "glm", "qwen", "minimax", "openai", "ollama"] },
+        { "name": "model", "description": "AI model (auto-populated from provider)", "token_type": "Enum", "flag": "--model", "data_source": { "resolver": "waz:models:gemini" } },
+        { "name": "force", "description": "Force regeneration", "token_type": "Boolean", "flag": "--force" },
+        { "name": "verify", "description": "Launch verification TUI", "token_type": "Boolean", "flag": "--verify" },
+        { "name": "init", "description": "Install curated schemas", "token_type": "Boolean", "flag": "--init" },
+        { "name": "export", "description": "Export schema to JSON", "token_type": "Boolean", "flag": "--export" },
+        { "name": "history", "description": "Show version history", "token_type": "Boolean", "flag": "--history" },
+        { "name": "rollback", "description": "Rollback to version", "token_type": "Number", "flag": "--rollback" }
       ]
     },
     {
@@ -39,7 +39,7 @@
       "group": "waz",
       "verified": true,
       "tokens": [
-        { "name": "tool", "description": "Tool name to export", "token_type": "String", "required": true, "flag": null, "values": null, "data_source": null }
+        { "name": "tool", "description": "Tool name to export", "token_type": "String", "required": true }
       ]
     },
     {
@@ -48,7 +48,7 @@
       "group": "waz",
       "verified": true,
       "tokens": [
-        { "name": "source", "description": "Path to .json file or https:// URL", "token_type": "File", "required": true, "flag": null, "values": null, "data_source": null }
+        { "name": "source", "description": "Path to .json file or https:// URL", "token_type": "File", "required": true }
       ]
     },
     {
@@ -57,7 +57,7 @@
       "group": "waz",
       "verified": true,
       "tokens": [
-        { "name": "shell", "description": "Shell to generate for", "token_type": "Enum", "required": true, "flag": null, "values": ["zsh", "bash", "fish"], "data_source": null }
+        { "name": "shell", "description": "Shell to generate for", "token_type": "Enum", "required": true, "values": ["zsh", "bash", "fish"] }
       ]
     },
     {
@@ -66,7 +66,7 @@
       "group": "waz",
       "verified": true,
       "tokens": [
-        { "name": "shell", "description": "Shell to import from (auto-detects if omitted)", "token_type": "Enum", "required": false, "flag": "--shell", "values": ["zsh", "bash", "fish"], "data_source": null }
+        { "name": "shell", "description": "Shell to import from", "token_type": "Enum", "flag": "--shell", "values": ["zsh", "bash", "fish"] }
       ]
     },
     {
@@ -82,7 +82,7 @@
       "group": "waz",
       "verified": true,
       "tokens": [
-        { "name": "all", "description": "Clear ALL history across all directories", "token_type": "Boolean", "required": false, "flag": "--all", "values": null, "data_source": null }
+        { "name": "all", "description": "Clear ALL history", "token_type": "Boolean", "flag": "--all" }
       ]
     },
     {
@@ -91,8 +91,8 @@
       "group": "waz",
       "verified": true,
       "tokens": [
-        { "name": "query", "description": "Pre-fill query (enters AI mode)", "token_type": "String", "required": false, "flag": "--query", "values": null, "data_source": null },
-        { "name": "self", "description": "Open self mode (waz commands only)", "token_type": "Boolean", "required": false, "flag": "--self", "values": null, "data_source": null }
+        { "name": "query", "description": "Pre-fill query (AI mode)", "token_type": "String", "flag": "--query" },
+        { "name": "self", "description": "Self mode (waz commands only)", "token_type": "Boolean", "flag": "--self" }
       ]
     },
     {
@@ -101,8 +101,8 @@
       "group": "waz",
       "verified": true,
       "tokens": [
-        { "name": "query", "description": "The natural language query", "token_type": "String", "required": true, "flag": null, "values": null, "data_source": null },
-        { "name": "json", "description": "Output structured JSON", "token_type": "Boolean", "required": false, "flag": "--json", "values": null, "data_source": null }
+        { "name": "query", "description": "The natural language query", "token_type": "String", "required": true },
+        { "name": "json", "description": "Output structured JSON", "token_type": "Boolean", "flag": "--json" }
       ]
     },
     {
@@ -111,18 +111,18 @@
       "group": "waz",
       "verified": true,
       "tokens": [
-        { "name": "prefix", "description": "What the user has typed so far", "token_type": "String", "required": false, "flag": "--prefix", "values": null, "data_source": null },
-        { "name": "format", "description": "Output format", "token_type": "Enum", "required": false, "flag": "--format", "values": ["plain", "json"], "data_source": null },
-        { "name": "fast", "description": "Skip LLM tier for fast predictions", "token_type": "Boolean", "required": false, "flag": "--fast", "values": null, "data_source": null }
+        { "name": "prefix", "description": "What the user has typed", "token_type": "String", "flag": "--prefix" },
+        { "name": "format", "description": "Output format", "token_type": "Enum", "flag": "--format", "values": ["plain", "json"] },
+        { "name": "fast", "description": "Skip LLM tier", "token_type": "Boolean", "flag": "--fast" }
       ]
     },
     {
       "command": "waz hint",
-      "description": "Parse command output for suggested follow-up commands",
+      "description": "Parse command output for follow-up suggestions",
       "group": "waz",
       "verified": true,
       "tokens": [
-        { "name": "output", "description": "The command output to parse", "token_type": "String", "required": true, "flag": "--output", "values": null, "data_source": null }
+        { "name": "output", "description": "The command output to parse", "token_type": "String", "required": true, "flag": "--output" }
       ]
     },
     {

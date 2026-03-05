@@ -209,24 +209,143 @@ fn run_data_source_command(cmd: &str, parse: &str) -> Option<Vec<String>> {
 
 // ──────────────────────────── Built-in Resolvers ────────────────────────────
 
-/// Resolve a built-in named resolver (e.g. "cargo:bins", "git:branches").
+/// Resolve a built-in named resolver (e.g. "cargo:bins", "git:branches", "waz:models:gemini").
 fn resolve_builtin(resolver: &str, cwd: &str) -> Option<Vec<String>> {
-    match resolver {
-        "cargo:bins" => cargo_resolve_bins(cwd),
-        "cargo:examples" => cargo_resolve_examples(cwd),
-        "cargo:packages" => cargo_resolve_packages(cwd),
-        "cargo:features" => cargo_resolve_features(cwd),
-        "cargo:profiles" => cargo_resolve_profiles(cwd),
-        "cargo:tests" => cargo_resolve_tests(cwd),
-        "cargo:benches" => cargo_resolve_benches(cwd),
-        "git:branches" => git_resolve_branches(cwd),
-        "git:remotes" => git_resolve_remotes(cwd),
-        "npm:scripts" => npm_resolve_scripts(cwd),
+    // Handle parameterized resolvers (e.g. "waz:models:gemini")
+    let parts: Vec<&str> = resolver.splitn(3, ':').collect();
+    
+    match (parts.get(0).copied(), parts.get(1).copied(), parts.get(2).copied()) {
+        (Some("cargo"), Some("bins"), _) => cargo_resolve_bins(cwd),
+        (Some("cargo"), Some("examples"), _) => cargo_resolve_examples(cwd),
+        (Some("cargo"), Some("packages"), _) => cargo_resolve_packages(cwd),
+        (Some("cargo"), Some("features"), _) => cargo_resolve_features(cwd),
+        (Some("cargo"), Some("profiles"), _) => cargo_resolve_profiles(cwd),
+        (Some("cargo"), Some("tests"), _) => cargo_resolve_tests(cwd),
+        (Some("cargo"), Some("benches"), _) => cargo_resolve_benches(cwd),
+        (Some("git"), Some("branches"), _) => git_resolve_branches(cwd),
+        (Some("git"), Some("remotes"), _) => git_resolve_remotes(cwd),
+        (Some("npm"), Some("scripts"), _) => npm_resolve_scripts(cwd),
+        (Some("waz"), Some("models"), Some(provider)) => waz_resolve_models(provider),
+        (Some("waz"), Some("models"), None) => waz_resolve_models("gemini"),
         _ => {
             eprintln!("Warning: unknown resolver '{}'", resolver);
             None
         }
     }
+}
+
+/// Fetch available models from an LLM provider's API.
+fn waz_resolve_models(provider: &str) -> Option<Vec<String>> {
+    let config = crate::config::Config::load();
+    
+    // Find the provider's API key
+    let api_key = config.llm.providers.iter()
+        .find(|p| p.name.eq_ignore_ascii_case(provider))
+        .and_then(|p| p.keys.first().cloned())
+        .or_else(|| {
+            // Try env vars
+            crate::config::ProviderDefaults::env_vars(provider)
+                .into_iter()
+                .find_map(|var| std::env::var(var).ok().filter(|v| !v.is_empty()))
+        });
+    
+    match provider {
+        "gemini" => {
+            if let Some(key) = api_key {
+                fetch_gemini_models(&key)
+            } else {
+                Some(vec![
+                    "gemini-3.1-flash-lite-preview".into(),
+                    "gemini-2.5-pro-preview-05-06".into(),
+                    "gemini-2.5-flash-preview-05-20".into(),
+                    "gemini-2.0-flash".into(),
+                ])
+            }
+        }
+        "openai" => {
+            if let Some(key) = api_key {
+                fetch_openai_models(&key)
+            } else {
+                Some(vec![
+                    "gpt-4o-mini".into(), "gpt-4o".into(), "gpt-4.1-mini".into(),
+                    "gpt-4.1".into(), "o4-mini".into(),
+                ])
+            }
+        }
+        "ollama" => fetch_ollama_models(),
+        "glm" => Some(vec!["glm-4.7".into(), "glm-4-plus".into(), "glm-4-flash".into()]),
+        "qwen" => Some(vec!["qwen3.5-plus".into(), "qwen3.5-turbo".into(), "qwen-plus".into()]),
+        "minimax" => Some(vec!["MiniMax-M2.5".into(), "MiniMax-T1".into()]),
+        _ => None,
+    }
+}
+
+fn fetch_gemini_models(api_key: &str) -> Option<Vec<String>> {
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/models?key={}",
+        api_key
+    );
+    let output = std::process::Command::new("curl")
+        .args(["-s", "--max-time", "5", &url])
+        .output().ok()?;
+    let body = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&body).ok()?;
+    let models = json.get("models")?.as_array()?;
+    let mut names: Vec<String> = models.iter()
+        .filter_map(|m| {
+            let name = m.get("name")?.as_str()?;
+            // "models/gemini-2.5-pro" → "gemini-2.5-pro"
+            let short = name.strip_prefix("models/").unwrap_or(name);
+            // Only include generateContent-capable models
+            let methods = m.get("supportedGenerationMethods")?
+                .as_array()?;
+            if methods.iter().any(|m| m.as_str() == Some("generateContent")) {
+                Some(short.to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    names.sort();
+    names.dedup();
+    if names.is_empty() { None } else { Some(names) }
+}
+
+fn fetch_openai_models(api_key: &str) -> Option<Vec<String>> {
+    let output = std::process::Command::new("curl")
+        .args(["-s", "--max-time", "5",
+               "-H", &format!("Authorization: Bearer {}", api_key),
+               "https://api.openai.com/v1/models"])
+        .output().ok()?;
+    let body = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&body).ok()?;
+    let data = json.get("data")?.as_array()?;
+    let mut names: Vec<String> = data.iter()
+        .filter_map(|m| {
+            let id = m.get("id")?.as_str()?;
+            // Filter to chat models only
+            if id.starts_with("gpt-") || id.starts_with("o1") || id.starts_with("o3") || id.starts_with("o4") {
+                Some(id.to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    names.sort();
+    if names.is_empty() { None } else { Some(names) }
+}
+
+fn fetch_ollama_models() -> Option<Vec<String>> {
+    let output = std::process::Command::new("curl")
+        .args(["-s", "--max-time", "3", "http://localhost:11434/api/tags"])
+        .output().ok()?;
+    let body = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&body).ok()?;
+    let models = json.get("models")?.as_array()?;
+    let names: Vec<String> = models.iter()
+        .filter_map(|m| m.get("name")?.as_str().map(|s| s.to_string()))
+        .collect();
+    if names.is_empty() { None } else { Some(names) }
 }
 
 /// Cargo: resolve binary targets from Cargo.toml and src/bin/.
