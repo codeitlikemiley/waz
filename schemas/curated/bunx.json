@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "tool": "bunx",
+    "version": 1,
+    "generated_by": "human",
+    "verified": true,
+    "verified_at": "2026-03-05",
+    "coverage": "full",
+    "waz_version": "0.1.2",
+    "requires_binary": "bun"
+  },
+  "commands": [
+    {
+      "command": "bunx",
+      "description": "Execute a package binary (bun's npx equivalent)",
+      "group": "bunx",
+      "verified": true,
+      "tokens": [
+        { "name": "package", "description": "Package to execute (e.g. create-vite, prisma)", "required": true, "token_type": "String", "default": null, "values": null, "flag": null },
+        { "name": "args", "description": "Arguments to pass", "required": false, "token_type": "String", "default": null, "values": null, "flag": null }
+      ]
+    }
+  ]
+}

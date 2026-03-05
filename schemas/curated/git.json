@@ -1,0 +1,137 @@
+{
+  "meta": {
+    "tool": "git",
+    "version": 1,
+    "generated_by": "human",
+    "verified": true,
+    "verified_at": "2026-03-05",
+    "coverage": "full",
+    "waz_version": "0.1.2",
+    "requires_binary": "git"
+  },
+  "commands": [
+    {
+      "command": "git status",
+      "description": "Show working tree status",
+      "group": "git",
+      "verified": true,
+      "tokens": []
+    },
+    {
+      "command": "git add",
+      "description": "Stage files for commit",
+      "group": "git",
+      "verified": true,
+      "tokens": [
+        { "name": "path", "description": "Files to stage (. for all)", "required": true, "token_type": "String", "default": ".", "values": null, "flag": null }
+      ]
+    },
+    {
+      "command": "git commit",
+      "description": "Record changes to the repository",
+      "group": "git",
+      "verified": true,
+      "tokens": [
+        { "name": "message", "description": "Commit message", "required": true, "token_type": "String", "default": null, "values": null, "flag": "-m" },
+        { "name": "amend", "description": "Amend previous commit", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--amend" },
+        { "name": "no-edit", "description": "Skip editing message on amend", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--no-edit" }
+      ]
+    },
+    {
+      "command": "git checkout",
+      "description": "Switch branches or restore files",
+      "group": "git",
+      "verified": true,
+      "tokens": [
+        { "name": "branch", "description": "Branch to checkout", "required": true, "token_type": "Enum", "default": null, "values": [], "flag": null, "data_source": { "resolver": "git:branches" } },
+        { "name": "create", "description": "Create new branch", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "-b" }
+      ]
+    },
+    {
+      "command": "git push",
+      "description": "Push commits to remote",
+      "group": "git",
+      "verified": true,
+      "tokens": [
+        { "name": "remote", "description": "Remote name", "required": false, "token_type": "Enum", "default": "origin", "values": [], "flag": null, "data_source": { "resolver": "git:remotes" } },
+        { "name": "branch", "description": "Branch to push", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": null, "data_source": { "resolver": "git:branches" } },
+        { "name": "force", "description": "Force push", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--force" },
+        { "name": "tags", "description": "Push tags", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--tags" }
+      ]
+    },
+    {
+      "command": "git pull",
+      "description": "Fetch and merge from remote",
+      "group": "git",
+      "verified": true,
+      "tokens": [
+        { "name": "remote", "description": "Remote name", "required": false, "token_type": "Enum", "default": "origin", "values": [], "flag": null, "data_source": { "resolver": "git:remotes" } },
+        { "name": "branch", "description": "Branch to pull", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": null, "data_source": { "resolver": "git:branches" } },
+        { "name": "rebase", "description": "Rebase instead of merge", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--rebase" }
+      ]
+    },
+    {
+      "command": "git log",
+      "description": "Show commit history",
+      "group": "git",
+      "verified": true,
+      "tokens": [
+        { "name": "oneline", "description": "Compact single-line output", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--oneline" },
+        { "name": "count", "description": "Number of commits to show", "required": false, "token_type": "Number", "default": null, "values": null, "flag": "-n" },
+        { "name": "graph", "description": "Show branch graph", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--graph" }
+      ]
+    },
+    {
+      "command": "git diff",
+      "description": "Show changes between commits or working tree",
+      "group": "git",
+      "verified": true,
+      "tokens": [
+        { "name": "staged", "description": "Show staged changes", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--staged" },
+        { "name": "stat", "description": "Show diffstat summary", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--stat" }
+      ]
+    },
+    {
+      "command": "git stash",
+      "description": "Stash working directory changes",
+      "group": "git",
+      "verified": true,
+      "tokens": [
+        { "name": "action", "description": "Stash action", "required": false, "token_type": "Enum", "default": null, "values": ["push", "pop", "list", "drop", "apply", "show"], "flag": null }
+      ]
+    },
+    {
+      "command": "git branch",
+      "description": "List, create, or delete branches",
+      "group": "git",
+      "verified": true,
+      "tokens": [
+        { "name": "name", "description": "Branch name", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": null, "data_source": { "resolver": "git:branches" } },
+        { "name": "delete", "description": "Delete branch", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "-d" },
+        { "name": "all", "description": "List all branches (including remote)", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "-a" }
+      ]
+    },
+    {
+      "command": "git merge",
+      "description": "Merge branches",
+      "group": "git",
+      "verified": true,
+      "tokens": [
+        { "name": "branch", "description": "Branch to merge", "required": true, "token_type": "Enum", "default": null, "values": [], "flag": null, "data_source": { "resolver": "git:branches" } },
+        { "name": "no-ff", "description": "Create merge commit even for fast-forward", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--no-ff" }
+      ]
+    },
+    {
+      "command": "git rebase",
+      "description": "Reapply commits on top of another base",
+      "group": "git",
+      "verified": true,
+      "tokens": [
+        { "name": "branch", "description": "Branch to rebase onto", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": null, "data_source": { "resolver": "git:branches" } },
+        { "name": "interactive", "description": "Interactive rebase", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "-i" },
+        { "name": "abort", "description": "Abort rebase in progress", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--abort" },
+        { "name": "continue", "description": "Continue after conflict resolution", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--continue" }
+      ]
+    }
+  ]
+}

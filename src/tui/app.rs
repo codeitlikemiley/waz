@@ -54,11 +54,58 @@ pub struct App {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SchemaFile {
+    #[serde(default)]
+    pub meta: SchemaMeta,
+    pub commands: Vec<CommandEntry>,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct SchemaMeta {
+    /// Tool name (e.g. "cargo", "brew")
+    #[serde(default)]
+    pub tool: String,
+    /// Schema version (auto-incremented on regeneration)
+    #[serde(default)]
+    pub version: u32,
+    /// Who generated this: "human", "ai", or "hybrid" (AI-generated, human-verified)
+    #[serde(default = "default_generated_by")]
+    pub generated_by: String,
+    /// Model used for AI generation (e.g. "gemini-2.5-pro-preview-05-06")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generated_with: Option<String>,
+    /// Whether all commands have been human-verified
+    #[serde(default)]
+    pub verified: bool,
+    /// Date of last verification (ISO format)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verified_at: Option<String>,
+    /// "full" or "partial" coverage of the tool's commands
+    #[serde(default = "default_coverage")]
+    pub coverage: String,
+    /// waz version that created this schema
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waz_version: Option<String>,
+    /// Requires a project file to be present (e.g. "Cargo.toml", "package.json")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requires_file: Option<String>,
+    /// Requires a binary on PATH (e.g. "git", "bun")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requires_binary: Option<String>,
+}
+
+fn default_generated_by() -> String { "ai".to_string() }
+fn default_coverage() -> String { "partial".to_string() }
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CommandEntry {
     pub command: String,
     pub description: String,
     pub tokens: Vec<TokenDef>,
     pub group: String,
+    /// Whether this specific command has been human-verified
+    #[serde(default)]
+    pub verified: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -71,7 +118,7 @@ pub struct TokenDef {
     pub values: Option<Vec<String>>,
     /// CLI flag override (e.g. "-p", "--bin", "-F"). If None, derives from name.
     pub flag: Option<String>,
-    /// Dynamic data source: run a shell command at load time to populate `values`.
+    /// Dynamic data source: run a shell command or built-in resolver at load time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data_source: Option<DataSource>,
 }
@@ -79,7 +126,11 @@ pub struct TokenDef {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DataSource {
     /// Shell command to execute (e.g. "brew list --formula")
-    pub command: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    /// Built-in resolver name (e.g. "cargo:bins", "git:branches", "npm:scripts")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolver: Option<String>,
     /// How to parse output: "lines" (split by newline) or "words" (split by whitespace)
     #[serde(default = "default_parse_mode")]
     pub parse: String,

@@ -1,0 +1,83 @@
+{
+  "meta": {
+    "tool": "npm",
+    "version": 1,
+    "generated_by": "human",
+    "verified": true,
+    "verified_at": "2026-03-05",
+    "coverage": "full",
+    "waz_version": "0.1.2",
+    "requires_file": "package.json",
+    "requires_binary": "npm"
+  },
+  "commands": [
+    {
+      "command": "npm install",
+      "description": "Install dependencies",
+      "group": "npm",
+      "verified": true,
+      "tokens": [
+        { "name": "package", "description": "Package to install", "required": false, "token_type": "String", "default": null, "values": null, "flag": null },
+        { "name": "save-dev", "description": "Save as dev dependency", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--save-dev" },
+        { "name": "global", "description": "Install globally", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "-g" }
+      ]
+    },
+    {
+      "command": "npm run",
+      "description": "Run a script from package.json",
+      "group": "npm",
+      "verified": true,
+      "tokens": [
+        { "name": "script", "description": "Script name to run", "required": true, "token_type": "Enum", "default": null, "values": [], "flag": null, "data_source": { "resolver": "npm:scripts" } }
+      ]
+    },
+    {
+      "command": "npm test",
+      "description": "Run the test script",
+      "group": "npm",
+      "verified": true,
+      "tokens": []
+    },
+    {
+      "command": "npm start",
+      "description": "Run the start script",
+      "group": "npm",
+      "verified": true,
+      "tokens": []
+    },
+    {
+      "command": "npm uninstall",
+      "description": "Remove a package",
+      "group": "npm",
+      "verified": true,
+      "tokens": [
+        { "name": "package", "description": "Package to remove", "required": true, "token_type": "String", "default": null, "values": null, "flag": null }
+      ]
+    },
+    {
+      "command": "npm outdated",
+      "description": "Check for outdated packages",
+      "group": "npm",
+      "verified": true,
+      "tokens": []
+    },
+    {
+      "command": "npm update",
+      "description": "Update packages",
+      "group": "npm",
+      "verified": true,
+      "tokens": [
+        { "name": "package", "description": "Package to update", "required": false, "token_type": "String", "default": null, "values": null, "flag": null }
+      ]
+    },
+    {
+      "command": "npm init",
+      "description": "Create a package.json file",
+      "group": "npm",
+      "verified": true,
+      "tokens": [
+        { "name": "yes", "description": "Accept defaults", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "-y" }
+      ]
+    }
+  ]
+}

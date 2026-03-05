@@ -5,13 +5,13 @@
 
 use crate::config::{Config, ProviderDefaults};
 use crate::llm;
-use crate::tui::app::{CommandEntry, TokenType};
+use crate::tui::app::{CommandEntry, DataSource, SchemaFile, SchemaMeta, TokenType};
 use serde_json::json;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
 
-/// Directory where generated schemas are stored.
+/// Directory where user schemas are stored.
 pub fn schemas_dir() -> PathBuf {
     let dir = dirs::config_dir()
         .unwrap_or_else(|| dirs::home_dir().unwrap().join(".config"))
@@ -21,13 +21,80 @@ pub fn schemas_dir() -> PathBuf {
     dir
 }
 
+/// Directory where curated schemas are shipped with the binary.
+fn curated_schemas_dir() -> PathBuf {
+    // Check if we're running from the repo (development) or installed
+    let exe_dir = std::env::current_exe().ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+
+    // Try repo-relative path first (for development)
+    let repo_schemas = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("schemas").join("curated");
+    if repo_schemas.exists() {
+        return repo_schemas;
+    }
+
+    // Fallback: next to the binary
+    if let Some(dir) = exe_dir {
+        let bin_schemas = dir.join("schemas").join("curated");
+        if bin_schemas.exists() {
+            return bin_schemas;
+        }
+    }
+
+    repo_schemas // Return repo path even if it doesn't exist
+}
+
 /// Check if a schema already exists for the given tool.
 pub fn schema_exists(tool: &str) -> bool {
     schemas_dir().join(format!("{}.json", tool)).exists()
 }
 
+/// Initialize curated schemas — copy from repo/binary to user's config dir.
+/// Only copies schemas that don't already exist (won't overwrite user modifications).
+pub fn init_schemas() -> Result<Vec<String>, String> {
+    let curated_dir = curated_schemas_dir();
+    let target_dir = schemas_dir();
+    let mut installed = Vec::new();
+
+    let entries = std::fs::read_dir(&curated_dir)
+        .map_err(|e| format!("No curated schemas found at {}: {}", curated_dir.display(), e))?;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+
+        let filename = path.file_name().unwrap().to_string_lossy().to_string();
+        let target = target_dir.join(&filename);
+
+        if !target.exists() {
+            match std::fs::copy(&path, &target) {
+                Ok(_) => {
+                    let tool = filename.trim_end_matches(".json");
+                    installed.push(tool.to_string());
+                }
+                Err(e) => {
+                    eprintln!("  ⚠️  Failed to copy {}: {}", filename, e);
+                }
+            }
+        }
+    }
+
+    Ok(installed)
+}
+
 /// Load all JSON schemas from the schemas directory.
-pub fn load_all_schemas() -> Vec<CommandEntry> {
+/// Supports both `SchemaFile` (new) and `Vec<CommandEntry>` (legacy) formats.
+/// Filters schemas based on CWD context (requires_file, requires_binary).
+pub fn load_all_schemas(cwd: &str) -> Vec<CommandEntry> {
+    // Auto-init curated schemas on first load
+    if let Ok(installed) = init_schemas() {
+        if !installed.is_empty() {
+            eprintln!("📦 Initialized curated schemas: {}", installed.join(", "));
+        }
+    }
+
     let dir = schemas_dir();
     let mut commands = Vec::new();
 
@@ -44,17 +111,26 @@ pub fn load_all_schemas() -> Vec<CommandEntry> {
 
         match std::fs::read_to_string(&path) {
             Ok(content) => {
-                match serde_json::from_str::<Vec<CommandEntry>>(&content) {
-                    Ok(mut entries) => {
-                        // Resolve data_source fields to populate dynamic values
-                        for entry in &mut entries {
-                            resolve_data_sources(entry);
-                        }
-                        commands.extend(entries);
+                // Try new SchemaFile format first
+                if let Ok(schema_file) = serde_json::from_str::<SchemaFile>(&content) {
+                    // Check requirements
+                    if !should_load_schema(&schema_file.meta, cwd) {
+                        continue;
                     }
-                    Err(e) => {
-                        eprintln!("Warning: failed to parse schema {}: {}", path.display(), e);
+                    let mut cmds = schema_file.commands;
+                    for entry in &mut cmds {
+                        resolve_data_sources(entry, cwd);
                     }
+                    commands.extend(cmds);
+                }
+                // Fallback: legacy Vec<CommandEntry> format
+                else if let Ok(mut entries) = serde_json::from_str::<Vec<CommandEntry>>(&content) {
+                    for entry in &mut entries {
+                        resolve_data_sources(entry, cwd);
+                    }
+                    commands.extend(entries);
+                } else {
+                    eprintln!("Warning: failed to parse schema {}", path.display());
                 }
             }
             Err(e) => {
@@ -66,23 +142,48 @@ pub fn load_all_schemas() -> Vec<CommandEntry> {
     commands
 }
 
-/// Resolve any `data_source` fields in tokens by running the specified command.
-fn resolve_data_sources(entry: &mut CommandEntry) {
+/// Check if a schema should be loaded based on its requirements.
+fn should_load_schema(meta: &SchemaMeta, cwd: &str) -> bool {
+    // Check requires_file (e.g. "Cargo.toml", "package.json")
+    if let Some(ref file) = meta.requires_file {
+        if !std::path::Path::new(cwd).join(file).exists() {
+            return false;
+        }
+    }
+
+    // Check requires_binary (e.g. "git", "bun")
+    if let Some(ref binary) = meta.requires_binary {
+        if !which_exists(binary) {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn which_exists(cmd: &str) -> bool {
+    Command::new("which").arg(cmd).output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Resolve any `data_source` fields in tokens (shell commands or built-in resolvers).
+fn resolve_data_sources(entry: &mut CommandEntry, cwd: &str) {
     for token in &mut entry.tokens {
         if let Some(ref ds) = token.data_source {
-            let output = Command::new("sh")
-                .args(["-c", &ds.command])
-                .output();
+            let values = if let Some(ref resolver) = ds.resolver {
+                // Built-in resolver
+                resolve_builtin(resolver, cwd)
+            } else if let Some(ref cmd) = ds.command {
+                // Shell command
+                run_data_source_command(cmd, &ds.parse)
+            } else {
+                None
+            };
 
-            if let Ok(out) = output {
-                let stdout = String::from_utf8_lossy(&out.stdout);
-                let values: Vec<String> = match ds.parse.as_str() {
-                    "words" => stdout.split_whitespace().map(|s| s.to_string()).collect(),
-                    _ => stdout.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
-                };
-
-                if !values.is_empty() {
-                    token.values = Some(values);
+            if let Some(vals) = values {
+                if !vals.is_empty() {
+                    token.values = Some(vals);
                     token.token_type = TokenType::Enum;
                 }
             }
@@ -90,13 +191,136 @@ fn resolve_data_sources(entry: &mut CommandEntry) {
     }
 }
 
+/// Run a shell command and parse its output into values.
+fn run_data_source_command(cmd: &str, parse: &str) -> Option<Vec<String>> {
+    let output = Command::new("sh").args(["-c", cmd]).output().ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let values: Vec<String> = match parse {
+        "words" => stdout.split_whitespace().map(|s| s.to_string()).collect(),
+        _ => stdout.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+    };
+    if values.is_empty() { None } else { Some(values) }
+}
+
+// ──────────────────────────── Built-in Resolvers ────────────────────────────
+
+/// Resolve a built-in named resolver (e.g. "cargo:bins", "git:branches").
+fn resolve_builtin(resolver: &str, cwd: &str) -> Option<Vec<String>> {
+    match resolver {
+        "cargo:bins" => cargo_resolve_bins(cwd),
+        "cargo:examples" => cargo_resolve_examples(cwd),
+        "cargo:packages" => cargo_resolve_packages(cwd),
+        "cargo:features" => cargo_resolve_features(cwd),
+        "cargo:profiles" => cargo_resolve_profiles(cwd),
+        "cargo:tests" => cargo_resolve_tests(cwd),
+        "cargo:benches" => cargo_resolve_benches(cwd),
+        "git:branches" => git_resolve_branches(cwd),
+        "git:remotes" => git_resolve_remotes(cwd),
+        "npm:scripts" => npm_resolve_scripts(cwd),
+        _ => {
+            eprintln!("Warning: unknown resolver '{}'", resolver);
+            None
+        }
+    }
+}
+
+/// Cargo: resolve binary targets from Cargo.toml and src/bin/.
+fn cargo_resolve_bins(cwd: &str) -> Option<Vec<String>> {
+    let cwd = std::path::Path::new(cwd);
+    let ctx = crate::tui::cargo_schema::CargoContext::detect(cwd);
+    if ctx.bins.is_empty() { None } else { Some(ctx.bins) }
+}
+
+fn cargo_resolve_examples(cwd: &str) -> Option<Vec<String>> {
+    let cwd = std::path::Path::new(cwd);
+    let ctx = crate::tui::cargo_schema::CargoContext::detect(cwd);
+    if ctx.examples.is_empty() { None } else { Some(ctx.examples) }
+}
+
+fn cargo_resolve_packages(cwd: &str) -> Option<Vec<String>> {
+    let cwd = std::path::Path::new(cwd);
+    let ctx = crate::tui::cargo_schema::CargoContext::detect(cwd);
+    if ctx.packages.is_empty() { None } else { Some(ctx.packages) }
+}
+
+fn cargo_resolve_features(cwd: &str) -> Option<Vec<String>> {
+    let cwd = std::path::Path::new(cwd);
+    let ctx = crate::tui::cargo_schema::CargoContext::detect(cwd);
+    if ctx.features.is_empty() { None } else { Some(ctx.features) }
+}
+
+fn cargo_resolve_profiles(cwd: &str) -> Option<Vec<String>> {
+    let cwd = std::path::Path::new(cwd);
+    let ctx = crate::tui::cargo_schema::CargoContext::detect(cwd);
+    let mut profiles = ctx.profiles;
+    // Always include the standard profiles
+    for p in &["dev", "release", "test", "bench"] {
+        if !profiles.contains(&p.to_string()) {
+            profiles.push(p.to_string());
+        }
+    }
+    if profiles.is_empty() { None } else { Some(profiles) }
+}
+
+fn cargo_resolve_tests(cwd: &str) -> Option<Vec<String>> {
+    let cwd = std::path::Path::new(cwd);
+    let ctx = crate::tui::cargo_schema::CargoContext::detect(cwd);
+    if ctx.tests.is_empty() { None } else { Some(ctx.tests) }
+}
+
+fn cargo_resolve_benches(cwd: &str) -> Option<Vec<String>> {
+    let cwd = std::path::Path::new(cwd);
+    let ctx = crate::tui::cargo_schema::CargoContext::detect(cwd);
+    if ctx.benches.is_empty() { None } else { Some(ctx.benches) }
+}
+
+/// Git: resolve branch names.
+fn git_resolve_branches(cwd: &str) -> Option<Vec<String>> {
+    let output = Command::new("git")
+        .args(["branch", "--format=%(refname:short)"])
+        .current_dir(cwd)
+        .output()
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let branches: Vec<String> = stdout.lines()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if branches.is_empty() { None } else { Some(branches) }
+}
+
+/// Git: resolve remote names.
+fn git_resolve_remotes(cwd: &str) -> Option<Vec<String>> {
+    let output = Command::new("git")
+        .args(["remote"])
+        .current_dir(cwd)
+        .output()
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let remotes: Vec<String> = stdout.lines()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if remotes.is_empty() { None } else { Some(remotes) }
+}
+
+/// npm/bun: resolve script names from package.json.
+fn npm_resolve_scripts(cwd: &str) -> Option<Vec<String>> {
+    let pkg_path = std::path::Path::new(cwd).join("package.json");
+    let content = std::fs::read_to_string(&pkg_path).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&content).ok()?;
+    let scripts = json.get("scripts")?.as_object()?;
+    let names: Vec<String> = scripts.keys().cloned().collect();
+    if names.is_empty() { None } else { Some(names) }
+}
+
 /// Generate a TMP schema for a CLI tool using AI.
 ///
 /// 1. Runs `<tool> --help` and subcommand help recursively
 /// 2. Sends to LLM with a structured prompt
 /// 3. Parses response into Vec<CommandEntry>
-/// 4. Saves to ~/.config/waz/schemas/<tool>.json
-pub fn generate_schema(config: &Config, tool: &str) -> Result<Vec<CommandEntry>, String> {
+/// 4. Saves to ~/.config/waz/schemas/<tool>.json as SchemaFile
+pub fn generate_schema(config: &Config, tool: &str, model_override: Option<&str>) -> Result<Vec<CommandEntry>, String> {
     // Step 1: Check tool exists
     let which = Command::new("which").arg(tool).output();
     match which {
@@ -128,7 +352,13 @@ pub fn generate_schema(config: &Config, tool: &str) -> Result<Vec<CommandEntry>,
         }
     }
 
-    eprintln!("\n🤖 Generating schema with AI...");
+    // Determine model info for display
+    let model_name = model_override.map(|s| s.to_string()).unwrap_or_else(|| {
+        config.llm.providers.first()
+            .map(|p| p.model.clone())
+            .unwrap_or_else(|| "default".to_string())
+    });
+    eprintln!("\n🤖 Generating schema with AI (model: {})...", model_name);
 
     // Step 3: Build prompt and call LLM
     let help_combined = help_texts.join("\n\n");
@@ -140,14 +370,41 @@ pub fn generate_schema(config: &Config, tool: &str) -> Result<Vec<CommandEntry>,
     };
 
     let prompt = build_generate_prompt(tool, help_truncated);
-    let response = call_llm_for_schema(config, &prompt)?;
+    let response = call_llm_for_schema(config, &prompt, model_override)?;
 
     // Step 4: Parse response
     let commands = parse_schema_response(tool, &response)?;
 
-    // Step 5: Save to file
+    // Step 5: Save as SchemaFile with meta
+    let existing_version = if schema_exists(tool) {
+        // Try to read existing version
+        let path = schemas_dir().join(format!("{}.json", tool));
+        std::fs::read_to_string(&path).ok()
+            .and_then(|c| serde_json::from_str::<SchemaFile>(&c).ok())
+            .map(|s| s.meta.version)
+            .unwrap_or(0)
+    } else {
+        0
+    };
+
+    let schema_file = SchemaFile {
+        meta: SchemaMeta {
+            tool: tool.to_string(),
+            version: existing_version + 1,
+            generated_by: "ai".to_string(),
+            generated_with: Some(model_name),
+            verified: false,
+            verified_at: None,
+            coverage: "partial".to_string(),
+            waz_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            requires_file: None,
+            requires_binary: Some(tool.to_string()),
+        },
+        commands: commands.clone(),
+    };
+
     let schema_path = schemas_dir().join(format!("{}.json", tool));
-    let json = serde_json::to_string_pretty(&commands)
+    let json = serde_json::to_string_pretty(&schema_file)
         .map_err(|e| format!("Failed to serialize: {}", e))?;
     std::fs::write(&schema_path, &json)
         .map_err(|e| format!("Failed to write schema: {}", e))?;
@@ -156,8 +413,8 @@ pub fn generate_schema(config: &Config, tool: &str) -> Result<Vec<CommandEntry>,
         commands.len(),
         commands.iter().map(|c| c.tokens.len()).sum::<usize>()
     );
-    eprintln!("\n✅ Saved to {}", schema_path.display());
-    eprintln!("   Next time you type /{} in the TUI, these commands will load.", tool);
+    eprintln!("\n✅ Saved to {} (v{})", schema_path.display(), schema_file.meta.version);
+    eprintln!("   Next time you open the TUI, these commands will auto-load.");
 
     Ok(commands)
 }
@@ -270,12 +527,20 @@ JSON:"#,
 }
 
 /// Call the LLM to generate schema JSON.
-fn call_llm_for_schema(config: &Config, prompt: &str) -> Result<String, String> {
+fn call_llm_for_schema(config: &Config, prompt: &str, model_override: Option<&str>) -> Result<String, String> {
     let mut state = llm::load_rotation_state();
-    let providers = llm::get_ordered_providers_pub(&config.llm);
+    let mut providers: Vec<crate::config::ProviderConfig> = llm::get_ordered_providers_pub(&config.llm)
+        .into_iter().cloned().collect();
 
     if providers.is_empty() {
         return Err("No LLM provider configured. Set GEMINI_API_KEY or configure ~/.config/waz/config.toml".to_string());
+    }
+
+    // Apply model override to the first provider
+    if let Some(model) = model_override {
+        if let Some(p) = providers.first_mut() {
+            p.model = model.to_string();
+        }
     }
 
     for provider in &providers {
@@ -680,12 +945,14 @@ pub fn export_builtin_schema(tool: &str, cwd: &str) -> Result<PathBuf, String> {
                     command: "git status".to_string(),
                     description: "Show working tree status".to_string(),
                     group: "git".to_string(),
+                    verified: false,
                     tokens: vec![],
                 },
                 CommandEntry {
                     command: "git add".to_string(),
                     description: "Stage files for commit".to_string(),
                     group: "git".to_string(),
+                    verified: false,
                     tokens: vec![TokenDef {
                         name: "path".to_string(),
                         description: "File or directory to stage".to_string(),
@@ -701,6 +968,7 @@ pub fn export_builtin_schema(tool: &str, cwd: &str) -> Result<PathBuf, String> {
                     command: "git commit".to_string(),
                     description: "Record changes to the repository".to_string(),
                     group: "git".to_string(),
+                    verified: false,
                     tokens: vec![TokenDef {
                         name: "m".to_string(),
                         description: "Commit message".to_string(),
@@ -716,6 +984,7 @@ pub fn export_builtin_schema(tool: &str, cwd: &str) -> Result<PathBuf, String> {
                     command: "git checkout".to_string(),
                     description: "Switch branches".to_string(),
                     group: "git".to_string(),
+                    verified: false,
                     tokens: vec![TokenDef {
                         name: "branch".to_string(),
                         description: "Branch to switch to".to_string(),
@@ -731,18 +1000,21 @@ pub fn export_builtin_schema(tool: &str, cwd: &str) -> Result<PathBuf, String> {
                     command: "git push".to_string(),
                     description: "Push to remote".to_string(),
                     group: "git".to_string(),
+                    verified: false,
                     tokens: vec![],
                 },
                 CommandEntry {
                     command: "git pull".to_string(),
                     description: "Pull from remote".to_string(),
                     group: "git".to_string(),
+                    verified: false,
                     tokens: vec![],
                 },
                 CommandEntry {
                     command: "git log".to_string(),
                     description: "Show commit logs".to_string(),
                     group: "git".to_string(),
+                    verified: false,
                     tokens: vec![
                         TokenDef {
                             name: "n".to_string(),
@@ -785,6 +1057,7 @@ pub fn export_builtin_schema(tool: &str, cwd: &str) -> Result<PathBuf, String> {
                     command: "npm install".to_string(),
                     description: "Install dependencies".to_string(),
                     group: "npm".to_string(),
+                    verified: false,
                     tokens: vec![],
                 },
             ];
@@ -794,6 +1067,7 @@ pub fn export_builtin_schema(tool: &str, cwd: &str) -> Result<PathBuf, String> {
                     command: "npm run".to_string(),
                     description: "Run a script".to_string(),
                     group: "npm".to_string(),
+                    verified: false,
                     tokens: vec![TokenDef {
                         name: "script".to_string(),
                         description: "Script to run".to_string(),

@@ -172,6 +172,14 @@ enum Commands {
         /// Show version history for this tool's schema.
         #[arg(long)]
         history: bool,
+
+        /// Override the AI model for generation (e.g. gemini-2.5-pro-preview-05-06).
+        #[arg(long)]
+        model: Option<String>,
+
+        /// Initialize curated schemas (copy built-in schemas to user config).
+        #[arg(long)]
+        init: bool,
     },
 }
 
@@ -407,7 +415,25 @@ fn main() {
             }
         }
 
-        Commands::Generate { tool, force, export, rollback, history } => {
+        Commands::Generate { tool, force, export, rollback, history, model, init } => {
+            // Handle --init (copy curated schemas to user config)
+            if init {
+                match generate::init_schemas() {
+                    Ok(installed) => {
+                        if installed.is_empty() {
+                            eprintln!("✅ All curated schemas already installed.");
+                        } else {
+                            eprintln!("✅ Installed curated schemas: {}", installed.join(", "));
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("❌ Init failed: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+                return;
+            }
+
             // Handle --history
             if history {
                 generate::show_version_history(&tool);
@@ -458,7 +484,7 @@ fn main() {
             };
 
             let config = config::Config::load();
-            match generate::generate_schema(&config, &tool) {
+            match generate::generate_schema(&config, &tool, model.as_deref()) {
                 Ok(commands) => {
                     eprintln!("\n🎉 Generated {} commands for '{}'", commands.len(), tool);
 

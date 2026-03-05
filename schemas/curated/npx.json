@@ -1,0 +1,25 @@
+{
+  "meta": {
+    "tool": "npx",
+    "version": 1,
+    "generated_by": "human",
+    "verified": true,
+    "verified_at": "2026-03-05",
+    "coverage": "full",
+    "waz_version": "0.1.2",
+    "requires_binary": "npx"
+  },
+  "commands": [
+    {
+      "command": "npx",
+      "description": "Execute a package binary",
+      "group": "npx",
+      "verified": true,
+      "tokens": [
+        { "name": "package", "description": "Package to execute (e.g. create-react-app, vite)", "required": true, "token_type": "String", "default": null, "values": null, "flag": null },
+        { "name": "args", "description": "Arguments to pass", "required": false, "token_type": "String", "default": null, "values": null, "flag": null },
+        { "name": "yes", "description": "Skip confirmation prompt", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "-y" }
+      ]
+    }
+  ]
+}

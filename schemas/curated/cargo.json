@@ -1,0 +1,155 @@
+{
+  "meta": {
+    "tool": "cargo",
+    "version": 1,
+    "generated_by": "human",
+    "verified": true,
+    "verified_at": "2026-03-05",
+    "coverage": "full",
+    "waz_version": "0.1.2",
+    "requires_file": "Cargo.toml",
+    "requires_binary": "cargo"
+  },
+  "commands": [
+    {
+      "command": "cargo build",
+      "description": "Compile the current package",
+      "group": "cargo",
+      "verified": true,
+      "tokens": [
+        { "name": "package", "description": "Package to build", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-p", "data_source": { "resolver": "cargo:packages" } },
+        { "name": "bin", "description": "Binary target to build", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "--bin", "data_source": { "resolver": "cargo:bins" } },
+        { "name": "example", "description": "Example target to build", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "--example", "data_source": { "resolver": "cargo:examples" } },
+        { "name": "features", "description": "Comma-separated features to activate", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-F", "data_source": { "resolver": "cargo:features" } },
+        { "name": "release", "description": "Build in release mode", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--release" },
+        { "name": "profile", "description": "Build profile to use", "required": false, "token_type": "Enum", "default": null, "values": ["dev", "release", "test", "bench"], "flag": "--profile", "data_source": { "resolver": "cargo:profiles" } },
+        { "name": "all-features", "description": "Activate all features", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--all-features" },
+        { "name": "workspace", "description": "Build all workspace members", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--workspace" }
+      ]
+    },
+    {
+      "command": "cargo run",
+      "description": "Run a binary or example",
+      "group": "cargo",
+      "verified": true,
+      "tokens": [
+        { "name": "package", "description": "Package to run", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-p", "data_source": { "resolver": "cargo:packages" } },
+        { "name": "bin", "description": "Binary target to run", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "--bin", "data_source": { "resolver": "cargo:bins" } },
+        { "name": "example", "description": "Example to run", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "--example", "data_source": { "resolver": "cargo:examples" } },
+        { "name": "features", "description": "Features to activate", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-F", "data_source": { "resolver": "cargo:features" } },
+        { "name": "release", "description": "Run in release mode", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--release" }
+      ]
+    },
+    {
+      "command": "cargo test",
+      "description": "Run tests",
+      "group": "cargo",
+      "verified": true,
+      "tokens": [
+        { "name": "package", "description": "Package to test", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-p", "data_source": { "resolver": "cargo:packages" } },
+        { "name": "test", "description": "Test target to run", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "--test", "data_source": { "resolver": "cargo:tests" } },
+        { "name": "features", "description": "Features to activate", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-F", "data_source": { "resolver": "cargo:features" } },
+        { "name": "release", "description": "Test in release mode", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--release" },
+        { "name": "workspace", "description": "Test all workspace members", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--workspace" }
+      ]
+    },
+    {
+      "command": "cargo check",
+      "description": "Type-check without building",
+      "group": "cargo",
+      "verified": true,
+      "tokens": [
+        { "name": "package", "description": "Package to check", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-p", "data_source": { "resolver": "cargo:packages" } },
+        { "name": "features", "description": "Features to activate", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-F", "data_source": { "resolver": "cargo:features" } },
+        { "name": "all-features", "description": "Activate all features", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--all-features" },
+        { "name": "workspace", "description": "Check all workspace members", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--workspace" }
+      ]
+    },
+    {
+      "command": "cargo clippy",
+      "description": "Run Clippy lints",
+      "group": "cargo",
+      "verified": true,
+      "tokens": [
+        { "name": "package", "description": "Package to lint", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-p", "data_source": { "resolver": "cargo:packages" } },
+        { "name": "features", "description": "Features to activate", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-F", "data_source": { "resolver": "cargo:features" } },
+        { "name": "fix", "description": "Auto-fix suggestions", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--fix" },
+        { "name": "workspace", "description": "Lint all workspace members", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--workspace" }
+      ]
+    },
+    {
+      "command": "cargo fmt",
+      "description": "Format source code",
+      "group": "cargo",
+      "verified": true,
+      "tokens": [
+        { "name": "package", "description": "Package to format", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-p", "data_source": { "resolver": "cargo:packages" } },
+        { "name": "check", "description": "Check formatting without changing", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--check" }
+      ]
+    },
+    {
+      "command": "cargo add",
+      "description": "Add a dependency to Cargo.toml",
+      "group": "cargo",
+      "verified": true,
+      "tokens": [
+        { "name": "crate", "description": "Crate name to add", "required": true, "token_type": "String", "default": null, "values": null, "flag": null },
+        { "name": "dev", "description": "Add as dev dependency", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--dev" },
+        { "name": "build", "description": "Add as build dependency", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--build" }
+      ]
+    },
+    {
+      "command": "cargo bench",
+      "description": "Run benchmarks",
+      "group": "cargo",
+      "verified": true,
+      "tokens": [
+        { "name": "package", "description": "Package to benchmark", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-p", "data_source": { "resolver": "cargo:packages" } },
+        { "name": "bench", "description": "Bench target", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "--bench", "data_source": { "resolver": "cargo:benches" } }
+      ]
+    },
+    {
+      "command": "cargo doc",
+      "description": "Build documentation",
+      "group": "cargo",
+      "verified": true,
+      "tokens": [
+        { "name": "package", "description": "Package to document", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-p", "data_source": { "resolver": "cargo:packages" } },
+        { "name": "open", "description": "Open in browser after building", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--open" },
+        { "name": "no-deps", "description": "Skip dependencies", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--no-deps" }
+      ]
+    },
+    {
+      "command": "cargo publish",
+      "description": "Publish package to crates.io",
+      "group": "cargo",
+      "verified": true,
+      "tokens": [
+        { "name": "package", "description": "Package to publish", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-p", "data_source": { "resolver": "cargo:packages" } },
+        { "name": "dry-run", "description": "Verify without publishing", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--dry-run" },
+        { "name": "allow-dirty", "description": "Allow dirty working directory", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--allow-dirty" }
+      ]
+    },
+    {
+      "command": "cargo install",
+      "description": "Install a binary from crates.io or local path",
+      "group": "cargo",
+      "verified": true,
+      "tokens": [
+        { "name": "crate", "description": "Crate to install", "required": false, "token_type": "String", "default": null, "values": null, "flag": null },
+        { "name": "path", "description": "Install from local path", "required": false, "token_type": "File", "default": null, "values": null, "flag": "--path" },
+        { "name": "force", "description": "Force overwrite", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--force" }
+      ]
+    },
+    {
+      "command": "cargo update",
+      "description": "Update dependencies in Cargo.lock",
+      "group": "cargo",
+      "verified": true,
+      "tokens": [
+        { "name": "package", "description": "Package to update", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-p", "data_source": { "resolver": "cargo:packages" } },
+        { "name": "workspace", "description": "Update all workspace members", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--workspace" }
+      ]
+    }
+  ]
+}

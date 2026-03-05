@@ -443,7 +443,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
         CommandEntry {
             command: "cargo build".to_string(),
             description: "Compile the current package".to_string(),
-            group: "cargo".to_string(),
+            group: "cargo".to_string(), verified: false,
             tokens: vec![
                 pkg_token(ctx),
                 bin_token(ctx),
@@ -457,7 +457,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
         CommandEntry {
             command: "cargo run".to_string(),
             description: "Run a binary or example".to_string(),
-            group: "cargo".to_string(),
+            group: "cargo".to_string(), verified: false,
             tokens: vec![
                 pkg_token(ctx),
                 bin_token(ctx),
@@ -469,7 +469,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
         CommandEntry {
             command: "cargo test".to_string(),
             description: "Run tests".to_string(),
-            group: "cargo".to_string(),
+            group: "cargo".to_string(), verified: false,
             tokens: vec![
                 pkg_token(ctx),
                 test_name_token(ctx),
@@ -481,7 +481,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
         CommandEntry {
             command: "cargo bench".to_string(),
             description: "Run benchmarks".to_string(),
-            group: "cargo".to_string(),
+            group: "cargo".to_string(), verified: false,
             tokens: vec![
                 pkg_token(ctx),
                 bench_token(ctx),
@@ -492,7 +492,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
         CommandEntry {
             command: "cargo check".to_string(),
             description: "Analyze without building".to_string(),
-            group: "cargo".to_string(),
+            group: "cargo".to_string(), verified: false,
             tokens: vec![
                 pkg_token(ctx),
                 features_token(ctx),
@@ -503,7 +503,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
         CommandEntry {
             command: "cargo doc".to_string(),
             description: "Build documentation".to_string(),
-            group: "cargo".to_string(),
+            group: "cargo".to_string(), verified: false,
             tokens: vec![
                 pkg_token(ctx),
                 features_token(ctx),
@@ -531,7 +531,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
         CommandEntry {
             command: "cargo clean".to_string(),
             description: "Remove target directory".to_string(),
-            group: "cargo".to_string(),
+            group: "cargo".to_string(), verified: false,
             tokens: vec![
                 pkg_token(ctx),
                 profile_token(ctx),
@@ -540,7 +540,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
         CommandEntry {
             command: "cargo add".to_string(),
             description: "Add a dependency".to_string(),
-            group: "cargo".to_string(),
+            group: "cargo".to_string(), verified: false,
             tokens: vec![
                 TokenDef {
                     name: "crate".to_string(),
@@ -575,7 +575,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
         CommandEntry {
             command: "cargo remove".to_string(),
             description: "Remove a dependency".to_string(),
-            group: "cargo".to_string(),
+            group: "cargo".to_string(), verified: false,
             tokens: vec![
                 TokenDef {
                     name: "crate".to_string(),
@@ -591,7 +591,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
         CommandEntry {
             command: "cargo clippy".to_string(),
             description: "Run Clippy linter".to_string(),
-            group: "cargo".to_string(),
+            group: "cargo".to_string(), verified: false,
             tokens: vec![
                 pkg_token(ctx),
                 TokenDef {
@@ -609,7 +609,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
         CommandEntry {
             command: "cargo fmt".to_string(),
             description: "Format code".to_string(),
-            group: "cargo".to_string(),
+            group: "cargo".to_string(), verified: false,
             tokens: vec![
                 TokenDef {
                     name: "check".to_string(),
@@ -625,7 +625,7 @@ pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
         CommandEntry {
             command: "cargo publish".to_string(),
             description: "Publish to crates.io".to_string(),
-            group: "cargo".to_string(),
+            group: "cargo".to_string(), verified: false,
             tokens: vec![
                 pkg_token(ctx),
                 TokenDef {

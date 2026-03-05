@@ -1,0 +1,98 @@
+{
+  "meta": {
+    "tool": "bun",
+    "version": 1,
+    "generated_by": "human",
+    "verified": true,
+    "verified_at": "2026-03-05",
+    "coverage": "full",
+    "waz_version": "0.1.2",
+    "requires_file": "package.json",
+    "requires_binary": "bun"
+  },
+  "commands": [
+    {
+      "command": "bun install",
+      "description": "Install dependencies (fast npm alternative)",
+      "group": "bun",
+      "verified": true,
+      "tokens": [
+        { "name": "package", "description": "Package to install", "required": false, "token_type": "String", "default": null, "values": null, "flag": null },
+        { "name": "dev", "description": "Save as dev dependency", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--dev" },
+        { "name": "global", "description": "Install globally", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "-g" },
+        { "name": "frozen-lockfile", "description": "Don't update lockfile", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--frozen-lockfile" }
+      ]
+    },
+    {
+      "command": "bun run",
+      "description": "Run a script or file",
+      "group": "bun",
+      "verified": true,
+      "tokens": [
+        { "name": "script", "description": "Script name or file to run", "required": true, "token_type": "Enum", "default": null, "values": [], "flag": null, "data_source": { "resolver": "npm:scripts" } }
+      ]
+    },
+    {
+      "command": "bun test",
+      "description": "Run tests with bun's built-in test runner",
+      "group": "bun",
+      "verified": true,
+      "tokens": [
+        { "name": "filter", "description": "Filter tests by name pattern", "required": false, "token_type": "String", "default": null, "values": null, "flag": null },
+        { "name": "timeout", "description": "Test timeout in ms", "required": false, "token_type": "Number", "default": null, "values": null, "flag": "--timeout" },
+        { "name": "watch", "description": "Watch for changes and re-run", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--watch" }
+      ]
+    },
+    {
+      "command": "bun build",
+      "description": "Bundle TypeScript/JavaScript",
+      "group": "bun",
+      "verified": true,
+      "tokens": [
+        { "name": "entrypoint", "description": "Entry file to bundle", "required": true, "token_type": "File", "default": null, "values": null, "flag": null },
+        { "name": "outdir", "description": "Output directory", "required": false, "token_type": "File", "default": null, "values": null, "flag": "--outdir" },
+        { "name": "minify", "description": "Minify output", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--minify" },
+        { "name": "target", "description": "Build target", "required": false, "token_type": "Enum", "default": null, "values": ["browser", "bun", "node"], "flag": "--target" }
+      ]
+    },
+    {
+      "command": "bun add",
+      "description": "Add a dependency",
+      "group": "bun",
+      "verified": true,
+      "tokens": [
+        { "name": "package", "description": "Package to add", "required": true, "token_type": "String", "default": null, "values": null, "flag": null },
+        { "name": "dev", "description": "Add as dev dependency", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--dev" },
+        { "name": "exact", "description": "Pin exact version", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--exact" }
+      ]
+    },
+    {
+      "command": "bun remove",
+      "description": "Remove a dependency",
+      "group": "bun",
+      "verified": true,
+      "tokens": [
+        { "name": "package", "description": "Package to remove", "required": true, "token_type": "String", "default": null, "values": null, "flag": null }
+      ]
+    },
+    {
+      "command": "bun create",
+      "description": "Create a new project from a template",
+      "group": "bun",
+      "verified": true,
+      "tokens": [
+        { "name": "template", "description": "Template name", "required": true, "token_type": "String", "default": null, "values": null, "flag": null },
+        { "name": "directory", "description": "Project directory", "required": false, "token_type": "File", "default": null, "values": null, "flag": null }
+      ]
+    },
+    {
+      "command": "bun init",
+      "description": "Initialize a new bun project",
+      "group": "bun",
+      "verified": true,
+      "tokens": [
+        { "name": "yes", "description": "Accept defaults", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "-y" }
+      ]
+    }
+  ]
+}
