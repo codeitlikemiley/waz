@@ -177,6 +177,10 @@ enum Commands {
         #[arg(long)]
         model: Option<String>,
 
+        /// Override the LLM provider (e.g. gemini, glm, qwen, minimax, openai, ollama).
+        #[arg(long)]
+        provider: Option<String>,
+
         /// Initialize curated schemas (copy built-in schemas to user config).
         #[arg(long)]
         init: bool,
@@ -443,7 +447,7 @@ fn main() {
             }
         }
 
-        Commands::Generate { tool, force, export, rollback, history, model, init, verify } => {
+        Commands::Generate { tool, force, export, rollback, history, model, provider, init, verify } => {
             // Handle --verify (launch verification TUI)
             if verify {
                 if let Err(e) = tui::verify::launch(&tool) {
@@ -521,7 +525,7 @@ fn main() {
             };
 
             let config = config::Config::load();
-            match generate::generate_schema(&config, &tool, model.as_deref()) {
+            match generate::generate_schema(&config, &tool, model.as_deref(), provider.as_deref()) {
                 Ok(commands) => {
                     eprintln!("\n🎉 Generated {} commands for '{}'", commands.len(), tool);
 

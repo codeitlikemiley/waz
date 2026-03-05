@@ -498,7 +498,7 @@ pub fn list_schemas() {
 /// 2. Sends to LLM with a structured prompt
 /// 3. Parses response into Vec<CommandEntry>
 /// 4. Saves to ~/.config/waz/schemas/<tool>.json as SchemaFile
-pub fn generate_schema(config: &Config, tool: &str, model_override: Option<&str>) -> Result<Vec<CommandEntry>, String> {
+pub fn generate_schema(config: &Config, tool: &str, model_override: Option<&str>, provider_override: Option<&str>) -> Result<Vec<CommandEntry>, String> {
     // Step 1: Check tool exists
     let which = Command::new("which").arg(tool).output();
     match which {
@@ -548,7 +548,7 @@ pub fn generate_schema(config: &Config, tool: &str, model_override: Option<&str>
     };
 
     let prompt = build_generate_prompt(tool, help_truncated);
-    let response = call_llm_for_schema(config, &prompt, model_override)?;
+    let response = call_llm_for_schema(config, &prompt, model_override, provider_override)?;
 
     // Step 4: Parse response
     let commands = parse_schema_response(tool, &response)?;
@@ -705,7 +705,7 @@ JSON:"#,
 }
 
 /// Call the LLM to generate schema JSON.
-fn call_llm_for_schema(config: &Config, prompt: &str, model_override: Option<&str>) -> Result<String, String> {
+fn call_llm_for_schema(config: &Config, prompt: &str, model_override: Option<&str>, provider_override: Option<&str>) -> Result<String, String> {
     let mut state = llm::load_rotation_state();
     let mut providers: Vec<crate::config::ProviderConfig> = llm::get_ordered_providers_pub(&config.llm)
         .into_iter().cloned().collect();
@@ -714,7 +714,15 @@ fn call_llm_for_schema(config: &Config, prompt: &str, model_override: Option<&st
         return Err("No LLM provider configured. Set GEMINI_API_KEY or configure ~/.config/waz/config.toml".to_string());
     }
 
-    // Apply model override to the first provider
+    // Filter to specific provider if requested
+    if let Some(prov) = provider_override {
+        providers.retain(|p| p.name.eq_ignore_ascii_case(prov));
+        if providers.is_empty() {
+            return Err(format!("Provider '{}' not configured. Add its API key or configure it in config.toml.", prov));
+        }
+    }
+
+    // Apply model override to the first (or selected) provider
     if let Some(model) = model_override {
         if let Some(p) = providers.first_mut() {
             p.model = model.to_string();
