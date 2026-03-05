@@ -633,7 +633,7 @@ pub fn generate_schema(config: &Config, tool: &str, model_override: Option<&str>
     help_texts.push(format!("=== {} --help ===\n{}", tool, main_help));
 
     // Extract subcommands from the main help and run --help on each
-    let subcommands: Vec<String> = extract_subcommands(&main_help)
+    let subcommands: Vec<String> = extract_subcommands(&main_help, tool)
         .into_iter()
         .filter(|s| s != tool) // Don't run `tool tool --help`
         .collect();
@@ -730,7 +730,8 @@ fn run_help(tool: &str, args: &[&str]) -> String {
 }
 
 /// Extract subcommand names from help text.
-fn extract_subcommands(help: &str) -> Vec<String> {
+/// Handles formats like `gemini mcp` (tool-prefixed) and `mcp` (bare subcommand).
+fn extract_subcommands(help: &str, tool: &str) -> Vec<String> {
     let mut subs = Vec::new();
     let mut in_commands = false;
 
@@ -757,17 +758,26 @@ fn extract_subcommands(help: &str) -> Vec<String> {
                 continue;
             }
 
-            // Extract first word as subcommand name
-            let first_word = trimmed.split_whitespace().next().unwrap_or("");
-            // Skip help, version, and meta entries
-            if !first_word.is_empty()
-                && first_word != "help"
-                && first_word != "version"
-                && !first_word.starts_with('-')
-                && !first_word.starts_with('[')
-                && first_word.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+            // Extract subcommand name, handling tool-prefixed formats
+            // e.g. "gemini mcp  — Manage MCP" → words are ["gemini", "mcp", ...]
+            let words: Vec<&str> = trimmed.split_whitespace().collect();
+            // If first word is the tool name, take the second word as subcommand
+            let sub_word = if words.first() == Some(&tool) && words.len() > 1 {
+                words[1]
+            } else {
+                words.first().copied().unwrap_or("")
+            };
+            // Skip help, version, meta entries, flags, and bracketed positional args
+            if !sub_word.is_empty()
+                && sub_word != tool
+                && sub_word != "help"
+                && sub_word != "version"
+                && !sub_word.starts_with('-')
+                && !sub_word.starts_with('[')
+                && !sub_word.starts_with('<')
+                && sub_word.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_')
             {
-                subs.push(first_word.to_string());
+                subs.push(sub_word.to_string());
             }
         }
     }
@@ -1486,7 +1496,7 @@ Commands:
 Options:
   --version     Show version
 "#;
-        let subs = extract_subcommands(help);
+        let subs = extract_subcommands(help, "brew");
         assert!(subs.contains(&"install".to_string()));
         assert!(subs.contains(&"search".to_string()));
         assert!(subs.contains(&"upgrade".to_string()));
