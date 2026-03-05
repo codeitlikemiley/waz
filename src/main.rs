@@ -6,6 +6,7 @@ pub mod hint;
 mod import;
 mod llm;
 mod predict;
+mod resolve;
 mod session;
 pub mod tui;
 
@@ -198,6 +199,25 @@ enum Commands {
     Schema {
         #[command(subcommand)]
         action: SchemaAction,
+    },
+
+    /// AI + TMP: resolve natural language to a grounded command using schemas.
+    Resolve {
+        /// Natural language query (e.g. "run the backend package").
+        #[arg(required = true)]
+        query: Vec<String>,
+
+        /// Working directory (for data source resolution).
+        #[arg(long, env = "PWD")]
+        cwd: String,
+
+        /// Limit resolution to a specific tool's schema.
+        #[arg(long)]
+        tool: Option<String>,
+
+        /// Output structured JSON (for AI agent consumption).
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -583,6 +603,35 @@ fn main() {
                             std::process::exit(1);
                         }
                     }
+                }
+            }
+        }
+
+        Commands::Resolve { query, cwd, tool, json } => {
+            let config = config::Config::load();
+            let query_str = query.join(" ");
+            let tool_ref = tool.as_deref();
+
+            match resolve::resolve(&config, &query_str, &cwd, tool_ref) {
+                Ok(result) => {
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&result).unwrap());
+                    } else {
+                        // Human-readable output
+                        eprintln!("🎯 {}", result.explanation);
+                        println!("{}", result.command);
+                        if !result.tokens_filled.is_empty() {
+                            eprintln!();
+                            for tf in &result.tokens_filled {
+                                eprintln!("   {} = {} ({})", tf.name, tf.value, tf.source);
+                            }
+                        }
+                        eprintln!("   confidence: {}", result.confidence);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("❌ {}", e);
+                    std::process::exit(1);
                 }
             }
         }
