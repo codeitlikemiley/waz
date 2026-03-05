@@ -633,7 +633,10 @@ pub fn generate_schema(config: &Config, tool: &str, model_override: Option<&str>
     help_texts.push(format!("=== {} --help ===\n{}", tool, main_help));
 
     // Extract subcommands from the main help and run --help on each
-    let subcommands = extract_subcommands(&main_help);
+    let subcommands: Vec<String> = extract_subcommands(&main_help)
+        .into_iter()
+        .filter(|s| s != tool) // Don't run `tool tool --help`
+        .collect();
     let max_subcommands = 20; // Cap to avoid excessive API calls
     for (i, sub) in subcommands.iter().take(max_subcommands).enumerate() {
         eprintln!("   Running: {} {} --help ({}/{})", tool, sub, i + 1, subcommands.len().min(max_subcommands));
@@ -779,41 +782,48 @@ fn build_generate_prompt(tool: &str, help_text: &str) -> String {
 
 Each entry must have this exact format:
 {{
-  "command": "{} <subcommand>",
+  "command": "{} subcommand",
   "description": "Short description",
   "group": "{}",
   "tokens": [
     {{
       "name": "param_name",
       "description": "Short description",
-      "required": true/false,
-      "token_type": "String" or "Boolean" or "Enum" or "File" or "Number",
-      "default": null or "default_value",
-      "values": null or ["option1", "option2"],
-      "flag": "--flag-name" or null,
+      "required": true,
+      "token_type": "String",
+      "default": null,
+      "values": null,
+      "flag": "--flag-name",
       "data_source": null
     }}
   ]
 }}
 
-Rules:
-- Include 5-15 of the MOST COMMONLY USED subcommands (not all)
-- For each subcommand, include 1-4 of the most important flags/options
-- Use token_type "Boolean" for flags like --verbose, --force
-- Use token_type "Enum" when there are known choices
-- Use token_type "File" for file/path arguments
+CRITICAL RULES:
+- The "command" field must be ONLY the binary name and subcommand, e.g. "{} install" or "{}"
+  NEVER put positional args, brackets, or angle brackets in the command field.
+  Positional arguments go in the tokens array with "flag": null.
+- Include the most commonly used subcommands
+- For the BASE command (no subcommand), create an entry with command: "{}"
+  and include ALL its options as tokens
+- For each subcommand, include ALL flags and options shown in the help output
+- "default" must ALWAYS be either null or a string like "false", "0", never a bare boolean or number
+- "flag" must be either a string like "--verbose" or null (for positional args), never false
+- "values" must be either null or a string array like ["option1", "option2"]
+- Use token_type "Boolean" for flags that are on/off switches
+- Use token_type "Enum" when there are specific allowed values (put them in "values")
+- Use token_type "File" for file/directory/path arguments
 - Use token_type "Number" for numeric values
 - Set "flag" to the CLI flag (e.g. "--verbose", "-n")
 - Set "flag" to null for positional arguments
-- For data_source: if the values can be dynamically resolved (e.g. installed packages),
-  set it to {{"command": "shell command to list values", "parse": "lines"}}
-- Output ONLY the JSON array, no markdown, no explanation
+- Do NOT make flags into separate commands. "--resume" is a flag, not a subcommand.
+- Output ONLY the JSON array, no markdown, no explanation, no code fences
 
 Help output:
 {}
 
 JSON:"#,
-        tool, tool, tool, help_text
+        tool, tool, tool, tool, tool, tool, help_text
     )
 }
 
@@ -948,6 +958,63 @@ fn call_openai_long(
         .map(|s| s.trim().to_string())
 }
 
+/// Normalize LLM JSON output to fix common type errors.
+/// LLMs frequently output `"default": false` instead of `"default": null`,
+/// `"flag": false` instead of `"flag": null`, and positional args in command names.
+fn normalize_llm_json(json_str: &str) -> String {
+    // Parse as serde_json::Value, fix types, serialize back
+    let Ok(mut val) = serde_json::from_str::<serde_json::Value>(json_str) else {
+        return json_str.to_string();
+    };
+    
+    if let Some(arr) = val.as_array_mut() {
+        for cmd in arr.iter_mut() {
+            // Clean command name: remove [brackets] and <angle brackets>
+            if let Some(command) = cmd.get("command").and_then(|v| v.as_str()).map(|s| s.to_string()) {
+                // Remove bracketed/angle-bracketed positional args from command name
+                let clean: String = command
+                    .split_whitespace()
+                    .filter(|part| !part.starts_with('[') && !part.starts_with('<') && !part.starts_with("--"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                if !clean.is_empty() {
+                    cmd["command"] = serde_json::Value::String(clean);
+                }
+            }
+            
+            // Fix token types
+            if let Some(tokens) = cmd.get_mut("tokens").and_then(|t| t.as_array_mut()) {
+                for token in tokens.iter_mut() {
+                    // Fix "default": false/true/number → "default": "false"/"true"/"123"
+                    if let Some(default) = token.get("default") {
+                        match default {
+                            serde_json::Value::Bool(b) => {
+                                token["default"] = serde_json::Value::String(b.to_string());
+                            }
+                            serde_json::Value::Number(n) => {
+                                token["default"] = serde_json::Value::String(n.to_string());
+                            }
+                            _ => {}
+                        }
+                    }
+                    
+                    // Fix "flag": false/true → "flag": null
+                    if let Some(flag) = token.get("flag") {
+                        match flag {
+                            serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {
+                                token["flag"] = serde_json::Value::Null;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    serde_json::to_string(&val).unwrap_or_else(|_| json_str.to_string())
+}
+
 /// Parse the LLM response into Vec<CommandEntry>.
 fn parse_schema_response(tool: &str, response: &str) -> Result<Vec<CommandEntry>, String> {
     // Strip markdown code fences if present
@@ -968,8 +1035,11 @@ fn parse_schema_response(tool: &str, response: &str) -> Result<Vec<CommandEntry>
         trimmed
     };
 
+    // Normalize LLM JSON output to fix common type errors
+    let json_str = &normalize_llm_json(json_str);
+
     let commands: Vec<CommandEntry> = serde_json::from_str(json_str)
-        .map_err(|e| format!("Failed to parse AI response as JSON: {}\n\nRaw response:\n{}", e, &response[..response.len().min(500)]))?;
+        .map_err(|e| format!("Failed to parse AI response as JSON: {}\n\nRaw response:\n{}", e, &json_str[..json_str.len().min(500)]))?;
 
     if commands.is_empty() {
         return Err(format!("AI generated 0 commands for '{}'", tool));
