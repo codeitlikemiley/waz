@@ -280,42 +280,44 @@ impl App {
     }
 
     /// Build the final command string from selected command + token values.
-    pub fn build_command(&self) -> Option<String> {
-        let idx = self.selected_command?;
-        let cmd = &self.command_list[idx];
-        let mut parts = vec![cmd.command.clone()];
+pub fn build_command(&self) -> Option<String> {
+    let idx = self.selected_command?;
+    let cmd = &self.command_list[idx];
+    let mut parts = vec![cmd.command.clone()];
+    let mut positional_args: Vec<String> = Vec::new();
 
-        for (i, token) in cmd.tokens.iter().enumerate() {
-            let value = self.token_values.get(i).cloned().unwrap_or_default();
-            if value.is_empty() {
-                continue;
-            }
-            match token.token_type {
-                TokenType::Boolean => {
-                    if value == "true" || value == "yes" {
-                        if let Some(ref f) = token.flag {
-                            parts.push(f.clone());
-                        } else {
-                            parts.push(format!("--{}", token.name));
-                        }
-                    }
-                }
-                TokenType::Enum | TokenType::String | TokenType::File | TokenType::Number => {
+    for (i, token) in cmd.tokens.iter().enumerate() {
+        let value = self.token_values.get(i).cloned().unwrap_or_default();
+        if value.is_empty() {
+            continue;
+        }
+        match token.token_type {
+            TokenType::Boolean => {
+                if value == "true" || value == "yes" {
                     if let Some(ref f) = token.flag {
                         parts.push(f.clone());
-                    } else if token.name.len() == 1 {
-                        parts.push(format!("-{}", token.name));
-                    } else {
-                        parts.push(format!("--{}", token.name));
                     }
+                    // No flag = positional boolean (skip, not meaningful)
+                }
+            }
+            TokenType::Enum | TokenType::String | TokenType::File | TokenType::Number => {
+                if let Some(ref f) = token.flag {
+                    // Flagged argument: --flag value
+                    parts.push(f.clone());
                     parts.push(value);
+                } else {
+                    // Positional argument: just the value (no flag prefix)
+                    positional_args.push(value);
                 }
             }
         }
-
-        Some(parts.join(" "))
     }
 
+    // Positional args go at the end (after all flags)
+    parts.extend(positional_args);
+
+    Some(parts.join(" "))
+}
     pub fn move_up(&mut self) {
         if self.editing_tokens {
             if self.active_token > 0 {
