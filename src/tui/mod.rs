@@ -394,43 +394,79 @@ fn handle_enter(app: &mut App) {
                     .and_then(|db| db.get_recent_by_cwd(&app.cwd, None, 10).ok())
                     .unwrap_or_default();
 
-                // Call the LLM
-                let result = crate::ask::ask_structured(
+                // Try TMP resolve first (grounded in schemas + real data sources)
+                let resolve_result = crate::resolve::resolve(
                     &app.config,
                     &query,
                     &app.cwd,
-                    &recent,
+                    None, // no tool filter — let it search all schemas
                 );
 
-                app.ai_loading = false;
+                let used_resolve = if let Ok(ref res) = resolve_result {
+                    res.confidence == "high" || res.confidence == "medium"
+                } else {
+                    false
+                };
 
-                match result {
-                    Some(resp) => {
-                        // Store explanation
-                        app.ai_messages.push(app::AiMessage {
-                            role: "assistant".to_string(),
-                            content: resp.explanation,
-                        });
+                if used_resolve {
+                    let res = resolve_result.unwrap();
+                    app.ai_loading = false;
 
-                        // Store commands for selection
-                        app.ai_commands = resp.commands.into_iter().map(|c| {
-                            app::AiCommand {
-                                cmd: c.cmd,
-                                desc: c.desc,
-                                placeholders: c.placeholders,
+                    app.ai_messages.push(app::AiMessage {
+                        role: "assistant".to_string(),
+                        content: format!("[TMP] {}", res.explanation),
+                    });
+
+                    app.ai_commands = vec![app::AiCommand {
+                        cmd: res.command,
+                        desc: res.tokens_filled.iter()
+                            .map(|t| format!("{} = {}", t.name, t.value))
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                        placeholders: vec![],
+                    }];
+
+                    app.ai_selecting = true;
+                    app.ai_selected_cmd = 0;
+                } else {
+                    // Fallback: pure AI mode (no schema match)
+                    let result = crate::ask::ask_structured(
+                        &app.config,
+                        &query,
+                        &app.cwd,
+                        &recent,
+                    );
+
+                    app.ai_loading = false;
+
+                    match result {
+                        Some(resp) => {
+                            // Store explanation
+                            app.ai_messages.push(app::AiMessage {
+                                role: "assistant".to_string(),
+                                content: resp.explanation,
+                            });
+
+                            // Store commands for selection
+                            app.ai_commands = resp.commands.into_iter().map(|c| {
+                                app::AiCommand {
+                                    cmd: c.cmd,
+                                    desc: c.desc,
+                                    placeholders: c.placeholders,
+                                }
+                            }).collect();
+
+                            if !app.ai_commands.is_empty() {
+                                app.ai_selecting = true;
+                                app.ai_selected_cmd = 0;
                             }
-                        }).collect();
-
-                        if !app.ai_commands.is_empty() {
-                            app.ai_selecting = true;
-                            app.ai_selected_cmd = 0;
                         }
-                    }
-                    None => {
-                        app.ai_messages.push(app::AiMessage {
-                            role: "assistant".to_string(),
-                            content: "No response from AI. Check your API keys.".to_string(),
-                        });
+                        None => {
+                            app.ai_messages.push(app::AiMessage {
+                                role: "assistant".to_string(),
+                                content: "Sorry, I couldn't process that. Check your API key.".to_string(),
+                            });
+                        }
                     }
                 }
             }
