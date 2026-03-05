@@ -160,6 +160,14 @@ enum Commands {
         /// Force regeneration even if schema exists.
         #[arg(long)]
         force: bool,
+
+        /// Export built-in schema (cargo/git/npm) to JSON baseline.
+        #[arg(long)]
+        export: bool,
+
+        /// Rollback to previous schema version (.bak file).
+        #[arg(long)]
+        rollback: bool,
     },
 }
 
@@ -168,6 +176,7 @@ fn get_db_path() -> PathBuf {
         .unwrap_or_else(|| dirs::home_dir().unwrap().join(".local").join("share"));
     data_dir.join("waz").join("history.db")
 }
+
 
 fn main() {
     let cli = Cli::parse();
@@ -394,21 +403,68 @@ fn main() {
             }
         }
 
-        Commands::Generate { tool, force } => {
+        Commands::Generate { tool, force, export, rollback } => {
+            // Handle --rollback
+            if rollback {
+                match generate::rollback_schema(&tool) {
+                    Ok(()) => eprintln!("✅ Rolled back '{}' to previous version.", tool),
+                    Err(e) => {
+                        eprintln!("❌ Rollback failed: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+                return;
+            }
+
+            // Handle --export (dump built-in schemas to JSON)
+            if export {
+                let cwd = std::env::current_dir()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                match generate::export_builtin_schema(&tool, &cwd) {
+                    Ok(path) => eprintln!("✅ Exported '{}' schema to {}", tool, path.display()),
+                    Err(e) => {
+                        eprintln!("❌ Export failed: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+                return;
+            }
+
+            // Normal generate flow
             if !force && generate::schema_exists(&tool) {
                 eprintln!("Schema for '{}' already exists at {:?}", tool,
                     generate::schemas_dir().join(format!("{}.json", tool)));
-                eprintln!("Use --force to regenerate.");
+                eprintln!("Use --force to regenerate, or --rollback to restore previous.");
                 std::process::exit(0);
             }
+
+            // Backup existing schema before --force overwrite
+            let had_backup = if force && generate::schema_exists(&tool) {
+                generate::backup_schema(&tool).is_ok()
+            } else {
+                false
+            };
 
             let config = config::Config::load();
             match generate::generate_schema(&config, &tool) {
                 Ok(commands) => {
                     eprintln!("\n🎉 Generated {} commands for '{}'", commands.len(), tool);
+
+                    // Show diff if we had a backup
+                    if had_backup {
+                        generate::show_schema_diff(&tool);
+                    }
                 }
                 Err(e) => {
                     eprintln!("❌ Failed to generate schema: {}", e);
+                    // Restore backup if generation failed
+                    if had_backup {
+                        if generate::rollback_schema(&tool).is_ok() {
+                            eprintln!("↩️  Restored previous schema from backup.");
+                        }
+                    }
                     std::process::exit(1);
                 }
             }

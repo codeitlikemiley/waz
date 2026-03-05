@@ -414,6 +414,308 @@ fn parse_schema_response(tool: &str, response: &str) -> Result<Vec<CommandEntry>
     Ok(commands)
 }
 
+// ──────────────────────────── Backup / Rollback / Diff ────────────────────────────
+
+/// Backup current schema to <tool>.json.bak
+pub fn backup_schema(tool: &str) -> Result<(), String> {
+    let source = schemas_dir().join(format!("{}.json", tool));
+    let backup = schemas_dir().join(format!("{}.json.bak", tool));
+
+    if !source.exists() {
+        return Err(format!("No schema found for '{}'", tool));
+    }
+
+    std::fs::copy(&source, &backup)
+        .map_err(|e| format!("Failed to backup: {}", e))?;
+
+    eprintln!("📦 Backed up to {}", backup.display());
+    Ok(())
+}
+
+/// Restore schema from <tool>.json.bak
+pub fn rollback_schema(tool: &str) -> Result<(), String> {
+    let backup = schemas_dir().join(format!("{}.json.bak", tool));
+    let target = schemas_dir().join(format!("{}.json", tool));
+
+    if !backup.exists() {
+        return Err(format!("No backup found for '{}' (expected {})", tool, backup.display()));
+    }
+
+    std::fs::copy(&backup, &target)
+        .map_err(|e| format!("Failed to rollback: {}", e))?;
+
+    Ok(())
+}
+
+/// Show diff between current schema and backup.
+pub fn show_schema_diff(tool: &str) {
+    let current_path = schemas_dir().join(format!("{}.json", tool));
+    let backup_path = schemas_dir().join(format!("{}.json.bak", tool));
+
+    let current = match std::fs::read_to_string(&current_path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let backup = match std::fs::read_to_string(&backup_path) {
+        Ok(b) => b,
+        Err(_) => return,
+    };
+
+    if current == backup {
+        eprintln!("\n✅ Schema is identical to previous version.");
+        return;
+    }
+
+    // Parse both to compare at command level
+    let old_cmds: Vec<CommandEntry> = serde_json::from_str(&backup).unwrap_or_default();
+    let new_cmds: Vec<CommandEntry> = serde_json::from_str(&current).unwrap_or_default();
+
+    let old_names: std::collections::HashSet<String> =
+        old_cmds.iter().map(|c| c.command.clone()).collect();
+    let new_names: std::collections::HashSet<String> =
+        new_cmds.iter().map(|c| c.command.clone()).collect();
+
+    eprintln!("\n📊 Schema diff for '{}' (old: {} cmds → new: {} cmds):", tool, old_cmds.len(), new_cmds.len());
+    eprintln!("─────────────────────────────────────────");
+
+    // Added commands
+    let added: Vec<&String> = new_names.difference(&old_names).collect();
+    if !added.is_empty() {
+        for cmd in &added {
+            eprintln!("  \x1b[32m+ {}\x1b[0m", cmd); // green
+        }
+    }
+
+    // Removed commands
+    let removed: Vec<&String> = old_names.difference(&new_names).collect();
+    if !removed.is_empty() {
+        for cmd in &removed {
+            eprintln!("  \x1b[31m- {}\x1b[0m", cmd); // red
+        }
+    }
+
+    // Changed commands (same name, different tokens)
+    let common: Vec<&String> = new_names.intersection(&old_names).collect();
+    for cmd_name in &common {
+        let old_cmd = old_cmds.iter().find(|c| &c.command == *cmd_name).unwrap();
+        let new_cmd = new_cmds.iter().find(|c| &c.command == *cmd_name).unwrap();
+
+        let old_token_names: Vec<&str> = old_cmd.tokens.iter().map(|t| t.name.as_str()).collect();
+        let new_token_names: Vec<&str> = new_cmd.tokens.iter().map(|t| t.name.as_str()).collect();
+
+        if old_token_names != new_token_names || old_cmd.description != new_cmd.description {
+            eprintln!("  \x1b[33m~ {}\x1b[0m", cmd_name); // yellow
+            // Token changes
+            let old_set: std::collections::HashSet<&str> = old_token_names.iter().copied().collect();
+            let new_set: std::collections::HashSet<&str> = new_token_names.iter().copied().collect();
+            for tok in new_set.difference(&old_set) {
+                eprintln!("    \x1b[32m+ token: {}\x1b[0m", tok);
+            }
+            for tok in old_set.difference(&new_set) {
+                eprintln!("    \x1b[31m- token: {}\x1b[0m", tok);
+            }
+        }
+    }
+
+    if added.is_empty() && removed.is_empty() {
+        // Only token-level changes
+        let mut any_changed = false;
+        for cmd_name in &common {
+            let old_cmd = old_cmds.iter().find(|c| &c.command == *cmd_name).unwrap();
+            let new_cmd = new_cmds.iter().find(|c| &c.command == *cmd_name).unwrap();
+            let old_json = serde_json::to_string(&old_cmd).unwrap_or_default();
+            let new_json = serde_json::to_string(&new_cmd).unwrap_or_default();
+            if old_json != new_json {
+                any_changed = true;
+                break;
+            }
+        }
+        if !any_changed {
+            eprintln!("  (no structural changes)");
+        }
+    }
+
+    eprintln!("─────────────────────────────────────────");
+    eprintln!("  Use --rollback to restore the previous version.");
+}
+
+// ──────────────────────────── Export Built-in Schemas ────────────────────────────
+
+/// Export a built-in schema (cargo/git/npm) to JSON file.
+pub fn export_builtin_schema(tool: &str, cwd: &str) -> Result<PathBuf, String> {
+    use crate::tui::app::{CommandEntry, TokenDef, TokenType};
+
+    let commands: Vec<CommandEntry> = match tool {
+        "cargo" => {
+            let cargo_path = std::path::Path::new(cwd).join("Cargo.toml");
+            if !cargo_path.exists() {
+                return Err("No Cargo.toml found in current directory. Run from a Cargo project.".to_string());
+            }
+            let ctx = crate::tui::cargo_schema::CargoContext::detect(std::path::Path::new(cwd));
+            crate::tui::cargo_schema::build_cargo_commands(&ctx)
+        }
+        "git" => {
+            // Build git commands programmatically (mirror of load_git_commands)
+            let branches: Vec<String> = Command::new("git")
+                .args(["branch", "--format=%(refname:short)"])
+                .current_dir(cwd)
+                .output()
+                .ok()
+                .map(|out| {
+                    String::from_utf8_lossy(&out.stdout)
+                        .lines()
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            vec![
+                CommandEntry {
+                    command: "git status".to_string(),
+                    description: "Show working tree status".to_string(),
+                    group: "git".to_string(),
+                    tokens: vec![],
+                },
+                CommandEntry {
+                    command: "git add".to_string(),
+                    description: "Stage files for commit".to_string(),
+                    group: "git".to_string(),
+                    tokens: vec![TokenDef {
+                        name: "path".to_string(),
+                        description: "File or directory to stage".to_string(),
+                        required: true,
+                        token_type: TokenType::File,
+                        default: Some(".".to_string()),
+                        values: None,
+                        flag: None,
+                        data_source: None,
+                    }],
+                },
+                CommandEntry {
+                    command: "git commit".to_string(),
+                    description: "Record changes to the repository".to_string(),
+                    group: "git".to_string(),
+                    tokens: vec![TokenDef {
+                        name: "m".to_string(),
+                        description: "Commit message".to_string(),
+                        required: true,
+                        token_type: TokenType::String,
+                        default: None,
+                        values: None,
+                        flag: None,
+                        data_source: None,
+                    }],
+                },
+                CommandEntry {
+                    command: "git checkout".to_string(),
+                    description: "Switch branches".to_string(),
+                    group: "git".to_string(),
+                    tokens: vec![TokenDef {
+                        name: "branch".to_string(),
+                        description: "Branch to switch to".to_string(),
+                        required: true,
+                        token_type: if branches.is_empty() { TokenType::String } else { TokenType::Enum },
+                        default: None,
+                        values: if branches.is_empty() { None } else { Some(branches.clone()) },
+                        flag: None,
+                        data_source: None,
+                    }],
+                },
+                CommandEntry {
+                    command: "git push".to_string(),
+                    description: "Push to remote".to_string(),
+                    group: "git".to_string(),
+                    tokens: vec![],
+                },
+                CommandEntry {
+                    command: "git pull".to_string(),
+                    description: "Pull from remote".to_string(),
+                    group: "git".to_string(),
+                    tokens: vec![],
+                },
+                CommandEntry {
+                    command: "git log".to_string(),
+                    description: "Show commit logs".to_string(),
+                    group: "git".to_string(),
+                    tokens: vec![
+                        TokenDef {
+                            name: "n".to_string(),
+                            description: "Number of commits to show".to_string(),
+                            required: false,
+                            token_type: TokenType::Number,
+                            default: Some("10".to_string()),
+                            values: None,
+                            flag: None,
+                            data_source: None,
+                        },
+                        TokenDef {
+                            name: "oneline".to_string(),
+                            description: "Show in one-line format".to_string(),
+                            required: false,
+                            token_type: TokenType::Boolean,
+                            default: Some("true".to_string()),
+                            values: None,
+                            flag: None,
+                            data_source: None,
+                        },
+                    ],
+                },
+            ]
+        }
+        "npm" => {
+            let pkg_path = std::path::Path::new(cwd).join("package.json");
+            let scripts: Vec<String> = if let Ok(content) = std::fs::read_to_string(&pkg_path) {
+                serde_json::from_str::<serde_json::Value>(&content).ok()
+                    .and_then(|v| v.get("scripts")?.as_object().map(|obj| {
+                        obj.keys().cloned().collect()
+                    }))
+                    .unwrap_or_default()
+            } else {
+                vec![]
+            };
+
+            let mut commands = vec![
+                CommandEntry {
+                    command: "npm install".to_string(),
+                    description: "Install dependencies".to_string(),
+                    group: "npm".to_string(),
+                    tokens: vec![],
+                },
+            ];
+
+            if !scripts.is_empty() {
+                commands.push(CommandEntry {
+                    command: "npm run".to_string(),
+                    description: "Run a script".to_string(),
+                    group: "npm".to_string(),
+                    tokens: vec![TokenDef {
+                        name: "script".to_string(),
+                        description: "Script to run".to_string(),
+                        required: true,
+                        token_type: TokenType::Enum,
+                        default: None,
+                        values: Some(scripts),
+                        flag: None,
+                        data_source: None,
+                    }],
+                });
+            }
+
+            commands
+        }
+        _ => return Err(format!("'{}' is not a built-in schema. Built-in schemas: cargo, git, npm", tool)),
+    };
+
+    let schema_path = schemas_dir().join(format!("{}.json", tool));
+    let json = serde_json::to_string_pretty(&commands)
+        .map_err(|e| format!("Failed to serialize: {}", e))?;
+    std::fs::write(&schema_path, &json)
+        .map_err(|e| format!("Failed to write: {}", e))?;
+
+    Ok(schema_path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
