@@ -319,6 +319,179 @@ fn npm_resolve_scripts(cwd: &str) -> Option<Vec<String>> {
     if names.is_empty() { None } else { Some(names) }
 }
 
+// ──────────────────────────── Schema Sharing ────────────────────────────
+
+/// Export a schema as a clean shareable file.
+/// Strips runtime-resolved values (token.values populated by resolvers),
+/// keeping data_source definitions so importers can resolve them locally.
+pub fn share_schema(tool: &str) -> Result<std::path::PathBuf, String> {
+    let src = schemas_dir().join(format!("{}.json", tool));
+    if !src.exists() {
+        return Err(format!("No schema found for '{}'. Generate one first.", tool));
+    }
+
+    let content = std::fs::read_to_string(&src)
+        .map_err(|e| format!("Read: {}", e))?;
+
+    // Try SchemaFile format
+    let mut schema: SchemaFile = serde_json::from_str(&content)
+        .map_err(|e| format!("Parse: {}", e))?;
+
+    // Strip runtime-resolved values (keep data_source definitions)
+    for cmd in &mut schema.commands {
+        for tok in &mut cmd.tokens {
+            if tok.data_source.is_some() {
+                // Clear values that were populated at load time by resolvers
+                tok.values = None;
+            }
+        }
+    }
+
+    // Write to CWD for easy sharing
+    let filename = format!("{}-schema-v{}.json", tool, schema.meta.version);
+    let dest = std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join(&filename);
+
+    let json = serde_json::to_string_pretty(&schema)
+        .map_err(|e| format!("Serialize: {}", e))?;
+    std::fs::write(&dest, &json)
+        .map_err(|e| format!("Write: {}", e))?;
+
+    Ok(dest)
+}
+
+/// Import a schema from a local path or URL.
+pub fn import_schema(source: &str) -> Result<String, String> {
+    let content = if source.starts_with("http://") || source.starts_with("https://") {
+        // Download from URL
+        download_schema(source)?
+    } else {
+        // Read from local file
+        std::fs::read_to_string(source)
+            .map_err(|e| format!("Failed to read '{}': {}", source, e))?
+    };
+
+    // Parse and validate
+    let schema: SchemaFile = serde_json::from_str(&content)
+        .map_err(|e| format!("Invalid schema format: {}", e))?;
+
+    let tool = schema.meta.tool.clone();
+    if tool.is_empty() {
+        return Err("Schema has no tool name in meta.tool".to_string());
+    }
+
+    // Version-save existing schema before overwrite
+    if schema_exists(&tool) {
+        if let Ok(v) = version_save(&tool) {
+            eprintln!("  📦 Backed up existing schema as v{}", v);
+        }
+    }
+
+    // Save to schemas dir
+    let dest = schemas_dir().join(format!("{}.json", tool));
+    std::fs::write(&dest, &content)
+        .map_err(|e| format!("Write: {}", e))?;
+
+    Ok(tool)
+}
+
+/// Download schema content from a URL.
+fn download_schema(url: &str) -> Result<String, String> {
+    // Use curl since it's universally available
+    let output = Command::new("curl")
+        .args(["-fsSL", "--max-time", "10", url])
+        .output()
+        .map_err(|e| format!("curl failed: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Download failed: {}", stderr.trim()));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// List all installed schemas with their status.
+pub fn list_schemas() {
+    let dir = schemas_dir();
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(e) => e,
+        Err(_) => {
+            eprintln!("No schemas directory found at {}", dir.display());
+            return;
+        }
+    };
+
+    let mut schemas: Vec<(String, SchemaFile)> = Vec::new();
+    let mut legacy_count = 0;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        if let Ok(sf) = serde_json::from_str::<SchemaFile>(&content) {
+            schemas.push((path.file_stem().unwrap().to_string_lossy().to_string(), sf));
+        } else if serde_json::from_str::<Vec<CommandEntry>>(&content).is_ok() {
+            legacy_count += 1;
+        }
+    }
+
+    if schemas.is_empty() && legacy_count == 0 {
+        eprintln!("No schemas installed. Run `waz generate <tool> --init` to install curated schemas.");
+        return;
+    }
+
+    // Sort by tool name
+    schemas.sort_by(|a, b| a.0.cmp(&b.0));
+
+    // Print header
+    eprintln!("{:<12} {:<6} {:<10} {:<8} {:<6} {:<10}",
+        "Tool", "Ver", "Status", "Cmds", "Source", "Coverage");
+    eprintln!("{}", "─".repeat(56));
+
+    for (name, sf) in &schemas {
+        let verified_count = sf.commands.iter().filter(|c| c.verified).count();
+        let total = sf.commands.len();
+        let status = if sf.meta.verified {
+            "✅ verified"
+        } else if verified_count > 0 {
+            "🔍 partial"
+        } else {
+            "○  pending"
+        };
+
+        let source = match sf.meta.generated_by.as_str() {
+            "human" => "curated",
+            "ai" => "ai-gen",
+            "hybrid" => "hybrid",
+            _ => &sf.meta.generated_by,
+        };
+
+        eprintln!("{:<12} v{:<4} {:<10} {:<8} {:<6} {}",
+            name,
+            sf.meta.version,
+            status,
+            format!("{}/{}", verified_count, total),
+            source,
+            sf.meta.coverage,
+        );
+    }
+
+    if legacy_count > 0 {
+        eprintln!("\n  + {} legacy schema(s) (pre-SchemaFile format)", legacy_count);
+    }
+
+    eprintln!("\n📁 {}", dir.display());
+}
+
 /// Generate a TMP schema for a CLI tool using AI.
 ///
 /// 1. Runs `<tool> --help` and subcommand help recursively

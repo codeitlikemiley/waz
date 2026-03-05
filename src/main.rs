@@ -185,6 +185,30 @@ enum Commands {
         #[arg(long)]
         verify: bool,
     },
+
+    /// Manage TMP schemas (list, share, import).
+    Schema {
+        #[command(subcommand)]
+        action: SchemaAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum SchemaAction {
+    /// List all installed schemas with version/status.
+    List,
+
+    /// Export a schema as a shareable file (written to CWD).
+    Share {
+        /// Tool name to export (e.g. cargo, git, brew).
+        tool: String,
+    },
+
+    /// Import a schema from a local file or URL.
+    Import {
+        /// Path to .json file or URL (https://).
+        source: String,
+    },
 }
 
 fn get_db_path() -> PathBuf {
@@ -515,6 +539,35 @@ fn main() {
                         }
                     }
                     std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::Schema { action } => {
+            match action {
+                SchemaAction::List => {
+                    generate::list_schemas();
+                }
+                SchemaAction::Share { tool } => {
+                    match generate::share_schema(&tool) {
+                        Ok(path) => eprintln!("✅ Exported shareable schema to {}", path.display()),
+                        Err(e) => {
+                            eprintln!("❌ Share failed: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                SchemaAction::Import { source } => {
+                    match generate::import_schema(&source) {
+                        Ok(tool) => {
+                            eprintln!("✅ Imported schema for '{}'", tool);
+                            eprintln!("   Run `waz generate {} --verify` to review.", tool);
+                        }
+                        Err(e) => {
+                            eprintln!("❌ Import failed: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
                 }
             }
         }
