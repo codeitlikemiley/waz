@@ -191,6 +191,11 @@ fn resolve_data_sources(entry: &mut CommandEntry, cwd: &str) {
     }
 }
 
+/// Public wrapper for verification TUI to test data sources.
+pub fn resolve_data_sources_pub(entry: &mut CommandEntry, cwd: &str) {
+    resolve_data_sources(entry, cwd);
+}
+
 /// Run a shell command and parse its output into values.
 fn run_data_source_command(cmd: &str, parse: &str) -> Option<Vec<String>> {
     let output = Command::new("sh").args(["-c", cmd]).output().ok()?;

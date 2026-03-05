@@ -1,6 +1,7 @@
 pub mod app;
 pub mod cargo_schema;
 pub mod ui;
+pub mod verify;
 
 use std::io;
 

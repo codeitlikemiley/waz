@@ -180,6 +180,10 @@ enum Commands {
         /// Initialize curated schemas (copy built-in schemas to user config).
         #[arg(long)]
         init: bool,
+
+        /// Launch verification TUI to review and approve schema commands.
+        #[arg(long)]
+        verify: bool,
     },
 }
 
@@ -415,7 +419,16 @@ fn main() {
             }
         }
 
-        Commands::Generate { tool, force, export, rollback, history, model, init } => {
+        Commands::Generate { tool, force, export, rollback, history, model, init, verify } => {
+            // Handle --verify (launch verification TUI)
+            if verify {
+                if let Err(e) = tui::verify::launch(&tool) {
+                    eprintln!("❌ Verification failed: {}", e);
+                    std::process::exit(1);
+                }
+                return;
+            }
+
             // Handle --init (copy curated schemas to user config)
             if init {
                 match generate::init_schemas() {
