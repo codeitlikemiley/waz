@@ -94,6 +94,9 @@ pub struct SchemaMeta {
     /// Requires a binary on PATH (e.g. "git", "bun")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requires_binary: Option<String>,
+    /// Custom keywords for AI query matching (e.g. ["postgres", "postgresql", "database", "db"])
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keywords: Vec<String>,
 }
 
 fn default_generated_by() -> String { "ai".to_string() }

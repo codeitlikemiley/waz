@@ -102,6 +102,8 @@ waz generate brew --history                # Show schema version history
 waz schema list                            # List all installed schemas
 waz schema share cargo                     # Export shareable schema
 waz schema import ./brew-schema.json       # Install shared schema
+waz schema keywords psql postgres database # Set custom AI trigger keywords
+waz resolve "run the backend" --tool cargo # AI + TMP grounded command
 waz session-id                             # Generate a new session ID
 ```
 
@@ -203,9 +205,32 @@ Just start typing a question — waz auto-detects natural language:
 ```
 how to create a new database in psql
 find large files over 100mb
+run my rust app
 ```
 
 The AI responds with an explanation and **numbered command suggestions**.
+
+#### Smart TMP Integration
+
+AI mode automatically uses **TMP schemas for grounded results** when it detects a relevant tool:
+
+| Detection Method | Priority | Example |
+|-----------------|----------|--------|
+| **Query keywords** | Highest | "list psql tables" → uses psql schema |
+| **Custom keywords** | High | "show database tables" → psql (if "database" is a keyword) |
+| **CWD project files** | Medium | Cargo.toml present → uses cargo schema |
+| **General AI** | Fallback | "what is rust?" → plain AI answer |
+
+When TMP is used, results show a `[TMP]` tag and commands are grounded in real data (actual package names, branches, etc.).
+
+```
+🔮 waz:
+  [TMP] Runs the 'waz' binary from the current workspace.
+
+Commands:
+▸ [1] cargo run --bin waz
+       bin = waz (from Cargo.toml)
+```
 
 #### Selecting Commands
 
@@ -307,14 +332,34 @@ Opens a **two-pane TUI** for human-in-the-loop review:
 
 ### Schema Management
 
-List, share, and import schemas:
+List, share, import, and configure schemas:
 
 ```bash
 waz schema list                      # Show all installed schemas
 waz schema share cargo               # Export portable .json to CWD
 waz schema import ./brew-schema.json  # Install from file
 waz schema import https://example.com/schema.json  # Install from URL
+waz schema keywords psql             # Show current keywords for psql
+waz schema keywords psql postgres postgresql database db  # Set keywords
 ```
+
+### Schema Keywords
+
+Keywords tell AI mode which schema to use when you mention certain words in your query:
+
+```bash
+waz schema keywords psql postgres postgresql database db tables
+waz schema keywords cargo rust crate package
+waz schema keywords brew homebrew formula
+```
+
+**How matching works:**
+1. **Exact tool name** — "install with brew" → brew schema (always works)
+2. **Custom keywords** — "show database tables" → psql schema (if "database" is a keyword)
+3. **Built-in aliases** — "install with homebrew" → brew (hardcoded alias)
+4. **CWD project files** — Cargo.toml exists → cargo schema
+
+Keywords are stored in the schema's `meta.keywords` field and persist across regenerations.
 
 `waz schema list` output:
 ```
@@ -403,7 +448,8 @@ All schemas use a unified `SchemaFile` format with metadata:
     "verified": true,
     "coverage": "full",
     "requires_file": "Cargo.toml",
-    "requires_binary": "cargo"
+    "requires_binary": "cargo",
+    "keywords": ["rust", "crate", "package"]
   },
   "commands": [ ... ]
 }
@@ -440,6 +486,30 @@ how to find large files
 waz ask "how to uninstall a package with homebrew"
 waz ask --json "how to search in files"   # Structured JSON output
 ```
+
+### Grounded Resolve (AI + TMP)
+
+For **precise, non-hallucinated commands**, use `waz resolve` which combines AI with TMP schemas:
+
+```bash
+waz resolve "run the backend package" --tool cargo
+# 🎯 Runs the waz binary from the workspace.
+# cargo run --bin waz
+#    bin = waz (from Cargo.toml)
+#    confidence: high
+
+waz resolve "list all tables" --tool psql
+waz resolve "switch to main branch"   # auto-detects git
+waz resolve "install react" --json    # structured JSON output
+```
+
+**How it works:**
+1. Loads the specified (or auto-detected) TMP schema
+2. Resolves data sources (`cargo:packages`, `git:branches`, etc.) for real values
+3. Builds a schema-aware prompt with actual valid values
+4. AI picks the best command and fills tokens using only real data
+
+This prevents hallucination — the AI can only use values that actually exist in your project.
 
 ### History Management
 

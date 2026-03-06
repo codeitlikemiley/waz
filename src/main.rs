@@ -237,6 +237,16 @@ enum SchemaAction {
         /// Path to .json file or URL (https://).
         source: String,
     },
+
+    /// Set custom trigger keywords for AI query matching.
+    Keywords {
+        /// Tool name (e.g. psql, cargo, brew).
+        tool: String,
+        /// Keywords to set (e.g. postgres postgresql database db).
+        /// If empty, shows current keywords.
+        #[arg(trailing_var_arg = true)]
+        words: Vec<String>,
+    },
 }
 
 fn get_db_path() -> PathBuf {
@@ -602,6 +612,31 @@ fn main() {
                             eprintln!("❌ Import failed: {}", e);
                             std::process::exit(1);
                         }
+                    }
+                }
+                SchemaAction::Keywords { tool, words } => {
+                    let path = generate::schemas_dir().join(format!("{}.json", tool));
+                    if !path.exists() {
+                        eprintln!("❌ No schema for '{}'. Run `waz generate {}` first.", tool, tool);
+                        std::process::exit(1);
+                    }
+                    let content = std::fs::read_to_string(&path).expect("read schema");
+                    let mut schema: tui::app::SchemaFile = serde_json::from_str(&content).expect("parse schema");
+
+                    if words.is_empty() {
+                        // Show current keywords
+                        if schema.meta.keywords.is_empty() {
+                            eprintln!("📝 No keywords set for '{}'.", tool);
+                            eprintln!("   Usage: waz schema keywords {} postgres postgresql database db", tool);
+                        } else {
+                            eprintln!("🔑 Keywords for '{}': {}", tool, schema.meta.keywords.join(", "));
+                        }
+                    } else {
+                        schema.meta.keywords = words.clone();
+                        let json = serde_json::to_string_pretty(&schema).expect("serialize");
+                        std::fs::write(&path, json).expect("write schema");
+                        eprintln!("✅ Set keywords for '{}': {}", tool, words.join(", "));
+                        eprintln!("   AI mode will now match queries containing these words to the {} schema.", tool);
                     }
                 }
             }

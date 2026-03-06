@@ -693,6 +693,7 @@ pub fn generate_schema(config: &Config, tool: &str, model_override: Option<&str>
             waz_version: Some(env!("CARGO_PKG_VERSION").to_string()),
             requires_file: None,
             requires_binary: Some(tool.to_string()),
+            keywords: vec![],
         },
         commands: commands.clone(),
     };

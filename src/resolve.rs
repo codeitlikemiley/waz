@@ -23,7 +23,7 @@ pub fn detect_best_tool(query: &str, cwd: &str) -> Option<String> {
 }
 
 /// Scan the query for mentions of available TMP schema tool names.
-/// Also checks common aliases (postgres → psql, node → npm, etc.).
+/// Checks: 1) exact tool name, 2) custom keywords from schema meta, 3) hardcoded aliases.
 fn detect_tool_from_query(query: &str) -> Option<String> {
     let available = list_available_schemas();
     if available.is_empty() {
@@ -33,7 +33,26 @@ fn detect_tool_from_query(query: &str) -> Option<String> {
     let query_lower = query.to_lowercase();
     let words: Vec<&str> = query_lower.split_whitespace().collect();
 
-    // Common aliases → schema name
+    // Check exact tool name match first (highest confidence)
+    for tool in &available {
+        if words.contains(&tool.as_str()) {
+            return Some(tool.clone());
+        }
+    }
+
+    // Check custom keywords from schema meta
+    for tool in &available {
+        if let Some(keywords) = load_schema_keywords(tool) {
+            for kw in &keywords {
+                let kw_lower = kw.to_lowercase();
+                if words.contains(&kw_lower.as_str()) {
+                    return Some(tool.clone());
+                }
+            }
+        }
+    }
+
+    // Fallback: hardcoded aliases for common tools
     let aliases: &[(&str, &str)] = &[
         ("postgres", "psql"),
         ("postgresql", "psql"),
@@ -52,14 +71,6 @@ fn detect_tool_from_query(query: &str) -> Option<String> {
         ("k8s", "kubernetes"),
     ];
 
-    // Check exact tool name match first (highest confidence)
-    for tool in &available {
-        if words.contains(&tool.as_str()) {
-            return Some(tool.clone());
-        }
-    }
-
-    // Check aliases
     for (alias, target) in aliases {
         if words.contains(alias) && available.contains(&target.to_string()) {
             return Some(target.to_string());
@@ -67,6 +78,18 @@ fn detect_tool_from_query(query: &str) -> Option<String> {
     }
 
     None
+}
+
+/// Load just the keywords from a schema's meta (lightweight — doesn't parse commands).
+fn load_schema_keywords(tool: &str) -> Option<Vec<String>> {
+    let path = crate::generate::schemas_dir().join(format!("{}.json", tool));
+    let content = std::fs::read_to_string(&path).ok()?;
+    let schema: crate::tui::app::SchemaFile = serde_json::from_str(&content).ok()?;
+    if schema.meta.keywords.is_empty() {
+        None
+    } else {
+        Some(schema.meta.keywords)
+    }
 }
 
 /// List all available schema tool names (just filenames, no loading).
