@@ -7,6 +7,33 @@ use crate::config::Config;
 use crate::generate::{load_all_schemas, resolve_data_sources_pub};
 use crate::tui::app::CommandEntry;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
+
+/// Detect the most relevant tool based on project files in CWD.
+/// Returns None if no known project files are found.
+pub fn detect_project_tool(cwd: &str) -> Option<String> {
+    let p = Path::new(cwd);
+    // Order matters — check the most specific first
+    if p.join("Cargo.toml").exists() {
+        return Some("cargo".to_string());
+    }
+    if p.join("package.json").exists() {
+        return Some("npm".to_string());
+    }
+    if p.join("go.mod").exists() {
+        return Some("go".to_string());
+    }
+    if p.join("Gemfile").exists() {
+        return Some("bundler".to_string());
+    }
+    if p.join("pyproject.toml").exists() || p.join("setup.py").exists() {
+        return Some("python".to_string());
+    }
+    if p.join(".git").exists() {
+        return Some("git".to_string());
+    }
+    None
+}
 
 /// A filled token with its source information.
 #[derive(Debug, Clone, Serialize, Deserialize)]

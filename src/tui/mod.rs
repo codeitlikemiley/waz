@@ -421,7 +421,25 @@ fn handle_enter(app: &mut App, ai_tx: &mpsc::Sender<AiResult>) {
                 let tx = ai_tx.clone();
 
                 std::thread::spawn(move || {
-                    // Get recent commands for context
+                    // Detect if current project matches a TMP schema
+                    let project_tool = crate::resolve::detect_project_tool(&cwd);
+
+                    // Try focused TMP resolve if we detected a project type
+                    if let Some(ref tool) = project_tool {
+                        if let Ok(res) = crate::resolve::resolve(
+                            &config,
+                            &query,
+                            &cwd,
+                            Some(tool),
+                        ) {
+                            if res.confidence == "high" || res.confidence == "medium" {
+                                let _ = tx.send(AiResult::Resolve(res));
+                                return;
+                            }
+                        }
+                    }
+
+                    // Fallback: general AI mode
                     let db_path = crate::get_db_path();
                     let recent = crate::db::HistoryDb::open(&db_path)
                         .ok()
