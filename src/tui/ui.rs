@@ -429,8 +429,13 @@ fn draw_ai_content(f: &mut Frame, app: &App, area: Rect) {
     if app.ai_loading {
         let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
         let frame = frames[app.spinner_tick % frames.len()];
+        let status = if app.ai_status.is_empty() {
+            "Thinking...".to_string()
+        } else {
+            app.ai_status.clone()
+        };
         lines.push(Line::from(Span::styled(
-            format!("  {} Thinking...", frame),
+            format!("  {} {}", frame, status),
             Style::default().fg(Color::Yellow),
         )));
     }

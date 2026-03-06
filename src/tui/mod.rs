@@ -78,9 +78,11 @@ fn run_event_loop<W: io::Write>(
         // Check for AI results from background thread
         if app.ai_loading {
             if let Ok(result) = ai_rx.try_recv() {
-                app.ai_loading = false;
-                apply_ai_result(app, result);
-                continue; // Immediately redraw with the result
+                let done = apply_ai_result(app, result);
+                if done {
+                    app.ai_loading = false;
+                }
+                continue; // Immediately redraw (status update or final result)
             } else {
                 // Advance spinner tick for animation
                 app.spinner_tick = app.spinner_tick.wrapping_add(1);
@@ -426,20 +428,33 @@ fn handle_enter(app: &mut App, ai_tx: &mpsc::Sender<AiResult>) {
 
                     // Try focused TMP resolve if we detected a project type
                     if let Some(ref tool) = project_tool {
-                        if let Ok(res) = crate::resolve::resolve(
+                        let _ = tx.send(AiResult::Status(format!("📡 Resolving {} schema...", tool)));
+
+                        match crate::resolve::resolve(
                             &config,
                             &query,
                             &cwd,
                             Some(tool),
                         ) {
-                            if res.confidence == "high" || res.confidence == "medium" {
+                            Ok(res) if res.confidence == "high" || res.confidence == "medium" => {
                                 let _ = tx.send(AiResult::Resolve(res));
                                 return;
+                            }
+                            Ok(res) => {
+                                let _ = tx.send(AiResult::Status(
+                                    format!("↩️ TMP confidence too low ({}), using general AI...", res.confidence)
+                                ));
+                            }
+                            Err(e) => {
+                                let _ = tx.send(AiResult::Status(
+                                    format!("⚠ TMP failed: {}", e.chars().take(80).collect::<String>())
+                                ));
                             }
                         }
                     }
 
                     // Fallback: general AI mode
+                    let _ = tx.send(AiResult::Status("🤖 Asking AI...".to_string()));
                     let db_path = crate::get_db_path();
                     let recent = crate::db::HistoryDb::open(&db_path)
                         .ok()
@@ -463,12 +478,18 @@ fn handle_enter(app: &mut App, ai_tx: &mpsc::Sender<AiResult>) {
 enum AiResult {
     Resolve(crate::resolve::ResolveResult),
     Ask(Option<crate::ask::StructuredResponse>),
+    Status(String),
 }
 
-/// Apply async AI result to app state
-fn apply_ai_result(app: &mut App, result: AiResult) {
+/// Apply async AI result to app state. Returns true if loading is complete.
+fn apply_ai_result(app: &mut App, result: AiResult) -> bool {
     match result {
+        AiResult::Status(msg) => {
+            app.ai_status = msg;
+            false // Still loading — don't stop spinner
+        }
         AiResult::Resolve(res) => {
+            app.ai_status.clear();
             app.ai_messages.push(app::AiMessage {
                 role: "assistant".to_string(),
                 content: format!("[TMP] {}", res.explanation),
@@ -483,8 +504,10 @@ fn apply_ai_result(app: &mut App, result: AiResult) {
             }];
             app.ai_selecting = true;
             app.ai_selected_cmd = 0;
+            true
         }
         AiResult::Ask(result) => {
+            app.ai_status.clear();
             match result {
                 Some(resp) => {
                     app.ai_messages.push(app::AiMessage {
@@ -510,6 +533,7 @@ fn apply_ai_result(app: &mut App, result: AiResult) {
                     });
                 }
             }
+            true
         }
     }
 }

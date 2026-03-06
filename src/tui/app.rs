@@ -49,6 +49,7 @@ pub struct App {
     pub config: Config,
     pub scroll_offset: u16,
     pub spinner_tick: usize,
+    pub ai_status: String,
 
     /// Whether TMP commands have been loaded (lazy loading on first `/`)
     pub tmp_loaded: bool,
@@ -198,6 +199,7 @@ impl App {
             config,
             scroll_offset: 0,
             spinner_tick: 0,
+            ai_status: String::new(),
             tmp_loaded: false,
             config_mode: false,
         }
