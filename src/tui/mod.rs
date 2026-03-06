@@ -426,48 +426,73 @@ fn handle_enter(app: &mut App, ai_tx: &mpsc::Sender<AiResult>) {
                     // Detect best tool: query keywords first, then CWD project files
                     let project_tool = crate::resolve::detect_best_tool(&query, &cwd);
 
-                    // Try focused TMP resolve if we detected a project type
                     if let Some(ref tool) = project_tool {
                         let _ = tx.send(AiResult::Status(format!("📡 Resolving {} schema...", tool)));
 
-                        match crate::resolve::resolve(
+                        // Run TMP resolve and ask_structured in PARALLEL
+                        let config2 = config.clone();
+                        let query2 = query.clone();
+                        let cwd2 = cwd.clone();
+                        let tool2 = tool.clone();
+
+                        let resolve_handle = std::thread::spawn(move || {
+                            crate::resolve::resolve(&config2, &query2, &cwd2, Some(&tool2))
+                        });
+
+                        let config3 = config.clone();
+                        let query3 = query.clone();
+                        let cwd3 = cwd.clone();
+
+                        let ask_handle = std::thread::spawn(move || {
+                            let db_path = crate::get_db_path();
+                            let recent = crate::db::HistoryDb::open(&db_path)
+                                .ok()
+                                .and_then(|db| db.get_recent_by_cwd(&cwd3, None, 10).ok())
+                                .unwrap_or_default();
+                            crate::ask::ask_structured(&config3, &query3, &cwd3, &recent)
+                        });
+
+                        // Check TMP result first
+                        if let Ok(resolve_result) = resolve_handle.join() {
+                            match resolve_result {
+                                Ok(res) if res.confidence == "high" || res.confidence == "medium" => {
+                                    let _ = tx.send(AiResult::Resolve(res));
+                                    return; // Don't wait for ask — TMP won
+                                }
+                                Ok(res) => {
+                                    let _ = tx.send(AiResult::Status(
+                                        format!("↩️ TMP low confidence ({}), using AI...", res.confidence)
+                                    ));
+                                }
+                                Err(e) => {
+                                    let _ = tx.send(AiResult::Status(
+                                        format!("⚠ TMP: {}", e.chars().take(60).collect::<String>())
+                                    ));
+                                }
+                            }
+                        }
+
+                        // TMP failed/low — use ask_structured result (already running in parallel!)
+                        if let Ok(ask_result) = ask_handle.join() {
+                            let _ = tx.send(AiResult::Ask(ask_result));
+                        }
+                    } else {
+                        // No tool detected — just ask AI directly
+                        let _ = tx.send(AiResult::Status("🤖 Asking AI...".to_string()));
+                        let db_path = crate::get_db_path();
+                        let recent = crate::db::HistoryDb::open(&db_path)
+                            .ok()
+                            .and_then(|db| db.get_recent_by_cwd(&cwd, None, 10).ok())
+                            .unwrap_or_default();
+
+                        let result = crate::ask::ask_structured(
                             &config,
                             &query,
                             &cwd,
-                            Some(tool),
-                        ) {
-                            Ok(res) if res.confidence == "high" || res.confidence == "medium" => {
-                                let _ = tx.send(AiResult::Resolve(res));
-                                return;
-                            }
-                            Ok(res) => {
-                                let _ = tx.send(AiResult::Status(
-                                    format!("↩️ TMP confidence too low ({}), using general AI...", res.confidence)
-                                ));
-                            }
-                            Err(e) => {
-                                let _ = tx.send(AiResult::Status(
-                                    format!("⚠ TMP failed: {}", e.chars().take(80).collect::<String>())
-                                ));
-                            }
-                        }
+                            &recent,
+                        );
+                        let _ = tx.send(AiResult::Ask(result));
                     }
-
-                    // Fallback: general AI mode
-                    let _ = tx.send(AiResult::Status("🤖 Asking AI...".to_string()));
-                    let db_path = crate::get_db_path();
-                    let recent = crate::db::HistoryDb::open(&db_path)
-                        .ok()
-                        .and_then(|db| db.get_recent_by_cwd(&cwd, None, 10).ok())
-                        .unwrap_or_default();
-
-                    let result = crate::ask::ask_structured(
-                        &config,
-                        &query,
-                        &cwd,
-                        &recent,
-                    );
-                    let _ = tx.send(AiResult::Ask(result));
                 });
             }
         }
