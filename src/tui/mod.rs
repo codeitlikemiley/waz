@@ -421,8 +421,8 @@ fn handle_enter(app: &mut App, ai_tx: &mpsc::Sender<AiResult>) {
                 let tx = ai_tx.clone();
 
                 std::thread::spawn(move || {
-                    // Detect if current project matches a TMP schema
-                    let project_tool = crate::resolve::detect_project_tool(&cwd);
+                    // Detect best tool: query keywords first, then CWD project files
+                    let project_tool = crate::resolve::detect_best_tool(&query, &cwd);
 
                     // Try focused TMP resolve if we detected a project type
                     if let Some(ref tool) = project_tool {

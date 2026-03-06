@@ -9,28 +9,115 @@ use crate::tui::app::CommandEntry;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+/// Detect the best TMP tool to use, checking in priority order:
+/// 1. Query keyword match (user explicitly mentions a tool name)
+/// 2. CWD project file match (e.g., Cargo.toml → cargo)
+pub fn detect_best_tool(query: &str, cwd: &str) -> Option<String> {
+    // Priority 1: keyword match from query
+    if let Some(tool) = detect_tool_from_query(query) {
+        return Some(tool);
+    }
+
+    // Priority 2: CWD-based project file detection
+    detect_project_tool(cwd)
+}
+
+/// Scan the query for mentions of available TMP schema tool names.
+/// Also checks common aliases (postgres → psql, node → npm, etc.).
+fn detect_tool_from_query(query: &str) -> Option<String> {
+    let available = list_available_schemas();
+    if available.is_empty() {
+        return None;
+    }
+
+    let query_lower = query.to_lowercase();
+    let words: Vec<&str> = query_lower.split_whitespace().collect();
+
+    // Common aliases → schema name
+    let aliases: &[(&str, &str)] = &[
+        ("postgres", "psql"),
+        ("postgresql", "psql"),
+        ("node", "npm"),
+        ("nodejs", "npm"),
+        ("yarn", "npm"),
+        ("pnpm", "npm"),
+        ("rust", "cargo"),
+        ("rustc", "cargo"),
+        ("homebrew", "brew"),
+        ("python", "pip"),
+        ("python3", "pip"),
+        ("pip3", "pip"),
+        ("golang", "go"),
+        ("kubectl", "kubernetes"),
+        ("k8s", "kubernetes"),
+    ];
+
+    // Check exact tool name match first (highest confidence)
+    for tool in &available {
+        if words.contains(&tool.as_str()) {
+            return Some(tool.clone());
+        }
+    }
+
+    // Check aliases
+    for (alias, target) in aliases {
+        if words.contains(alias) && available.contains(&target.to_string()) {
+            return Some(target.to_string());
+        }
+    }
+
+    None
+}
+
+/// List all available schema tool names (just filenames, no loading).
+fn list_available_schemas() -> Vec<String> {
+    let dir = crate::generate::schemas_dir();
+    let mut tools = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().map(|e| e == "json").unwrap_or(false) {
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    tools.push(stem.to_string());
+                }
+            }
+        }
+    }
+    tools
+}
+
 /// Detect the most relevant tool based on project files in CWD.
 /// Returns None if no known project files are found.
 pub fn detect_project_tool(cwd: &str) -> Option<String> {
     let p = Path::new(cwd);
-    // Order matters — check the most specific first
+    let available = list_available_schemas();
+
+    // Only return tools that actually have schemas
+    let check = |tool: &str| -> Option<String> {
+        if available.iter().any(|t| t == tool) {
+            Some(tool.to_string())
+        } else {
+            None
+        }
+    };
+
     if p.join("Cargo.toml").exists() {
-        return Some("cargo".to_string());
+        if let Some(t) = check("cargo") { return Some(t); }
     }
     if p.join("package.json").exists() {
-        return Some("npm".to_string());
+        if let Some(t) = check("npm") { return Some(t); }
     }
     if p.join("go.mod").exists() {
-        return Some("go".to_string());
+        if let Some(t) = check("go") { return Some(t); }
     }
     if p.join("Gemfile").exists() {
-        return Some("bundler".to_string());
+        if let Some(t) = check("bundler") { return Some(t); }
     }
     if p.join("pyproject.toml").exists() || p.join("setup.py").exists() {
-        return Some("python".to_string());
+        if let Some(t) = check("python") { return Some(t); }
     }
     if p.join(".git").exists() {
-        return Some("git".to_string());
+        if let Some(t) = check("git") { return Some(t); }
     }
     None
 }
