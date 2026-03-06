@@ -1,6 +1,6 @@
 [package]
 name = "waz"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 description = "Warp-style command prediction and command palette for any terminal — ghost-text autosuggestions, AI assistant, and interactive TUI"
 license = "MIT"
