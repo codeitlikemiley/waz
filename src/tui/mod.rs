@@ -80,6 +80,7 @@ fn run_event_loop<W: io::Write>(
             if let Ok(result) = ai_rx.try_recv() {
                 app.ai_loading = false;
                 apply_ai_result(app, result);
+                continue; // Immediately redraw with the result
             } else {
                 // Advance spinner tick for animation
                 app.spinner_tick = app.spinner_tick.wrapping_add(1);
