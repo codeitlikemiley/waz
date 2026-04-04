@@ -19,6 +19,13 @@ _waz_precmd() {
     local exit_code=$?
 
     if [[ -n "$_WAZ_LAST_CMD" ]]; then
+        case "$_WAZ_LAST_CMD" in
+            waz|waz\ *)
+                _WAZ_LAST_CMD=""
+                _WAZ_SHOW_PROACTIVE=1
+                return
+                ;;
+        esac
         command waz record --cwd "$PWD" --session "$WAZ_SESSION_ID" --exit-code "$exit_code" -- "$_WAZ_LAST_CMD" &>/dev/null &!
         _WAZ_LAST_CMD=""
     fi

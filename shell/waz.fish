@@ -11,6 +11,9 @@ function _waz_postexec --on-event fish_postexec
     set -l cmd $argv[1]
     set -l exit_code $status
     if test -n "$cmd"
+        if string match -rq '^waz( |$)' -- "$cmd"
+            return
+        end
         command waz record --cwd "$PWD" --session "$WAZ_SESSION_ID" --exit-code "$exit_code" -- "$cmd" &>/dev/null &
     end
 end

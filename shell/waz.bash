@@ -17,6 +17,12 @@ _waz_prompt_command() {
 
     # Only record if it's a new command (history number changed)
     if [[ -n "$current_histcmd" && "$current_histcmd" != "$_waz_last_histcmd" ]]; then
+        case "$current_histcmd" in
+            waz|waz\ *)
+                _waz_last_histcmd="$current_histcmd"
+                return
+                ;;
+        esac
         command waz record --cwd "$PWD" --session "$WAZ_SESSION_ID" --exit-code "$exit_code" -- "$current_histcmd" &>/dev/null &
         _waz_last_histcmd="$current_histcmd"
     fi
