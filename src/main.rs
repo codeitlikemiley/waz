@@ -8,6 +8,7 @@ mod import;
 mod llm;
 mod predict;
 mod run;
+mod runnables;
 mod resolve;
 mod session;
 pub mod tui;
@@ -168,6 +169,12 @@ enum Commands {
         /// Print the resolved command instead of executing it.
         #[arg(long)]
         dry_run: bool,
+    },
+
+    /// List runnables for a file, module path, or current workspace.
+    Runnables {
+        /// File path, module path, or workspace target to inspect.
+        target: Option<String>,
     },
 
     /// Parse command output for suggested follow-up commands.
@@ -497,6 +504,20 @@ fn main() {
 
         Commands::Run { file, dry_run } => {
             match run::run_file(&file, dry_run) {
+                Ok(status) => {
+                    if !status.success() {
+                        std::process::exit(status.code().unwrap_or(1));
+                    }
+                }
+                Err(e) => {
+                    eprintln!("❌ {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::Runnables { target } => {
+            match runnables::run_runnables(target.as_deref()) {
                 Ok(status) => {
                     if !status.success() {
                         std::process::exit(status.code().unwrap_or(1));

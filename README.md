@@ -120,6 +120,7 @@ A **Warp-like unified command palette** built with `ratatui`. Launch it with:
 | `waz tui` | Manual launch |
 | `waz tui --file <path> [--line <n>]` | Seed TMP with file/line context |
 | `waz run <path[:line]>` | Directly run the best command for a file context |
+| `waz runnables [path\|module::path[:line]]` | List runnables for a file, module path, or current workspace |
 
 The TUI starts in an **Empty** state showing mode hints. Type a prefix to enter a mode:
 
@@ -172,6 +173,8 @@ If you already know the file and line and want to skip the interactive palette, 
 ```bash
 waz run src/main.rs:1
 waz run examples/demo.rs:1
+waz runnables
+waz runnables runners::unified_runner::tests
 ```
 
 #### Built-in Curated Schemas (8)
