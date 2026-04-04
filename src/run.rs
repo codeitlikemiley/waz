@@ -9,7 +9,7 @@ struct ResolvedRunCommand {
     env: Vec<(String, String)>,
 }
 
-pub fn run_file(filepath_arg: &str, dry_run: bool) -> Result<ExitStatus, String> {
+pub fn run_file(filepath_arg: Option<&str>, dry_run: bool) -> Result<ExitStatus, String> {
     let resolved = resolve_run_command(filepath_arg)?;
 
     if dry_run {
@@ -29,9 +29,15 @@ struct ResolvedRun {
     preview_status: ExitStatus,
 }
 
-fn resolve_run_command(filepath_arg: &str) -> Result<ResolvedRun, String> {
+fn resolve_run_command(filepath_arg: Option<&str>) -> Result<ResolvedRun, String> {
+    let mut args = vec!["runner", "run"];
+    if let Some(filepath_arg) = filepath_arg {
+        args.push(filepath_arg);
+    }
+    args.push("--dry-run");
+
     let output = Command::new("cargo")
-        .args(["runner", "run", filepath_arg, "--dry-run"])
+        .args(args)
         .output()
         .map_err(|e| format!("failed to launch cargo runner: {}", e))?;
 
@@ -165,5 +171,20 @@ mod tests {
     fn rejects_missing_command() {
         let err = parse_dry_run_output("Working directory: /tmp/work\n").unwrap_err();
         assert!(err.contains("did not include a command"));
+    }
+
+    #[test]
+    fn builds_run_args_without_filepath() {
+        let mut args = vec!["runner", "run"];
+        args.push("--dry-run");
+        assert_eq!(args, vec!["runner", "run", "--dry-run"]);
+    }
+
+    #[test]
+    fn builds_run_args_with_filepath() {
+        let mut args = vec!["runner", "run"];
+        args.push("src/main.rs:1");
+        args.push("--dry-run");
+        assert_eq!(args, vec!["runner", "run", "src/main.rs:1", "--dry-run"]);
     }
 }

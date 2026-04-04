@@ -164,7 +164,8 @@ enum Commands {
     /// Run the best command for a file:line context directly.
     Run {
         /// File path, optionally with a line number suffix like src/main.rs:42.
-        file: String,
+        /// Defaults to the current workspace entry point when omitted.
+        file: Option<String>,
 
         /// Print the resolved command instead of executing it.
         #[arg(long)]
@@ -503,7 +504,7 @@ fn main() {
         }
 
         Commands::Run { file, dry_run } => {
-            match run::run_file(&file, dry_run) {
+            match run::run_file(file.as_deref(), dry_run) {
                 Ok(status) => {
                     if !status.success() {
                         std::process::exit(status.code().unwrap_or(1));

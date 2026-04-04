@@ -119,7 +119,7 @@ A **Warp-like unified command palette** built with `ratatui`. Launch it with:
 | **Ctrl+T** | Any terminal |
 | `waz tui` | Manual launch |
 | `waz tui --file <path> [--line <n>]` | Seed TMP with file/line context |
-| `waz run <path[:line]>` | Directly run the best command for a file context |
+| `waz run [path[:line]]` | Directly run the best command for the current workspace or a file context |
 | `waz runnables [path\|module::path[:line]]` | List runnables for a file, module path, or current workspace |
 
 The TUI starts in an **Empty** state showing mode hints. Type a prefix to enter a mode:
@@ -171,6 +171,7 @@ When the file is a single-file script, waz detects either `#!/usr/bin/env rust-s
 If you already know the file and line and want to skip the interactive palette, use:
 
 ```bash
+waz run
 waz run src/main.rs:1
 waz run examples/demo.rs:1
 waz runnables
