@@ -4,8 +4,9 @@
 //! saves the resulting schema as JSON to `~/.config/waz/schemas/`.
 
 use crate::config::{Config, ProviderDefaults};
+use crate::context::RuntimeContext;
 use crate::llm;
-use crate::tui::app::{CommandEntry, DataSource, SchemaFile, SchemaMeta, TokenType};
+use crate::tui::app::{CommandEntry, SchemaFile, SchemaMeta, TokenType};
 use serde_json::json;
 use std::path::PathBuf;
 use std::process::Command;
@@ -88,6 +89,13 @@ pub fn init_schemas() -> Result<Vec<String>, String> {
 /// Supports both `SchemaFile` (new) and `Vec<CommandEntry>` (legacy) formats.
 /// Filters schemas based on CWD context (requires_file, requires_binary).
 pub fn load_all_schemas(cwd: &str) -> Vec<CommandEntry> {
+    load_all_schemas_with_context(cwd, None)
+}
+
+pub fn load_all_schemas_with_context(
+    cwd: &str,
+    context: Option<&RuntimeContext>,
+) -> Vec<CommandEntry> {
     // Auto-init curated schemas on first load
     if let Ok(installed) = init_schemas() {
         if !installed.is_empty() {
@@ -114,14 +122,14 @@ pub fn load_all_schemas(cwd: &str) -> Vec<CommandEntry> {
                 // Try new SchemaFile format first
                 if let Ok(schema_file) = serde_json::from_str::<SchemaFile>(&content) {
                     // Check requirements
-                    if !should_load_schema(&schema_file.meta, cwd) {
+                    if !should_load_schema(&schema_file.meta, cwd, context) {
                         continue;
                     }
-                    let mut cmds = schema_file.commands;
+                    let cmds = schema_file.commands;
                     commands.extend(cmds);
                 }
                 // Fallback: legacy Vec<CommandEntry> format
-                else if let Ok(mut entries) = serde_json::from_str::<Vec<CommandEntry>>(&content) {
+                else if let Ok(entries) = serde_json::from_str::<Vec<CommandEntry>>(&content) {
                     commands.extend(entries);
                 } else {
                     eprintln!("Warning: failed to parse schema {}", path.display());
@@ -137,10 +145,19 @@ pub fn load_all_schemas(cwd: &str) -> Vec<CommandEntry> {
 }
 
 /// Check if a schema should be loaded based on its requirements.
-fn should_load_schema(meta: &SchemaMeta, cwd: &str) -> bool {
+fn should_load_schema(meta: &SchemaMeta, cwd: &str, context: Option<&RuntimeContext>) -> bool {
     // Check requires_file (e.g. "Cargo.toml", "package.json")
     if let Some(ref file) = meta.requires_file {
         if !std::path::Path::new(cwd).join(file).exists() {
+            return false;
+        }
+    }
+
+    if let Some(ref file_kind) = meta.requires_file_kind {
+        let Some(context) = context else {
+            return false;
+        };
+        if context.file_kind != *file_kind {
             return false;
         }
     }
@@ -162,12 +179,16 @@ fn which_exists(cmd: &str) -> bool {
 }
 
 /// Resolve any `data_source` fields in tokens (shell commands or built-in resolvers).
-fn resolve_data_sources(entry: &mut CommandEntry, cwd: &str) {
+fn resolve_data_sources(
+    entry: &mut CommandEntry,
+    cwd: &str,
+    context: Option<&RuntimeContext>,
+) {
     for token in &mut entry.tokens {
         if let Some(ref ds) = token.data_source {
             let values = if let Some(ref resolver) = ds.resolver {
                 // Built-in resolver
-                resolve_builtin(resolver, cwd)
+                resolve_builtin(resolver, cwd, context)
             } else if let Some(ref cmd) = ds.command {
                 // Shell command
                 run_data_source_command(cmd, &ds.parse)
@@ -187,7 +208,15 @@ fn resolve_data_sources(entry: &mut CommandEntry, cwd: &str) {
 
 /// Public wrapper for verification TUI to test data sources.
 pub fn resolve_data_sources_pub(entry: &mut CommandEntry, cwd: &str) {
-    resolve_data_sources(entry, cwd);
+    resolve_data_sources(entry, cwd, None);
+}
+
+pub fn resolve_data_sources_pub_ctx(
+    entry: &mut CommandEntry,
+    cwd: &str,
+    context: Option<&RuntimeContext>,
+) {
+    resolve_data_sources(entry, cwd, context);
 }
 
 /// Run a shell command and parse its output into values.
@@ -204,7 +233,11 @@ fn run_data_source_command(cmd: &str, parse: &str) -> Option<Vec<String>> {
 // ──────────────────────────── Built-in Resolvers ────────────────────────────
 
 /// Resolve a built-in named resolver (e.g. "cargo:bins", "git:branches", "waz:models:gemini").
-fn resolve_builtin(resolver: &str, cwd: &str) -> Option<Vec<String>> {
+fn resolve_builtin(
+    resolver: &str,
+    cwd: &str,
+    context: Option<&RuntimeContext>,
+) -> Option<Vec<String>> {
     // Handle parameterized resolvers (e.g. "waz:models:gemini")
     let parts: Vec<&str> = resolver.splitn(3, ':').collect();
     
@@ -221,11 +254,32 @@ fn resolve_builtin(resolver: &str, cwd: &str) -> Option<Vec<String>> {
         (Some("npm"), Some("scripts"), _) => npm_resolve_scripts(cwd),
         (Some("waz"), Some("models"), Some(provider)) => waz_resolve_models(provider),
         (Some("waz"), Some("models"), None) => waz_resolve_models("gemini"),
+        (Some("waz"), Some("context"), Some(field)) => resolve_waz_context(field, context),
+        (Some("waz"), Some("context"), None) => resolve_waz_context("file_path", context),
         _ => {
             eprintln!("Warning: unknown resolver '{}'", resolver);
             None
         }
     }
+}
+
+fn resolve_waz_context(field: &str, context: Option<&RuntimeContext>) -> Option<Vec<String>> {
+    let context = context?;
+    let value = match field {
+        "cwd" => Some(context.cwd.clone()),
+        "project_root" => context.project_root.clone(),
+        "file_path" => context.file_path.clone(),
+        "line" => context.line.map(|line| line.to_string()),
+        "build_system" => Some(context.build_system.clone()),
+        "file_kind" => Some(context.file_kind.clone()),
+        "runnable_kind" => context.runnable_kind.clone(),
+        "package_name" => context.package_name.clone(),
+        "script_engine" => context.script_engine.clone(),
+        "recommended_target" => context.recommended_target.clone(),
+        _ => None,
+    }?;
+
+    Some(vec![value])
 }
 
 /// Fetch available models from an LLM provider's API.
@@ -692,6 +746,7 @@ pub fn generate_schema(config: &Config, tool: &str, model_override: Option<&str>
             coverage: "partial".to_string(),
             waz_version: Some(env!("CARGO_PKG_VERSION").to_string()),
             requires_file: None,
+            requires_file_kind: None,
             requires_binary: Some(tool.to_string()),
             keywords: vec![],
         },
@@ -1478,6 +1533,8 @@ pub fn export_builtin_schema(tool: &str, cwd: &str) -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::RuntimeContext;
+    use crate::tui::app::SchemaMeta;
 
     #[test]
     fn test_extract_subcommands() {
@@ -1531,6 +1588,63 @@ Options:
         assert_eq!(commands.len(), 1);
         assert_eq!(commands[0].command, "brew install");
         assert_eq!(commands[0].tokens[0].name, "formula");
+    }
+
+    #[test]
+    fn test_resolve_waz_context_file_path() {
+        let context = RuntimeContext {
+            context_version: 1,
+            cwd: "/tmp/work".to_string(),
+            project_root: Some("/tmp/work".to_string()),
+            file_path: Some("/tmp/work/power.rs".to_string()),
+            line: Some(7),
+            build_system: "cargo".to_string(),
+            file_kind: "single_file_script".to_string(),
+            runnable_kind: Some("single_file_script".to_string()),
+            package_name: None,
+            bins: vec![],
+            examples: vec![],
+            tests: vec![],
+            benches: vec![],
+            features: vec![],
+            profiles: vec![],
+            script_engine: Some("rust-script".to_string()),
+            recommended_target: Some("/tmp/work/power.rs".to_string()),
+        };
+
+        let values = resolve_builtin("waz:context:file_path", "/tmp/work", Some(&context)).unwrap();
+        assert_eq!(values, vec!["/tmp/work/power.rs".to_string()]);
+    }
+
+    #[test]
+    fn test_should_load_schema_requires_file_kind() {
+        let meta = SchemaMeta {
+            tool: "rust-script".to_string(),
+            version: 1,
+            generated_by: "human".to_string(),
+            generated_with: None,
+            verified: true,
+            verified_at: None,
+            coverage: "full".to_string(),
+            waz_version: Some("0.1.6".to_string()),
+            requires_file: None,
+            requires_file_kind: Some("single_file_script".to_string()),
+            requires_binary: None,
+            keywords: vec![],
+        };
+
+        let script_context = RuntimeContext {
+            file_kind: "single_file_script".to_string(),
+            ..RuntimeContext::default()
+        };
+        let cargo_context = RuntimeContext {
+            file_kind: "cargo_project".to_string(),
+            ..RuntimeContext::default()
+        };
+
+        assert!(should_load_schema(&meta, "/tmp", Some(&script_context)));
+        assert!(!should_load_schema(&meta, "/tmp", Some(&cargo_context)));
+        assert!(!should_load_schema(&meta, "/tmp", None));
     }
 
     #[test]

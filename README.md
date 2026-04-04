@@ -118,6 +118,7 @@ A **Warp-like unified command palette** built with `ratatui`. Launch it with:
 | **Cmd+I** | Ghostty (via custom escape sequence) |
 | **Ctrl+T** | Any terminal |
 | `waz tui` | Manual launch |
+| `waz tui --file <path> [--line <n>]` | Seed TMP with file/line context |
 
 The TUI starts in an **Empty** state showing mode hints. Type a prefix to enter a mode:
 
@@ -156,11 +157,22 @@ Placeholder editing → Command selection → AI conversation → Empty mode →
 
 Context-aware command palette powered by **unified JSON schemas**. On first launch, curated schemas are auto-installed. Additional schemas can be AI-generated or imported.
 
-#### Built-in Curated Schemas (6)
+Seed the palette with the current file when you launch from an editor:
+
+```bash
+waz tui --file example/power.rs
+waz tui --file example/power.rs --line 12
+```
+
+When the file is a single-file script, waz detects either `#!/usr/bin/env rust-script` or `#!/usr/bin/env -S cargo +nightly -Zscript` and shows the matching script command with the current file prefilled.
+
+#### Built-in Curated Schemas (8)
 
 | Schema | Commands | Dynamic Data Sources |
 |--------|----------|---------------------|
 | `cargo` | 12 | bins, features, packages, profiles, tests, benches from `Cargo.toml` |
+| `cargo-script` | 1 | current script file path |
+| `rust-script` | 1 | current script file path |
 | `git` | 12 | branches, remotes from local repo |
 | `npm` | 8 | scripts from `package.json` |
 | `bun` | 8 | scripts from `package.json` |
@@ -218,7 +230,7 @@ AI mode automatically uses **TMP schemas for grounded results** when it detects 
 |-----------------|----------|--------|
 | **Query keywords** | Highest | "list psql tables" → uses psql schema |
 | **Custom keywords** | High | "show database tables" → psql (if "database" is a keyword) |
-| **CWD project files** | Medium | Cargo.toml present → uses cargo schema |
+| **File / project context** | Medium | Cargo.toml or a single-file script → uses the matching schema |
 | **General AI** | Fallback | "what is rust?" → plain AI answer |
 
 When TMP is used, results show a `[TMP]` tag and commands are grounded in real data (actual package names, branches, etc.).

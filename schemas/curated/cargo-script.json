@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "tool": "cargo-script",
+    "version": 1,
+    "generated_by": "human",
+    "verified": true,
+    "coverage": "full",
+    "waz_version": "0.1.6",
+    "requires_file_kind": "single_file_script",
+    "requires_binary": "cargo",
+    "keywords": ["cargo-script", "script", "single-file", "rust-script"]
+  },
+  "commands": [
+    {
+      "command": "cargo +nightly -Zscript",
+      "description": "Run a single-file Cargo script",
+      "group": "cargo-script",
+      "verified": true,
+      "tokens": [
+        {
+          "name": "file",
+          "description": "Script file to run",
+          "required": true,
+          "token_type": "File",
+          "flag": null,
+          "data_source": {
+            "resolver": "waz:context:file_path"
+          }
+        }
+      ]
+    }
+  ]
+}

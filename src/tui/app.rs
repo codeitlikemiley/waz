@@ -1,4 +1,5 @@
 use crate::config::Config;
+use crate::context::RuntimeContext;
 
 /// TUI operating mode — determined by the first character typed.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -47,6 +48,7 @@ pub struct App {
     // Context
     pub cwd: String,
     pub config: Config,
+    pub runtime_context: Option<RuntimeContext>,
     pub scroll_offset: u16,
     pub spinner_tick: usize,
     pub ai_status: String,
@@ -92,6 +94,9 @@ pub struct SchemaMeta {
     /// Requires a project file to be present (e.g. "Cargo.toml", "package.json")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requires_file: Option<String>,
+    /// Requires a specific runtime file kind (e.g. "cargo_project", "single_file_script")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requires_file_kind: Option<String>,
     /// Requires a binary on PATH (e.g. "git", "bun")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requires_binary: Option<String>,
@@ -171,7 +176,7 @@ pub struct AiCommand {
 }
 
 impl App {
-    pub fn new(cwd: String, config: Config) -> Self {
+    pub fn new(cwd: String, config: Config, runtime_context: Option<RuntimeContext>) -> Self {
         Self {
             mode: Mode::Empty,
             input: String::new(),
@@ -202,6 +207,7 @@ impl App {
             ai_status: String::new(),
             tmp_loaded: false,
             config_mode: false,
+            runtime_context,
         }
     }
 
@@ -278,13 +284,28 @@ pub fn select_command(&mut self) {
     
     // Lazily resolve data sources when a command is first selected
     let cwd = self.cwd.clone();
-    crate::generate::resolve_data_sources_pub(&mut self.command_list[idx], &cwd);
+    let runtime_context = self.runtime_context.clone();
+    crate::generate::resolve_data_sources_pub_ctx(
+        &mut self.command_list[idx],
+        &cwd,
+        runtime_context.as_ref(),
+    );
     
     let cmd = &self.command_list[idx];
 
-    // Pre-fill token values with defaults
+    // Pre-fill token values with defaults, then fall back to single resolved values.
     self.token_values = cmd.tokens.iter().map(|t| {
-        t.default.clone().unwrap_or_default()
+        if let Some(default) = &t.default {
+            default.clone()
+        } else if let Some(values) = &t.values {
+            if values.len() == 1 {
+                values[0].clone()
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        }
     }).collect();
 
     self.active_token = 0;

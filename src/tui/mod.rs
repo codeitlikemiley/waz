@@ -14,11 +14,19 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Terminal};
 
 use app::{App, Mode, TokenType};
+use crate::context::RuntimeContext;
 
 /// Launch the TUI overlay. Returns the resolved command (if any).
-pub fn launch(cwd: String, query: Option<String>, config_mode: bool) -> io::Result<Option<String>> {
+pub fn launch(
+    cwd: String,
+    file: Option<String>,
+    line: Option<usize>,
+    query: Option<String>,
+    config_mode: bool,
+) -> io::Result<Option<String>> {
     let config = crate::config::Config::load();
-    let mut app = App::new(cwd.clone(), config);
+    let runtime_context = Some(RuntimeContext::detect(&cwd, file.as_deref(), line));
+    let mut app = App::new(cwd.clone(), config, runtime_context);
     app.config_mode = config_mode;
 
     // Self mode: jump straight into TMP with waz commands loaded
@@ -420,11 +428,16 @@ fn handle_enter(app: &mut App, ai_tx: &mpsc::Sender<AiResult>) {
                 // Spawn AI call in background thread
                 let config = app.config.clone();
                 let cwd = app.cwd.clone();
+                let runtime_context = app.runtime_context.clone();
                 let tx = ai_tx.clone();
 
                 std::thread::spawn(move || {
                     // Detect best tool: query keywords first, then CWD project files
-                    let project_tool = crate::resolve::detect_best_tool(&query, &cwd);
+                    let project_tool = crate::resolve::detect_best_tool_with_context(
+                        &query,
+                        &cwd,
+                        runtime_context.as_ref(),
+                    );
 
                     if let Some(ref tool) = project_tool {
                         let _ = tx.send(AiResult::Status(format!("📡 Resolving {} schema...", tool)));
@@ -434,9 +447,16 @@ fn handle_enter(app: &mut App, ai_tx: &mpsc::Sender<AiResult>) {
                         let query2 = query.clone();
                         let cwd2 = cwd.clone();
                         let tool2 = tool.clone();
+                        let runtime_context2 = runtime_context.clone();
 
                         let resolve_handle = std::thread::spawn(move || {
-                            crate::resolve::resolve(&config2, &query2, &cwd2, Some(&tool2))
+                            crate::resolve::resolve_with_context(
+                                &config2,
+                                &query2,
+                                &cwd2,
+                                Some(&tool2),
+                                runtime_context2.as_ref(),
+                            )
                         });
 
                         let config3 = config.clone();
@@ -592,15 +612,25 @@ fn handle_tab(app: &mut App) {
                     let token_name = token.name.clone();
                     let new_value = values[next].clone();
                     if token_name == "provider" {
-                        let cmd = &mut app.command_list[cmd_idx];
-                        if let Some(model_idx) = cmd.tokens.iter().position(|t| t.name == "model") {
+                        let runtime_context = app.runtime_context.clone();
+                        if let Some(model_idx) = app.command_list[cmd_idx]
+                            .tokens
+                            .iter()
+                            .position(|t| t.name == "model")
+                        {
                             // Update the resolver to use the new provider
-                            if let Some(ref mut ds) = cmd.tokens[model_idx].data_source {
+                            if let Some(ref mut ds) = app.command_list[cmd_idx].tokens[model_idx]
+                                .data_source
+                            {
                                 ds.resolver = Some(format!("waz:models:{}", new_value));
                             }
                             // Re-resolve: fetch models from the provider's API
                             let cwd = app.cwd.clone();
-                            crate::generate::resolve_data_sources_pub(&mut app.command_list[cmd_idx], &cwd);
+                            crate::generate::resolve_data_sources_pub_ctx(
+                                &mut app.command_list[cmd_idx],
+                                &cwd,
+                                runtime_context.as_ref(),
+                            );
                             // Reset model value to first available option
                             if let Some(ref vals) = app.command_list[cmd_idx].tokens[model_idx].values {
                                 if !vals.is_empty() {
@@ -696,7 +726,10 @@ fn load_tmp_commands(app: &mut App) {
         }
     } else {
         // Normal mode: load all schemas (curated + generated)
-        let commands = crate::generate::load_all_schemas(&app.cwd);
+        let commands = crate::generate::load_all_schemas_with_context(
+            &app.cwd,
+            app.runtime_context.as_ref(),
+        );
         app.command_list.extend(commands);
     }
     app.filter_commands();

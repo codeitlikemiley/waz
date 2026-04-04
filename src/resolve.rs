@@ -4,7 +4,8 @@
 //! grounded, non-hallucinated commands from natural language queries.
 
 use crate::config::Config;
-use crate::generate::{load_all_schemas, resolve_data_sources_pub};
+use crate::context::RuntimeContext;
+use crate::generate::{load_all_schemas_with_context, resolve_data_sources_pub_ctx};
 use crate::tui::app::CommandEntry;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -13,13 +14,21 @@ use std::path::Path;
 /// 1. Query keyword match (user explicitly mentions a tool name)
 /// 2. CWD project file match (e.g., Cargo.toml → cargo)
 pub fn detect_best_tool(query: &str, cwd: &str) -> Option<String> {
+    detect_best_tool_with_context(query, cwd, None)
+}
+
+pub fn detect_best_tool_with_context(
+    query: &str,
+    cwd: &str,
+    context: Option<&RuntimeContext>,
+) -> Option<String> {
     // Priority 1: keyword match from query
     if let Some(tool) = detect_tool_from_query(query) {
         return Some(tool);
     }
 
     // Priority 2: CWD-based project file detection
-    detect_project_tool(cwd)
+    detect_project_tool(cwd, context)
 }
 
 /// Scan the query for mentions of available TMP schema tool names.
@@ -111,9 +120,17 @@ fn list_available_schemas() -> Vec<String> {
 
 /// Detect the most relevant tool based on project files in CWD.
 /// Returns None if no known project files are found.
-pub fn detect_project_tool(cwd: &str) -> Option<String> {
-    let p = Path::new(cwd);
+pub fn detect_project_tool(cwd: &str, context: Option<&RuntimeContext>) -> Option<String> {
     let available = list_available_schemas();
+    detect_project_tool_with_available(cwd, context, &available)
+}
+
+fn detect_project_tool_with_available(
+    cwd: &str,
+    context: Option<&RuntimeContext>,
+    available: &[String],
+) -> Option<String> {
+    let p = Path::new(cwd);
 
     // Only return tools that actually have schemas
     let check = |tool: &str| -> Option<String> {
@@ -123,6 +140,43 @@ pub fn detect_project_tool(cwd: &str) -> Option<String> {
             None
         }
     };
+
+    if let Some(context) = context {
+        if context.file_kind == "single_file_script" {
+            let rust_script_available = available.iter().any(|t| t == "rust-script");
+            let cargo_script_available = available.iter().any(|t| t == "cargo-script");
+
+            if let Some(engine) = context.script_engine.as_deref() {
+                if engine == "rust-script" {
+                    if rust_script_available {
+                        return Some("rust-script".to_string());
+                    }
+                    if cargo_script_available {
+                        return Some("cargo-script".to_string());
+                    }
+                } else if cargo_script_available {
+                    return Some("cargo-script".to_string());
+                } else if rust_script_available {
+                    return Some("rust-script".to_string());
+                }
+            } else if cargo_script_available {
+                return Some("cargo-script".to_string());
+            } else if rust_script_available {
+                return Some("rust-script".to_string());
+            }
+        }
+
+        if context.file_kind == "cargo_project" && available.iter().any(|t| t == "cargo") {
+            return Some("cargo".to_string());
+        }
+
+        if let Some(root) = context.project_root.as_deref() {
+            let root_path = Path::new(root);
+            if root_path.join("Cargo.toml").exists() && available.iter().any(|t| t == "cargo") {
+                return Some("cargo".to_string());
+            }
+        }
+    }
 
     if p.join("Cargo.toml").exists() {
         if let Some(t) = check("cargo") { return Some(t); }
@@ -175,8 +229,18 @@ pub fn resolve(
     cwd: &str,
     tool_filter: Option<&str>,
 ) -> Result<ResolveResult, String> {
+    resolve_with_context(config, query, cwd, tool_filter, None)
+}
+
+pub fn resolve_with_context(
+    config: &Config,
+    query: &str,
+    cwd: &str,
+    tool_filter: Option<&str>,
+    context: Option<&RuntimeContext>,
+) -> Result<ResolveResult, String> {
     // Step 1: Load and filter schemas
-    let mut commands = load_all_schemas(cwd);
+    let mut commands = load_all_schemas_with_context(cwd, context);
 
     if commands.is_empty() {
         return Err("No TMP schemas available. Run `waz generate <tool>` first.".to_string());
@@ -195,7 +259,7 @@ pub fn resolve(
 
     // Step 2: Resolve data sources for all commands
     for cmd in &mut commands {
-        resolve_data_sources_pub(cmd, cwd);
+        resolve_data_sources_pub_ctx(cmd, cwd, context);
     }
 
     // Step 3: Build schema-aware prompt
@@ -430,6 +494,7 @@ fn call_ollama_resolve(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::RuntimeContext;
     use crate::tui::app::{CommandEntry, TokenDef, TokenType};
 
     #[test]
@@ -474,5 +539,22 @@ mod tests {
         let json = "```json\n{\"command\": \"git checkout dev\", \"tool\": \"git\", \"explanation\": \"Switch\", \"confidence\": \"high\", \"tokens_filled\": []}\n```";
         let result = parse_resolve_response(json).unwrap();
         assert_eq!(result.command, "git checkout dev");
+    }
+
+    #[test]
+    fn test_detect_best_tool_uses_script_context() {
+        let context = RuntimeContext {
+            cwd: "/tmp".to_string(),
+            file_kind: "single_file_script".to_string(),
+            script_engine: Some("rust-script".to_string()),
+            ..RuntimeContext::default()
+        };
+
+        let tool = detect_project_tool_with_available(
+            "/tmp",
+            Some(&context),
+            &["rust-script".to_string(), "cargo-script".to_string()],
+        );
+        assert_eq!(tool.as_deref(), Some("rust-script"));
     }
 }

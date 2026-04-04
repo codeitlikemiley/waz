@@ -196,19 +196,63 @@ fn draw_token_form(f: &mut Frame, app: &App, area: Rect) {
     };
     let cmd = &app.command_list[cmd_idx];
 
-    let mut lines: Vec<Line> = vec![
-        Line::from(vec![
-            Span::styled(
-                format!("▸ {}", cmd.command),
-                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
-            ),
-        ]),
-        Line::from(""),
-        Line::from(Span::styled(
-            "  Tokens:",
+    let mut lines: Vec<Line> = vec![Line::from(vec![
+        Span::styled(
+            format!("▸ {}", cmd.command),
+            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+        ),
+    ])];
+
+    lines.push(Line::from(""));
+
+    if let Some(ctx) = app.runtime_context.as_ref() {
+        lines.push(Line::from(vec![Span::styled(
+            "  Context:",
             Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-        )),
-    ];
+        )]));
+
+        if let Some(ref file) = ctx.file_path {
+            lines.push(Line::from(vec![
+                Span::raw("    file: "),
+                Span::styled(file, Style::default().fg(Color::White)),
+            ]));
+        }
+        lines.push(Line::from(vec![
+            Span::raw("    kind: "),
+            Span::styled(&ctx.file_kind, Style::default().fg(Color::Yellow)),
+        ]));
+        if let Some(ref package) = ctx.package_name {
+            lines.push(Line::from(vec![
+                Span::raw("    package: "),
+                Span::styled(package, Style::default().fg(Color::Green)),
+            ]));
+        }
+        if let Some(ref target) = ctx.recommended_target {
+            lines.push(Line::from(vec![
+                Span::raw("    target: "),
+                Span::styled(target, Style::default().fg(Color::Green)),
+            ]));
+        }
+        if let Some(ref engine) = ctx.script_engine {
+            lines.push(Line::from(vec![
+                Span::raw("    script: "),
+                Span::styled(engine, Style::default().fg(Color::Magenta)),
+            ]));
+        }
+        if let Some(line) = ctx.line {
+            lines.push(Line::from(vec![
+                Span::raw("    line: "),
+                Span::styled(line.to_string(), Style::default().fg(Color::DarkGray)),
+            ]));
+        }
+
+        lines.push(Line::from(""));
+    }
+
+    lines.push(Line::from(Span::styled(
+        "  Tokens:",
+        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+    )));
 
     for (i, token) in cmd.tokens.iter().enumerate() {
         let is_active = i == app.active_token;

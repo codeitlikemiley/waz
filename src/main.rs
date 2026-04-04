@@ -1,3 +1,4 @@
+mod context;
 mod ask;
 mod config;
 mod db;
@@ -140,6 +141,14 @@ enum Commands {
         /// Working directory.
         #[arg(long, env = "PWD")]
         cwd: String,
+
+        /// Current file to seed TMP context with.
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Current line number within the file.
+        #[arg(long)]
+        line: Option<usize>,
 
         /// File to write the selected command to (used by ZLE widget).
         #[arg(long)]
@@ -437,8 +446,8 @@ fn main() {
             }
         }
 
-        Commands::Tui { query, cwd, result_file, self_mode } => {
-            match tui::launch(cwd, query, self_mode) {
+        Commands::Tui { query, cwd, file, line, result_file, self_mode } => {
+            match tui::launch(cwd, file, line, query, self_mode) {
                 Ok(Some(cmd)) => {
                     if let Some(ref path) = result_file {
                         // ZLE widget mode — write to temp file
