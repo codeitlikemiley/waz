@@ -1,5 +1,5 @@
-use crate::{db::HistoryDb, session};
-use std::path::PathBuf;
+use crate::{context::RuntimeContext, db::HistoryDb, session};
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,6 +30,18 @@ struct ResolvedRun {
 }
 
 fn resolve_run_command(filepath_arg: Option<&str>) -> Result<ResolvedRun, String> {
+    match resolve_via_cargo_runner(filepath_arg) {
+        Ok(resolved) => Ok(resolved),
+        Err(cargo_err) => match resolve_locally(filepath_arg) {
+            Ok(resolved) => Ok(resolved),
+            Err(local_err) => Err(format!(
+                "{cargo_err}\n\nLocal fallback also failed: {local_err}"
+            )),
+        },
+    }
+}
+
+fn resolve_via_cargo_runner(filepath_arg: Option<&str>) -> Result<ResolvedRun, String> {
     let mut args = vec!["runner", "run"];
     if let Some(filepath_arg) = filepath_arg {
         args.push(filepath_arg);
@@ -64,6 +76,46 @@ fn resolve_run_command(filepath_arg: Option<&str>) -> Result<ResolvedRun, String
         command,
         raw_output: stdout,
         preview_status: output.status,
+    })
+}
+
+fn resolve_locally(filepath_arg: Option<&str>) -> Result<ResolvedRun, String> {
+    let cwd = std::env::current_dir()
+        .map_err(|e| format!("failed to determine current directory: {}", e))?;
+    let (filepath, line) = split_filepath_and_line(filepath_arg);
+
+    if filepath.as_deref().map(|path| path.contains("::")).unwrap_or(false) {
+        return Err("module-path run requires cargo runner to be installed".to_string());
+    }
+
+    let resolved_file = filepath
+        .as_deref()
+        .and_then(|path| resolve_existing_path(&cwd, path));
+
+    if filepath.is_some() && resolved_file.is_none() {
+        return Err(format!(
+            "file not found: {}",
+            filepath.unwrap_or_default()
+        ));
+    }
+
+    let cwd_str = cwd.to_string_lossy().to_string();
+    let context = RuntimeContext::detect(&cwd_str, resolved_file.as_deref().and_then(|p| p.to_str()), line);
+    let command = build_local_command(&context, resolved_file.as_deref())?;
+    let working_dir = context
+        .project_root
+        .as_ref()
+        .map(PathBuf::from)
+        .or_else(|| Some(cwd.clone()));
+    let preview = render_preview(&command, working_dir.as_ref(), &[]);
+    Ok(ResolvedRun {
+        command: ResolvedRunCommand {
+            command,
+            working_dir,
+            env: Vec::new(),
+        },
+        raw_output: preview,
+        preview_status: success_status(),
     })
 }
 
@@ -134,6 +186,191 @@ fn execute_resolved_command(resolved: &ResolvedRun) -> Result<ExitStatus, String
         .map_err(|e| format!("failed to execute resolved command: {}", e))
 }
 
+fn resolve_existing_path(cwd: &std::path::Path, path: &str) -> Option<PathBuf> {
+    let candidate = std::path::Path::new(path);
+    let resolved = if candidate.is_absolute() {
+        candidate.to_path_buf()
+    } else {
+        cwd.join(candidate)
+    };
+
+    if resolved.exists() {
+        Some(resolved.canonicalize().unwrap_or(resolved))
+    } else {
+        None
+    }
+}
+
+fn split_filepath_and_line(filepath_arg: Option<&str>) -> (Option<String>, Option<usize>) {
+    let Some(filepath_arg) = filepath_arg else {
+        return (None, None);
+    };
+
+    if let Some((path, line)) = filepath_arg.rsplit_once(':') {
+        if let Ok(line) = line.parse::<usize>() {
+            return (Some(path.to_string()), Some(line));
+        }
+    }
+
+    (Some(filepath_arg.to_string()), None)
+}
+
+fn build_local_command(context: &RuntimeContext, resolved_file: Option<&Path>) -> Result<String, String> {
+    if context.file_kind == "single_file_script" {
+        let file = resolved_file
+            .ok_or_else(|| "single-file scripts require a file path".to_string())?;
+        let engine = context.script_engine.as_deref().unwrap_or("rust-script");
+        let file = shell_quote(file.to_string_lossy().as_ref());
+        return Ok(if engine == "rust-script" {
+            format!("rust-script {file}")
+        } else {
+            format!("cargo +nightly -Zscript {file}")
+        });
+    }
+
+    if context.file_kind == "standalone" {
+        let file = resolved_file
+            .ok_or_else(|| "standalone Rust files require a file path".to_string())?;
+        let stem = file
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("waz-run");
+        let output = std::env::temp_dir().join(format!("waz-{}-{}", stem, std::process::id()));
+        let file = shell_quote(file.to_string_lossy().as_ref());
+        let output = shell_quote(output.to_string_lossy().as_ref());
+        return Ok(format!("rustc {file} -o {output} && {output}"));
+    }
+
+    let Some(file) = resolved_file else {
+        return Ok("cargo run".to_string());
+    };
+
+    let normalized = file.to_string_lossy().replace('\\', "/");
+    let stem = file
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("main");
+    let package = context.package_name.as_deref();
+
+    if normalized.ends_with("/src/main.rs") || normalized.ends_with("src/main.rs") {
+        return Ok(match package {
+            Some(package) if !package.is_empty() => {
+                format!("cargo run --package {}", shell_quote(package))
+            }
+            _ => "cargo run".to_string(),
+        });
+    }
+
+    if normalized.contains("/src/bin/") || normalized.starts_with("src/bin/") {
+        return Ok(match package {
+            Some(package) if !package.is_empty() => format!(
+                "cargo run --package {} --bin {}",
+                shell_quote(package),
+                shell_quote(stem)
+            ),
+            _ => format!("cargo run --bin {}", shell_quote(stem)),
+        });
+    }
+
+    if normalized.contains("/examples/") || normalized.starts_with("examples/") {
+        return Ok(match package {
+            Some(package) if !package.is_empty() => format!(
+                "cargo run --package {} --example {}",
+                shell_quote(package),
+                shell_quote(stem)
+            ),
+            _ => format!("cargo run --example {}", shell_quote(stem)),
+        });
+    }
+
+    if normalized.contains("/tests/") || normalized.starts_with("tests/") {
+        return Ok(match package {
+            Some(package) if !package.is_empty() => format!(
+                "cargo test --package {} --test {}",
+                shell_quote(package),
+                shell_quote(stem)
+            ),
+            _ => format!("cargo test --test {}", shell_quote(stem)),
+        });
+    }
+
+    if normalized.contains("/benches/") || normalized.starts_with("benches/") {
+        return Ok(match package {
+            Some(package) if !package.is_empty() => format!(
+                "cargo bench --package {} --bench {}",
+                shell_quote(package),
+                shell_quote(stem)
+            ),
+            _ => format!("cargo bench --bench {}", shell_quote(stem)),
+        });
+    }
+
+    if normalized.ends_with("/src/lib.rs") || normalized.ends_with("src/lib.rs") {
+        return Ok(match package {
+            Some(package) if !package.is_empty() => {
+                format!("cargo test --package {} --lib", shell_quote(package))
+            }
+            _ => "cargo test --lib".to_string(),
+        });
+    }
+
+    if normalized.ends_with("build.rs") {
+        return Ok("cargo check".to_string());
+    }
+
+    Ok(match package {
+        Some(package) if !package.is_empty() => {
+            format!("cargo run --package {}", shell_quote(package))
+        }
+        _ => "cargo run".to_string(),
+    })
+}
+
+fn render_preview(command: &str, working_dir: Option<&PathBuf>, env: &[(String, String)]) -> String {
+    let mut output = String::new();
+    output.push_str(command);
+    output.push('\n');
+    if let Some(working_dir) = working_dir {
+        output.push_str("Working directory: ");
+        output.push_str(&working_dir.to_string_lossy());
+        output.push('\n');
+    }
+    if !env.is_empty() {
+        output.push_str("Environment variables:\n");
+        for (key, value) in env {
+            output.push_str("  ");
+            output.push_str(key);
+            output.push('=');
+            output.push_str(value);
+            output.push('\n');
+        }
+    }
+    output
+}
+
+fn shell_quote(value: &str) -> String {
+    if value.is_empty() {
+        return "''".to_string();
+    }
+
+    if value
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '/' | ':'))
+    {
+        return value.to_string();
+    }
+
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+fn success_status() -> ExitStatus {
+    Command::new("sh")
+        .arg("-c")
+        .arg(":")
+        .status()
+        .expect("shell should be available")
+}
+
 fn record_resolved_command(command: &str, exit_code: i32) {
     let cwd = match std::env::current_dir() {
         Ok(cwd) => cwd,
@@ -186,5 +423,11 @@ mod tests {
         args.push("src/main.rs:1");
         args.push("--dry-run");
         assert_eq!(args, vec!["runner", "run", "src/main.rs:1", "--dry-run"]);
+    }
+
+    #[test]
+    fn quotes_shell_values_only_when_needed() {
+        assert_eq!(shell_quote("src/main.rs"), "src/main.rs");
+        assert_eq!(shell_quote("hello world"), "'hello world'");
     }
 }

@@ -122,6 +122,8 @@ A **Warp-like unified command palette** built with `ratatui`. Launch it with:
 | `waz run [path[:line]]` | Directly run the best command for the current workspace or a file context |
 | `waz runnables [path\|module::path[:line]]` | List runnables for a file, module path, or current workspace |
 
+`waz run` prefers `cargo runner` when it is installed, but falls back to local heuristics for common Cargo projects, standalone Rust files, and single-file scripts when it is not.
+
 The TUI starts in an **Empty** state showing mode hints. Type a prefix to enter a mode:
 
 ### Three Modes
