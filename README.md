@@ -119,6 +119,7 @@ A **Warp-like unified command palette** built with `ratatui`. Launch it with:
 | **Ctrl+T** | Any terminal |
 | `waz tui` | Manual launch |
 | `waz tui --file <path> [--line <n>]` | Seed TMP with file/line context |
+| `waz run <path[:line]>` | Directly run the best command for a file context |
 
 The TUI starts in an **Empty** state showing mode hints. Type a prefix to enter a mode:
 
@@ -165,6 +166,13 @@ waz tui --file example/power.rs --line 12
 ```
 
 When the file is a single-file script, waz detects either `#!/usr/bin/env rust-script` or `#!/usr/bin/env -S cargo +nightly -Zscript` and shows the matching script command with the current file prefilled.
+
+If you already know the file and line and want to skip the interactive palette, use:
+
+```bash
+waz run src/main.rs:1
+waz run examples/demo.rs:1
+```
 
 #### Built-in Curated Schemas (8)
 

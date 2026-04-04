@@ -7,6 +7,7 @@ pub mod hint;
 mod import;
 mod llm;
 mod predict;
+mod run;
 mod resolve;
 mod session;
 pub mod tui;
@@ -157,6 +158,16 @@ enum Commands {
         /// Self mode: show only waz commands for self-configuration.
         #[arg(long = "self")]
         self_mode: bool,
+    },
+
+    /// Run the best command for a file:line context directly.
+    Run {
+        /// File path, optionally with a line number suffix like src/main.rs:42.
+        file: String,
+
+        /// Print the resolved command instead of executing it.
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// Parse command output for suggested follow-up commands.
@@ -479,6 +490,20 @@ fn main() {
                 }
                 Err(e) => {
                     eprintln!("TUI error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::Run { file, dry_run } => {
+            match run::run_file(&file, dry_run) {
+                Ok(status) => {
+                    if !status.success() {
+                        std::process::exit(status.code().unwrap_or(1));
+                    }
+                }
+                Err(e) => {
+                    eprintln!("❌ {}", e);
                     std::process::exit(1);
                 }
             }
