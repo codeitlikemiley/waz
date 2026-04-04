@@ -101,7 +101,11 @@ fn resolve_locally(filepath_arg: Option<&str>) -> Result<ResolvedRun, String> {
 
     let cwd_str = cwd.to_string_lossy().to_string();
     let context = RuntimeContext::detect(&cwd_str, resolved_file.as_deref().and_then(|p| p.to_str()), line);
-    let command = build_local_command(&context, resolved_file.as_deref())?;
+    let mut commands = local_runnables(&context, resolved_file.as_deref())?;
+    let command = commands
+        .drain(..)
+        .next()
+        .ok_or_else(|| "local fallback did not produce any runnable commands".to_string())?;
     let working_dir = context
         .project_root
         .as_ref()
@@ -215,17 +219,20 @@ fn split_filepath_and_line(filepath_arg: Option<&str>) -> (Option<String>, Optio
     (Some(filepath_arg.to_string()), None)
 }
 
-fn build_local_command(context: &RuntimeContext, resolved_file: Option<&Path>) -> Result<String, String> {
+pub(crate) fn local_runnables(
+    context: &RuntimeContext,
+    resolved_file: Option<&Path>,
+) -> Result<Vec<String>, String> {
     if context.file_kind == "single_file_script" {
         let file = resolved_file
             .ok_or_else(|| "single-file scripts require a file path".to_string())?;
         let engine = context.script_engine.as_deref().unwrap_or("rust-script");
         let file = shell_quote(file.to_string_lossy().as_ref());
-        return Ok(if engine == "rust-script" {
+        return Ok(vec![if engine == "rust-script" {
             format!("rust-script {file}")
         } else {
             format!("cargo +nightly -Zscript {file}")
-        });
+        }]);
     }
 
     if context.file_kind == "standalone" {
@@ -238,11 +245,11 @@ fn build_local_command(context: &RuntimeContext, resolved_file: Option<&Path>) -
         let output = std::env::temp_dir().join(format!("waz-{}-{}", stem, std::process::id()));
         let file = shell_quote(file.to_string_lossy().as_ref());
         let output = shell_quote(output.to_string_lossy().as_ref());
-        return Ok(format!("rustc {file} -o {output} && {output}"));
+        return Ok(vec![format!("rustc {file} -o {output} && {output}")]);
     }
 
     let Some(file) = resolved_file else {
-        return Ok("cargo run".to_string());
+        return Ok(workspace_default_runnables(context));
     };
 
     let normalized = file.to_string_lossy().replace('\\', "/");
@@ -251,18 +258,32 @@ fn build_local_command(context: &RuntimeContext, resolved_file: Option<&Path>) -
         .and_then(|s| s.to_str())
         .unwrap_or("main");
     let package = context.package_name.as_deref();
+    let mut commands = Vec::new();
 
     if normalized.ends_with("/src/main.rs") || normalized.ends_with("src/main.rs") {
-        return Ok(match package {
+        commands.push(match package {
             Some(package) if !package.is_empty() => {
                 format!("cargo run --package {}", shell_quote(package))
             }
             _ => "cargo run".to_string(),
         });
+        commands.push(match package {
+            Some(package) if !package.is_empty() => {
+                format!("cargo test --package {} --lib", shell_quote(package))
+            }
+            _ => "cargo test --lib".to_string(),
+        });
+        commands.push(match package {
+            Some(package) if !package.is_empty() => {
+                format!("cargo check --package {}", shell_quote(package))
+            }
+            _ => "cargo check".to_string(),
+        });
+        return Ok(commands);
     }
 
     if normalized.contains("/src/bin/") || normalized.starts_with("src/bin/") {
-        return Ok(match package {
+        commands.push(match package {
             Some(package) if !package.is_empty() => format!(
                 "cargo run --package {} --bin {}",
                 shell_quote(package),
@@ -270,10 +291,23 @@ fn build_local_command(context: &RuntimeContext, resolved_file: Option<&Path>) -
             ),
             _ => format!("cargo run --bin {}", shell_quote(stem)),
         });
+        commands.push(match package {
+            Some(package) if !package.is_empty() => {
+                format!("cargo test --package {} --lib", shell_quote(package))
+            }
+            _ => "cargo test --lib".to_string(),
+        });
+        commands.push(match package {
+            Some(package) if !package.is_empty() => {
+                format!("cargo check --package {}", shell_quote(package))
+            }
+            _ => "cargo check".to_string(),
+        });
+        return Ok(commands);
     }
 
     if normalized.contains("/examples/") || normalized.starts_with("examples/") {
-        return Ok(match package {
+        commands.push(match package {
             Some(package) if !package.is_empty() => format!(
                 "cargo run --package {} --example {}",
                 shell_quote(package),
@@ -281,10 +315,23 @@ fn build_local_command(context: &RuntimeContext, resolved_file: Option<&Path>) -
             ),
             _ => format!("cargo run --example {}", shell_quote(stem)),
         });
+        commands.push(match package {
+            Some(package) if !package.is_empty() => {
+                format!("cargo test --package {} --lib", shell_quote(package))
+            }
+            _ => "cargo test --lib".to_string(),
+        });
+        commands.push(match package {
+            Some(package) if !package.is_empty() => {
+                format!("cargo check --package {}", shell_quote(package))
+            }
+            _ => "cargo check".to_string(),
+        });
+        return Ok(commands);
     }
 
     if normalized.contains("/tests/") || normalized.starts_with("tests/") {
-        return Ok(match package {
+        commands.push(match package {
             Some(package) if !package.is_empty() => format!(
                 "cargo test --package {} --test {}",
                 shell_quote(package),
@@ -292,10 +339,17 @@ fn build_local_command(context: &RuntimeContext, resolved_file: Option<&Path>) -
             ),
             _ => format!("cargo test --test {}", shell_quote(stem)),
         });
+        commands.push(match package {
+            Some(package) if !package.is_empty() => {
+                format!("cargo check --package {}", shell_quote(package))
+            }
+            _ => "cargo check".to_string(),
+        });
+        return Ok(commands);
     }
 
     if normalized.contains("/benches/") || normalized.starts_with("benches/") {
-        return Ok(match package {
+        commands.push(match package {
             Some(package) if !package.is_empty() => format!(
                 "cargo bench --package {} --bench {}",
                 shell_quote(package),
@@ -303,27 +357,70 @@ fn build_local_command(context: &RuntimeContext, resolved_file: Option<&Path>) -
             ),
             _ => format!("cargo bench --bench {}", shell_quote(stem)),
         });
+        commands.push(match package {
+            Some(package) if !package.is_empty() => {
+                format!("cargo check --package {}", shell_quote(package))
+            }
+            _ => "cargo check".to_string(),
+        });
+        return Ok(commands);
     }
 
     if normalized.ends_with("/src/lib.rs") || normalized.ends_with("src/lib.rs") {
-        return Ok(match package {
+        commands.push(match package {
             Some(package) if !package.is_empty() => {
                 format!("cargo test --package {} --lib", shell_quote(package))
             }
             _ => "cargo test --lib".to_string(),
         });
+        commands.push(match package {
+            Some(package) if !package.is_empty() => {
+                format!("cargo check --package {}", shell_quote(package))
+            }
+            _ => "cargo check".to_string(),
+        });
+        return Ok(commands);
     }
 
     if normalized.ends_with("build.rs") {
-        return Ok("cargo check".to_string());
+        return Ok(vec!["cargo check".to_string()]);
     }
 
-    Ok(match package {
+    commands.push(match package {
         Some(package) if !package.is_empty() => {
             format!("cargo run --package {}", shell_quote(package))
         }
         _ => "cargo run".to_string(),
-    })
+    });
+    commands.push(match package {
+        Some(package) if !package.is_empty() => {
+            format!("cargo test --package {}", shell_quote(package))
+        }
+        _ => "cargo test".to_string(),
+    });
+    commands.push(match package {
+        Some(package) if !package.is_empty() => {
+            format!("cargo check --package {}", shell_quote(package))
+        }
+        _ => "cargo check".to_string(),
+    });
+    if !context.benches.is_empty() {
+        commands.push(match package {
+            Some(package) if !package.is_empty() => {
+                format!("cargo bench --package {}", shell_quote(package))
+            }
+            _ => "cargo bench".to_string(),
+        });
+    }
+    Ok(commands)
+}
+
+fn workspace_default_runnables(context: &RuntimeContext) -> Vec<String> {
+    let mut commands = vec!["cargo run".to_string(), "cargo test".to_string(), "cargo check".to_string()];
+    if !context.benches.is_empty() {
+        commands.push("cargo bench".to_string());
+    }
+    commands
 }
 
 fn render_preview(command: &str, working_dir: Option<&PathBuf>, env: &[(String, String)]) -> String {
