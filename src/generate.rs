@@ -191,7 +191,7 @@ fn resolve_data_sources(
                 resolve_builtin(resolver, cwd, context)
             } else if let Some(ref cmd) = ds.command {
                 // Shell command
-                run_data_source_command(cmd, &ds.parse)
+                run_data_source_command(cmd, &ds.parse, cwd)
             } else {
                 None
             };
@@ -220,8 +220,12 @@ pub fn resolve_data_sources_pub_ctx(
 }
 
 /// Run a shell command and parse its output into values.
-fn run_data_source_command(cmd: &str, parse: &str) -> Option<Vec<String>> {
-    let output = Command::new("sh").args(["-c", cmd]).output().ok()?;
+fn run_data_source_command(cmd: &str, parse: &str, cwd: &str) -> Option<Vec<String>> {
+    let output = Command::new("sh")
+        .args(["-c", cmd])
+        .current_dir(cwd)
+        .output()
+        .ok()?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let values: Vec<String> = match parse {
         "words" => stdout.split_whitespace().map(|s| s.to_string()).collect(),
