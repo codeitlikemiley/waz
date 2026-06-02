@@ -2,9 +2,9 @@
 
 <img src="assets/waz-logo.png" alt="Waz" width="128" />
 
-# Waz
-
 https://github.com/user-attachments/assets/0ff0fb41-4180-43a3-af08-fc09ec394c07
+
+# Waz
 
 [Simplified Chinese](./README.zh-CN.md) · [Japanese](./README.ja.md)
 <sub><i>Currently based on <a href="https://github.com/warpdotdev/warp">Warp</a>; evolving independently going forward.</i></sub>
