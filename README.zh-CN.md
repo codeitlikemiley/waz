@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/waz-logo.svg" alt="Waz" width="128" />
+<img src="assets/waz-logo.png" alt="Waz" width="128" />
 
 # Waz
 
