@@ -7,6 +7,8 @@
 [English](./README.md) · [日本语](./README.ja.md)
 <sub><i>Currently based on <a href="https://github.com/warpdotdev/warp">Warp</a>; evolving independently going forward.</i></sub>
 
+https://github.com/user-attachments/assets/8b478b2f-1ffb-4d11-8ff9-03128192a903
+
 </div>
 
 Waz is an open, local-first terminal with first-class AI and agent support. Plug in any AI provider, bring in any CLI agent, manage SSH hosts inside the terminal — with keys, history and agent state staying on your machine by default.

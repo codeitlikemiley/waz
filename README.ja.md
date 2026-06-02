@@ -6,6 +6,9 @@
 
 [English](./README.md) · [Simplified Chinese](./README.zh-CN.md)
 <sub><i>Now は <a href="https://github.com/warpdotdev/warp">Warp</a> をベースにしていますが、From now on I will evolve alone. </i></sub>
+
+https://github.com/user-attachments/assets/8b478b2f-1ffb-4d11-8ff9-03128192a903
+
 </div>
 
 Waz はオープンでローカルファーストなターミナルで、AI と Agentをファーストクラスでサポートします. Any AI プロバイダーを涚し, Any の CLI Agent をGET り込み, ターミナル内で SSH ホストを Management——API キー・歴・AgentのSTATE はデフォルトで自分のマシンにstay まります.
