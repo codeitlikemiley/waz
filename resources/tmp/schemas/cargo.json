@@ -1,0 +1,1478 @@
+{
+  "meta": {
+    "schema_version": 2,
+    "tool": "cargo",
+    "version": 0,
+    "description": "Rust package manager and build system",
+    "generated_by": "ai",
+    "generated_with": "waz-agent",
+    "verified": false,
+    "coverage": "full",
+    "discovery_method": "help",
+    "discovery_log": [
+      "cargo --help → OK",
+      "cargo build --help → OK",
+      "cargo run --help → OK",
+      "cargo test --help → OK",
+      "cargo check --help → OK",
+      "cargo bench --help → OK",
+      "cargo doc --help → OK",
+      "cargo clean --help → OK",
+      "cargo update --help → OK",
+      "cargo publish --help → OK",
+      "cargo install --help → OK",
+      "cargo add --help → OK",
+      "cargo remove --help → OK",
+      "cargo new --help → OK",
+      "cargo init --help → OK",
+      "cargo search --help → OK",
+      "cargo tree --help → OK",
+      "cargo fix --help → OK",
+      "cargo clippy --help → OK",
+      "cargo fmt --help → OK",
+      "cargo uninstall --help → OK"
+    ],
+    "requires_file": "Cargo.toml",
+    "requires_binary": "cargo",
+    "keywords": ["rust", "rustc", "crate", "package", "rustup"]
+  },
+  "commands": [
+    {
+      "command": "cargo build",
+      "description": "Compile the current package",
+      "group": "cargo",
+      "verified": false,
+      "tokens": [
+        {
+          "name": "package",
+          "description": "Package to build",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--package",
+          "aliases": ["-p"],
+          "data_source": { "resolver": "cargo:packages", "parse": "lines" }
+        },
+        {
+          "name": "bin",
+          "description": "Build only the specified binary",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--bin",
+          "aliases": [],
+          "data_source": { "resolver": "cargo:bins", "parse": "lines" }
+        },
+        {
+          "name": "example",
+          "description": "Build only the specified example",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--example",
+          "aliases": [],
+          "data_source": { "resolver": "cargo:examples", "parse": "lines" }
+        },
+        {
+          "name": "test",
+          "description": "Build only the specified test target",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--test",
+          "aliases": [],
+          "data_source": { "resolver": "cargo:tests", "parse": "lines" }
+        },
+        {
+          "name": "bench",
+          "description": "Build only the specified bench target",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--bench",
+          "aliases": [],
+          "data_source": { "resolver": "cargo:benches", "parse": "lines" }
+        },
+        {
+          "name": "features",
+          "description": "Space or comma separated list of features to activate",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--features",
+          "aliases": ["-F"],
+          "data_source": { "resolver": "cargo:features", "parse": "lines" }
+        },
+        {
+          "name": "profile",
+          "description": "Build artifacts with the specified profile",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--profile",
+          "aliases": [],
+          "data_source": { "resolver": "cargo:profiles", "parse": "lines" }
+        },
+        {
+          "name": "release",
+          "description": "Build artifacts in release mode, with optimizations",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--release",
+          "aliases": ["-r"]
+        },
+        {
+          "name": "workspace",
+          "description": "Build all packages in the workspace",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--workspace",
+          "aliases": []
+        },
+        {
+          "name": "all-targets",
+          "description": "Build all targets",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--all-targets",
+          "aliases": []
+        },
+        {
+          "name": "lib",
+          "description": "Build only this package's library",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--lib",
+          "aliases": []
+        },
+        {
+          "name": "bins",
+          "description": "Build all binaries",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--bins",
+          "aliases": []
+        },
+        {
+          "name": "all-features",
+          "description": "Activate all available features",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--all-features",
+          "aliases": []
+        },
+        {
+          "name": "no-default-features",
+          "description": "Do not activate the default feature",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--no-default-features",
+          "aliases": []
+        },
+        {
+          "name": "jobs",
+          "description": "Number of parallel jobs, defaults to # of CPUs",
+          "required": false,
+          "token_type": "Number",
+          "flag": "--jobs",
+          "aliases": ["-j"]
+        },
+        {
+          "name": "target",
+          "description": "Build for the target triple",
+          "required": false,
+          "token_type": "String",
+          "flag": "--target",
+          "aliases": [],
+          "data_source": { "command": "rustup target list --installed", "parse": "lines" }
+        },
+        {
+          "name": "target-dir",
+          "description": "Directory for all generated artifacts",
+          "required": false,
+          "token_type": "File",
+          "flag": "--target-dir",
+          "aliases": []
+        },
+        {
+          "name": "manifest-path",
+          "description": "Path to Cargo.toml",
+          "required": false,
+          "token_type": "File",
+          "flag": "--manifest-path",
+          "aliases": []
+        },
+        {
+          "name": "keep-going",
+          "description": "Do not abort the build as soon as there is an error",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--keep-going",
+          "aliases": []
+        },
+        {
+          "name": "locked",
+          "description": "Assert that Cargo.lock will remain unchanged",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--locked",
+          "aliases": []
+        },
+        {
+          "name": "offline",
+          "description": "Run without accessing the network",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--offline",
+          "aliases": []
+        },
+        {
+          "name": "verbose",
+          "description": "Use verbose output",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--verbose",
+          "aliases": ["-v"]
+        },
+        {
+          "name": "quiet",
+          "description": "Do not print cargo log messages",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--quiet",
+          "aliases": ["-q"]
+        }
+      ]
+    },
+    {
+      "command": "cargo run",
+      "description": "Run a binary or example of the local package",
+      "group": "cargo",
+      "verified": false,
+      "tokens": [
+        {
+          "name": "package",
+          "description": "Package with the target to run",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--package",
+          "aliases": ["-p"],
+          "data_source": { "resolver": "cargo:packages", "parse": "lines" }
+        },
+        {
+          "name": "bin",
+          "description": "Name of the bin target to run",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--bin",
+          "aliases": [],
+          "data_source": { "resolver": "cargo:bins", "parse": "lines" }
+        },
+        {
+          "name": "example",
+          "description": "Name of the example target to run",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--example",
+          "aliases": [],
+          "data_source": { "resolver": "cargo:examples", "parse": "lines" }
+        },
+        {
+          "name": "features",
+          "description": "Space or comma separated list of features to activate",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--features",
+          "aliases": ["-F"],
+          "data_source": { "resolver": "cargo:features", "parse": "lines" }
+        },
+        {
+          "name": "release",
+          "description": "Build artifacts in release mode, with optimizations",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--release",
+          "aliases": ["-r"]
+        },
+        {
+          "name": "profile",
+          "description": "Build artifacts with the specified profile",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--profile",
+          "aliases": [],
+          "data_source": { "resolver": "cargo:profiles", "parse": "lines" }
+        },
+        {
+          "name": "all-features",
+          "description": "Activate all available features",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--all-features",
+          "aliases": []
+        },
+        {
+          "name": "no-default-features",
+          "description": "Do not activate the default feature",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--no-default-features",
+          "aliases": []
+        },
+        {
+          "name": "jobs",
+          "description": "Number of parallel jobs",
+          "required": false,
+          "token_type": "Number",
+          "flag": "--jobs",
+          "aliases": ["-j"]
+        },
+        {
+          "name": "target",
+          "description": "Build for the target triple",
+          "required": false,
+          "token_type": "String",
+          "flag": "--target",
+          "aliases": [],
+          "data_source": { "command": "rustup target list --installed", "parse": "lines" }
+        },
+        {
+          "name": "manifest-path",
+          "description": "Path to Cargo.toml",
+          "required": false,
+          "token_type": "File",
+          "flag": "--manifest-path",
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "command": "cargo test",
+      "description": "Run the tests",
+      "group": "cargo",
+      "verified": false,
+      "tokens": [
+        {
+          "name": "testname",
+          "description": "Only run tests matching this filter string",
+          "required": false,
+          "token_type": "String"
+        },
+        {
+          "name": "package",
+          "description": "Package to run tests for",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--package",
+          "aliases": ["-p"],
+          "data_source": { "resolver": "cargo:packages", "parse": "lines" }
+        },
+        {
+          "name": "bin",
+          "description": "Test only the specified binary",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--bin",
+          "aliases": [],
+          "data_source": { "resolver": "cargo:bins", "parse": "lines" }
+        },
+        {
+          "name": "test",
+          "description": "Test only the specified test target",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--test",
+          "aliases": [],
+          "data_source": { "resolver": "cargo:tests", "parse": "lines" }
+        },
+        {
+          "name": "bench",
+          "description": "Test only the specified bench target",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--bench",
+          "aliases": [],
+          "data_source": { "resolver": "cargo:benches", "parse": "lines" }
+        },
+        {
+          "name": "features",
+          "description": "Space or comma separated list of features to activate",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--features",
+          "aliases": ["-F"],
+          "data_source": { "resolver": "cargo:features", "parse": "lines" }
+        },
+        {
+          "name": "workspace",
+          "description": "Test all packages in the workspace",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--workspace",
+          "aliases": []
+        },
+        {
+          "name": "exclude",
+          "description": "Exclude packages from the test",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--exclude",
+          "aliases": [],
+          "data_source": { "resolver": "cargo:packages", "parse": "lines" }
+        },
+        {
+          "name": "release",
+          "description": "Build artifacts in release mode",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--release",
+          "aliases": ["-r"]
+        },
+        {
+          "name": "no-run",
+          "description": "Compile, but don't run tests",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--no-run",
+          "aliases": []
+        },
+        {
+          "name": "no-fail-fast",
+          "description": "Run all tests regardless of failure",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--no-fail-fast",
+          "aliases": []
+        },
+        {
+          "name": "lib",
+          "description": "Test only this package's library",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--lib",
+          "aliases": []
+        },
+        {
+          "name": "doc",
+          "description": "Test only this library's documentation",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--doc",
+          "aliases": []
+        },
+        {
+          "name": "all-targets",
+          "description": "Test all targets (does not include doctests)",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--all-targets",
+          "aliases": []
+        },
+        {
+          "name": "all-features",
+          "description": "Activate all available features",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--all-features",
+          "aliases": []
+        },
+        {
+          "name": "no-default-features",
+          "description": "Do not activate the default feature",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--no-default-features",
+          "aliases": []
+        },
+        {
+          "name": "jobs",
+          "description": "Number of parallel jobs",
+          "required": false,
+          "token_type": "Number",
+          "flag": "--jobs",
+          "aliases": ["-j"]
+        },
+        {
+          "name": "profile",
+          "description": "Build artifacts with the specified profile",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--profile",
+          "aliases": [],
+          "data_source": { "resolver": "cargo:profiles", "parse": "lines" }
+        }
+      ]
+    },
+    {
+      "command": "cargo check",
+      "description": "Analyze the current package and report errors, but don't build object files",
+      "group": "cargo",
+      "verified": false,
+      "tokens": [
+        {
+          "name": "package",
+          "description": "Package(s) to check",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--package",
+          "aliases": ["-p"],
+          "data_source": { "resolver": "cargo:packages", "parse": "lines" }
+        },
+        {
+          "name": "bin",
+          "description": "Check only the specified binary",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--bin",
+          "aliases": [],
+          "data_source": { "resolver": "cargo:bins", "parse": "lines" }
+        },
+        {
+          "name": "features",
+          "description": "Space or comma separated list of features to activate",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--features",
+          "aliases": ["-F"],
+          "data_source": { "resolver": "cargo:features", "parse": "lines" }
+        },
+        {
+          "name": "workspace",
+          "description": "Check all packages in the workspace",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--workspace",
+          "aliases": []
+        },
+        {
+          "name": "release",
+          "description": "Check artifacts in release mode",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--release",
+          "aliases": ["-r"]
+        },
+        {
+          "name": "profile",
+          "description": "Check artifacts with the specified profile",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--profile",
+          "aliases": [],
+          "data_source": { "resolver": "cargo:profiles", "parse": "lines" }
+        },
+        {
+          "name": "all-targets",
+          "description": "Check all targets",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--all-targets",
+          "aliases": []
+        },
+        {
+          "name": "all-features",
+          "description": "Activate all available features",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--all-features",
+          "aliases": []
+        },
+        {
+          "name": "no-default-features",
+          "description": "Do not activate the default feature",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--no-default-features",
+          "aliases": []
+        },
+        {
+          "name": "jobs",
+          "description": "Number of parallel jobs",
+          "required": false,
+          "token_type": "Number",
+          "flag": "--jobs",
+          "aliases": ["-j"]
+        },
+        {
+          "name": "keep-going",
+          "description": "Do not abort the build as soon as there is an error",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--keep-going",
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "command": "cargo bench",
+      "description": "Run the benchmarks",
+      "group": "cargo",
+      "verified": false,
+      "tokens": [
+        {
+          "name": "benchname",
+          "description": "Only run benchmarks matching this filter",
+          "required": false,
+          "token_type": "String"
+        },
+        {
+          "name": "package",
+          "description": "Package to run benchmarks for",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--package",
+          "aliases": ["-p"],
+          "data_source": { "resolver": "cargo:packages", "parse": "lines" }
+        },
+        {
+          "name": "bench",
+          "description": "Only the specified bench target",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--bench",
+          "aliases": [],
+          "data_source": { "resolver": "cargo:benches", "parse": "lines" }
+        },
+        {
+          "name": "features",
+          "description": "Features to activate",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--features",
+          "aliases": ["-F"],
+          "data_source": { "resolver": "cargo:features", "parse": "lines" }
+        },
+        {
+          "name": "workspace",
+          "description": "Bench all packages in the workspace",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--workspace",
+          "aliases": []
+        },
+        {
+          "name": "no-run",
+          "description": "Compile benchmarks but do not run",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--no-run",
+          "aliases": []
+        },
+        {
+          "name": "all-features",
+          "description": "Activate all available features",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--all-features",
+          "aliases": []
+        },
+        {
+          "name": "no-default-features",
+          "description": "Do not activate the default feature",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--no-default-features",
+          "aliases": []
+        },
+        {
+          "name": "jobs",
+          "description": "Number of parallel jobs",
+          "required": false,
+          "token_type": "Number",
+          "flag": "--jobs",
+          "aliases": ["-j"]
+        }
+      ]
+    },
+    {
+      "command": "cargo doc",
+      "description": "Build this package's and its dependencies' documentation",
+      "group": "cargo",
+      "verified": false,
+      "tokens": [
+        {
+          "name": "package",
+          "description": "Package to document",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--package",
+          "aliases": ["-p"],
+          "data_source": { "resolver": "cargo:packages", "parse": "lines" }
+        },
+        {
+          "name": "open",
+          "description": "Opens the docs in a browser after the operation",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--open",
+          "aliases": []
+        },
+        {
+          "name": "no-deps",
+          "description": "Do not build documentation for dependencies",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--no-deps",
+          "aliases": []
+        },
+        {
+          "name": "workspace",
+          "description": "Document all packages in the workspace",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--workspace",
+          "aliases": []
+        },
+        {
+          "name": "features",
+          "description": "Features to activate",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--features",
+          "aliases": ["-F"],
+          "data_source": { "resolver": "cargo:features", "parse": "lines" }
+        },
+        {
+          "name": "all-features",
+          "description": "Activate all available features",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--all-features",
+          "aliases": []
+        },
+        {
+          "name": "release",
+          "description": "Build in release mode",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--release",
+          "aliases": ["-r"]
+        }
+      ]
+    },
+    {
+      "command": "cargo clean",
+      "description": "Remove the target directory",
+      "group": "cargo",
+      "verified": false,
+      "tokens": [
+        {
+          "name": "package",
+          "description": "Package to clean artifacts for",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--package",
+          "aliases": ["-p"],
+          "data_source": { "resolver": "cargo:packages", "parse": "lines" }
+        },
+        {
+          "name": "doc",
+          "description": "Remove only the doc directory",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--doc",
+          "aliases": []
+        },
+        {
+          "name": "release",
+          "description": "Remove only release artifacts",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--release",
+          "aliases": ["-r"]
+        },
+        {
+          "name": "profile",
+          "description": "Remove artifacts for the specified profile",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--profile",
+          "aliases": [],
+          "data_source": { "resolver": "cargo:profiles", "parse": "lines" }
+        },
+        {
+          "name": "target-dir",
+          "description": "Directory for all generated artifacts",
+          "required": false,
+          "token_type": "File",
+          "flag": "--target-dir",
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "command": "cargo add",
+      "description": "Add dependencies to a manifest file",
+      "group": "cargo",
+      "verified": false,
+      "tokens": [
+        {
+          "name": "crate",
+          "description": "Reference to a crate to add as a dependency",
+          "required": true,
+          "token_type": "String"
+        },
+        {
+          "name": "dev",
+          "description": "Add as development dependency",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--dev",
+          "aliases": ["-D"]
+        },
+        {
+          "name": "build",
+          "description": "Add as build dependency",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--build",
+          "aliases": ["-B"]
+        },
+        {
+          "name": "features",
+          "description": "Space or comma separated list of features to activate",
+          "required": false,
+          "token_type": "String",
+          "flag": "--features",
+          "aliases": ["-F"]
+        },
+        {
+          "name": "no-default-features",
+          "description": "Disable the default features",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--no-default-features",
+          "aliases": []
+        },
+        {
+          "name": "optional",
+          "description": "Mark the dependency as optional",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--optional",
+          "aliases": []
+        },
+        {
+          "name": "rename",
+          "description": "Rename the dependency",
+          "required": false,
+          "token_type": "String",
+          "flag": "--rename",
+          "aliases": []
+        },
+        {
+          "name": "path",
+          "description": "Filesystem path to local crate to add",
+          "required": false,
+          "token_type": "File",
+          "flag": "--path",
+          "aliases": []
+        },
+        {
+          "name": "git",
+          "description": "Git URL of the crate to add",
+          "required": false,
+          "token_type": "String",
+          "flag": "--git",
+          "aliases": []
+        },
+        {
+          "name": "branch",
+          "description": "Git branch for --git",
+          "required": false,
+          "token_type": "String",
+          "flag": "--branch",
+          "aliases": []
+        },
+        {
+          "name": "tag",
+          "description": "Git tag for --git",
+          "required": false,
+          "token_type": "String",
+          "flag": "--tag",
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "command": "cargo remove",
+      "description": "Remove dependencies from a manifest file",
+      "group": "cargo",
+      "verified": false,
+      "tokens": [
+        {
+          "name": "crate",
+          "description": "Dependencies to remove",
+          "required": true,
+          "token_type": "String"
+        },
+        {
+          "name": "dev",
+          "description": "Remove as development dependency",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--dev",
+          "aliases": ["-D"]
+        },
+        {
+          "name": "build",
+          "description": "Remove as build dependency",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--build",
+          "aliases": ["-B"]
+        },
+        {
+          "name": "package",
+          "description": "Package to remove from",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--package",
+          "aliases": ["-p"],
+          "data_source": { "resolver": "cargo:packages", "parse": "lines" }
+        }
+      ]
+    },
+    {
+      "command": "cargo new",
+      "description": "Create a new cargo package",
+      "group": "cargo",
+      "verified": false,
+      "tokens": [
+        {
+          "name": "path",
+          "description": "Directory path for the new package",
+          "required": true,
+          "token_type": "File"
+        },
+        {
+          "name": "lib",
+          "description": "Use a library template",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--lib",
+          "aliases": []
+        },
+        {
+          "name": "bin",
+          "description": "Use a binary (application) template",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--bin",
+          "aliases": []
+        },
+        {
+          "name": "name",
+          "description": "Set the resulting package name",
+          "required": false,
+          "token_type": "String",
+          "flag": "--name",
+          "aliases": []
+        },
+        {
+          "name": "edition",
+          "description": "Edition to set for the crate",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--edition",
+          "aliases": [],
+          "values": ["2015", "2018", "2021", "2024"]
+        },
+        {
+          "name": "vcs",
+          "description": "Initialize a VCS repository",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--vcs",
+          "aliases": [],
+          "values": ["git", "hg", "pijul", "fossil", "none"]
+        }
+      ]
+    },
+    {
+      "command": "cargo init",
+      "description": "Create a new cargo package in an existing directory",
+      "group": "cargo",
+      "verified": false,
+      "tokens": [
+        {
+          "name": "path",
+          "description": "Directory path (defaults to current directory)",
+          "required": false,
+          "token_type": "File"
+        },
+        {
+          "name": "lib",
+          "description": "Use a library template",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--lib",
+          "aliases": []
+        },
+        {
+          "name": "bin",
+          "description": "Use a binary (application) template",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--bin",
+          "aliases": []
+        },
+        {
+          "name": "name",
+          "description": "Set the resulting package name",
+          "required": false,
+          "token_type": "String",
+          "flag": "--name",
+          "aliases": []
+        },
+        {
+          "name": "edition",
+          "description": "Edition to set for the crate",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--edition",
+          "aliases": [],
+          "values": ["2015", "2018", "2021", "2024"]
+        }
+      ]
+    },
+    {
+      "command": "cargo install",
+      "description": "Install a Rust binary",
+      "group": "cargo",
+      "verified": false,
+      "tokens": [
+        {
+          "name": "crate",
+          "description": "Crate to install",
+          "required": true,
+          "token_type": "String"
+        },
+        {
+          "name": "version",
+          "description": "Specify a version to install",
+          "required": false,
+          "token_type": "String",
+          "flag": "--version",
+          "aliases": []
+        },
+        {
+          "name": "git",
+          "description": "Git URL to install from",
+          "required": false,
+          "token_type": "String",
+          "flag": "--git",
+          "aliases": []
+        },
+        {
+          "name": "path",
+          "description": "Filesystem path to local crate to install",
+          "required": false,
+          "token_type": "File",
+          "flag": "--path",
+          "aliases": []
+        },
+        {
+          "name": "force",
+          "description": "Force overwriting existing crates or binaries",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--force",
+          "aliases": ["-f"]
+        },
+        {
+          "name": "locked",
+          "description": "Assert that Cargo.lock will remain unchanged",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--locked",
+          "aliases": []
+        },
+        {
+          "name": "features",
+          "description": "Features to activate",
+          "required": false,
+          "token_type": "String",
+          "flag": "--features",
+          "aliases": ["-F"]
+        },
+        {
+          "name": "all-features",
+          "description": "Activate all available features",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--all-features",
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "command": "cargo uninstall",
+      "description": "Uninstall a Rust binary",
+      "group": "cargo",
+      "verified": false,
+      "tokens": [
+        {
+          "name": "crate",
+          "description": "Crate to uninstall",
+          "required": true,
+          "token_type": "String"
+        },
+        {
+          "name": "bin",
+          "description": "Only uninstall the binary NAME",
+          "required": false,
+          "token_type": "String",
+          "flag": "--bin",
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "command": "cargo update",
+      "description": "Update dependencies listed in Cargo.lock",
+      "group": "cargo",
+      "verified": false,
+      "tokens": [
+        {
+          "name": "package",
+          "description": "Package to update",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--package",
+          "aliases": ["-p"],
+          "data_source": { "resolver": "cargo:packages", "parse": "lines" }
+        },
+        {
+          "name": "workspace",
+          "description": "Update all workspace packages",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--workspace",
+          "aliases": []
+        },
+        {
+          "name": "dry-run",
+          "description": "Don't actually write the lockfile",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--dry-run",
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "command": "cargo publish",
+      "description": "Package and upload this package to the registry",
+      "group": "cargo",
+      "verified": false,
+      "tokens": [
+        {
+          "name": "package",
+          "description": "Package to publish",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--package",
+          "aliases": ["-p"],
+          "data_source": { "resolver": "cargo:packages", "parse": "lines" }
+        },
+        {
+          "name": "dry-run",
+          "description": "Perform all checks without uploading",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--dry-run",
+          "aliases": []
+        },
+        {
+          "name": "token",
+          "description": "Token to use for uploading",
+          "required": false,
+          "token_type": "String",
+          "flag": "--token",
+          "aliases": []
+        },
+        {
+          "name": "allow-dirty",
+          "description": "Allow dirty working directories",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--allow-dirty",
+          "aliases": []
+        },
+        {
+          "name": "no-verify",
+          "description": "Do not verify the contents by building them",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--no-verify",
+          "aliases": []
+        },
+        {
+          "name": "features",
+          "description": "Features to activate",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--features",
+          "aliases": ["-F"],
+          "data_source": { "resolver": "cargo:features", "parse": "lines" }
+        },
+        {
+          "name": "all-features",
+          "description": "Activate all available features",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--all-features",
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "command": "cargo search",
+      "description": "Search registry for crates",
+      "group": "cargo",
+      "verified": false,
+      "tokens": [
+        {
+          "name": "query",
+          "description": "Search query string",
+          "required": true,
+          "token_type": "String"
+        },
+        {
+          "name": "limit",
+          "description": "Limit the number of results",
+          "required": false,
+          "token_type": "Number",
+          "flag": "--limit",
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "command": "cargo tree",
+      "description": "Display a tree visualization of a dependency graph",
+      "group": "cargo",
+      "verified": false,
+      "tokens": [
+        {
+          "name": "package",
+          "description": "Package to display the tree for",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--package",
+          "aliases": ["-p"],
+          "data_source": { "resolver": "cargo:packages", "parse": "lines" }
+        },
+        {
+          "name": "workspace",
+          "description": "Display the tree for all workspace members",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--workspace",
+          "aliases": []
+        },
+        {
+          "name": "invert",
+          "description": "Invert the tree direction",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--invert",
+          "aliases": ["-i"],
+          "data_source": { "resolver": "cargo:packages", "parse": "lines" }
+        },
+        {
+          "name": "depth",
+          "description": "Maximum display depth of the dependency tree",
+          "required": false,
+          "token_type": "Number",
+          "flag": "--depth",
+          "aliases": []
+        },
+        {
+          "name": "duplicates",
+          "description": "Show only packages that appear more than once",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--duplicates",
+          "aliases": ["-d"]
+        },
+        {
+          "name": "features",
+          "description": "Features to activate",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--features",
+          "aliases": ["-F"],
+          "data_source": { "resolver": "cargo:features", "parse": "lines" }
+        },
+        {
+          "name": "all-features",
+          "description": "Activate all available features",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--all-features",
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "command": "cargo fix",
+      "description": "Automatically fix lint warnings reported by rustc",
+      "group": "cargo",
+      "verified": false,
+      "tokens": [
+        {
+          "name": "package",
+          "description": "Package to fix",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--package",
+          "aliases": ["-p"],
+          "data_source": { "resolver": "cargo:packages", "parse": "lines" }
+        },
+        {
+          "name": "workspace",
+          "description": "Fix all packages in the workspace",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--workspace",
+          "aliases": []
+        },
+        {
+          "name": "allow-dirty",
+          "description": "Fix code even if the working directory is dirty",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--allow-dirty",
+          "aliases": []
+        },
+        {
+          "name": "allow-staged",
+          "description": "Fix code even if the working directory has staged changes",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--allow-staged",
+          "aliases": []
+        },
+        {
+          "name": "edition",
+          "description": "Fix code to be compatible with the latest edition",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--edition",
+          "aliases": []
+        },
+        {
+          "name": "features",
+          "description": "Features to activate",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--features",
+          "aliases": ["-F"],
+          "data_source": { "resolver": "cargo:features", "parse": "lines" }
+        }
+      ]
+    },
+    {
+      "command": "cargo clippy",
+      "description": "Run Clippy lints on the current package",
+      "group": "cargo",
+      "verified": false,
+      "tokens": [
+        {
+          "name": "package",
+          "description": "Package to check with Clippy",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--package",
+          "aliases": ["-p"],
+          "data_source": { "resolver": "cargo:packages", "parse": "lines" }
+        },
+        {
+          "name": "workspace",
+          "description": "Run Clippy on all packages in the workspace",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--workspace",
+          "aliases": []
+        },
+        {
+          "name": "fix",
+          "description": "Automatically apply lint suggestions",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--fix",
+          "aliases": []
+        },
+        {
+          "name": "allow-dirty",
+          "description": "Allow fix with dirty working directory",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--allow-dirty",
+          "aliases": []
+        },
+        {
+          "name": "all-targets",
+          "description": "Check all targets",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--all-targets",
+          "aliases": []
+        },
+        {
+          "name": "features",
+          "description": "Features to activate",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--features",
+          "aliases": ["-F"],
+          "data_source": { "resolver": "cargo:features", "parse": "lines" }
+        },
+        {
+          "name": "all-features",
+          "description": "Activate all available features",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--all-features",
+          "aliases": []
+        },
+        {
+          "name": "no-default-features",
+          "description": "Do not activate the default feature",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--no-default-features",
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "command": "cargo fmt",
+      "description": "Format all code in the current package",
+      "group": "cargo",
+      "verified": false,
+      "tokens": [
+        {
+          "name": "package",
+          "description": "Package to format",
+          "required": false,
+          "token_type": "Enum",
+          "flag": "--package",
+          "aliases": ["-p"],
+          "data_source": { "resolver": "cargo:packages", "parse": "lines" }
+        },
+        {
+          "name": "all",
+          "description": "Format all packages in the workspace",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--all",
+          "aliases": []
+        },
+        {
+          "name": "check",
+          "description": "Run in check mode (exit with error if not formatted)",
+          "required": false,
+          "token_type": "Boolean",
+          "flag": "--check",
+          "aliases": []
+        }
+      ]
+    }
+  ]
+}

@@ -1662,6 +1662,7 @@ pub struct Input {
     /// we snapshot the current input contents here so we can restore them after the command
     /// completes and the buffer would normally be cleared.
     input_contents_before_prompt_chip_command: Option<String>,
+    skip_tmp_suggestions_update: bool,
 }
 
 #[derive(Clone)]
@@ -2763,6 +2764,14 @@ impl Input {
                 });
             }
 
+            if let InputSuggestionsMode::TmpFormPanel {
+                command_entry,
+                active_token_index,
+                token_values,
+            } = me.suggestions_mode_model.as_ref(ctx).mode().clone() {
+                me.update_tmp_suggestions(&command_entry, active_token_index, &token_values, ctx);
+            }
+
             me.set_zero_state_hint_text(ctx);
             ctx.notify();
         });
@@ -3229,6 +3238,7 @@ impl Input {
             slash_command_data_source,
             ephemeral_message_model,
             input_contents_before_prompt_chip_command: None,
+            skip_tmp_suggestions_update: false,
         };
 
         #[cfg(feature = "local_fs")]
@@ -7042,6 +7052,7 @@ impl Input {
                         let mut new_vals = token_values.clone();
                         new_vals[active_token_index] = selected_item.text().to_string();
                         let assembled = warp_completer::signatures::tmp::build_assembled_command(command_entry, &new_vals, false);
+                        self.skip_tmp_suggestions_update = true;
                         self.editor.update(ctx, |editor, ctx| {
                             editor.set_buffer_text_ignoring_undo(&assembled, ctx);
                             let char_len = editor.buffer_text(ctx).chars().count() as u32;
@@ -7057,6 +7068,7 @@ impl Input {
                                 ctx,
                             );
                         });
+                        self.skip_tmp_suggestions_update = false;
                     }
                 }
             }
@@ -7241,6 +7253,7 @@ impl Input {
                 let mut new_vals = token_values;
                 new_vals[active_token_index] = suggestion.to_string();
                 let assembled = warp_completer::signatures::tmp::build_assembled_command(&command_entry, &new_vals, false);
+                self.skip_tmp_suggestions_update = true;
                 self.editor.update(ctx, |editor, ctx| {
                     editor.set_buffer_text_ignoring_undo(&assembled, ctx);
                     let char_len = editor.buffer_text(ctx).chars().count() as u32;
@@ -7259,6 +7272,7 @@ impl Input {
                         ctx,
                     );
                 });
+                self.skip_tmp_suggestions_update = false;
                 true
             }
         }
@@ -7479,6 +7493,7 @@ impl Input {
                         let idx = active_token_index;
                         vals[idx] = selected_text;
                         let assembled = warp_completer::signatures::tmp::build_assembled_command(&entry, &vals, false);
+                        self.skip_tmp_suggestions_update = true;
                         self.editor.update(ctx, |editor, ctx| {
                             editor.set_buffer_text_ignoring_undo(&assembled, ctx);
                             let char_len = editor.buffer_text(ctx).chars().count() as u32;
@@ -7494,6 +7509,7 @@ impl Input {
                                 ctx,
                             );
                         });
+                        self.skip_tmp_suggestions_update = false;
                     }
                 } else {
                     let entry = command_entry.clone();
@@ -7897,6 +7913,7 @@ impl Input {
                         let idx = active_token_index;
                         vals[idx] = selected_text;
                         let assembled = warp_completer::signatures::tmp::build_assembled_command(&entry, &vals, false);
+                        self.skip_tmp_suggestions_update = true;
                         self.editor.update(ctx, |editor, ctx| {
                             editor.set_buffer_text_ignoring_undo(&assembled, ctx);
                             let char_len = editor.buffer_text(ctx).chars().count() as u32;
@@ -7912,6 +7929,7 @@ impl Input {
                                 ctx,
                             );
                         });
+                        self.skip_tmp_suggestions_update = false;
                     }
                 } else {
                     let entry = command_entry.clone();
@@ -9249,6 +9267,9 @@ impl Input {
                         active_token_index,
                         token_values,
                     } => {
+                        if self.skip_tmp_suggestions_update {
+                            return;
+                        }
                         if edit_origin.is_user() {
                             let buffer_text = self.buffer_text(ctx);
                             let entry = command_entry.clone();
@@ -9280,15 +9301,33 @@ impl Input {
                                                 InputSuggestionsMode::TmpFormPanel {
                                                     command_entry: entry.clone(),
                                                     active_token_index: active_idx,
-                                                    token_values: new_vals,
+                                                    token_values: new_vals.clone(),
                                                 },
                                                 ctx,
                                             );
                                         });
-                                    }
-                                    if let Some(token) = entry.tokens.get(active_idx) {
-                                        if token.token_type == warp_completer::signatures::tmp::TokenType::File {
-                                            self.open_completion_suggestions(CompletionsTrigger::AsYouType, ctx);
+                                    } else {
+                                        if let Some(token) = entry.tokens.get(active_idx) {
+                                            match token.token_type {
+                                                warp_completer::signatures::tmp::TokenType::File => {
+                                                    self.open_completion_suggestions(CompletionsTrigger::AsYouType, ctx);
+                                                }
+                                                warp_completer::signatures::tmp::TokenType::Enum => {
+                                                    let query = new_vals.get(active_idx).cloned().unwrap_or_default();
+                                                    let options = token.values.clone().unwrap_or_default();
+                                                    self.input_suggestions.update(ctx, |suggestions, ctx| {
+                                                        suggestions.fuzzy_substring_search_without_selection(query, options, ctx);
+                                                    });
+                                                }
+                                                warp_completer::signatures::tmp::TokenType::Boolean => {
+                                                    let query = new_vals.get(active_idx).cloned().unwrap_or_default();
+                                                    let options = vec!["true".to_string(), "false".to_string()];
+                                                    self.input_suggestions.update(ctx, |suggestions, ctx| {
+                                                        suggestions.fuzzy_substring_search_without_selection(query, options, ctx);
+                                                    });
+                                                }
+                                                _ => {}
+                                            }
                                         }
                                     }
                                 }
@@ -10704,6 +10743,49 @@ impl Input {
             .value()
     }
 
+    fn update_tmp_suggestions(
+        &mut self,
+        entry: &warp_completer::signatures::tmp::CommandEntry,
+        active_idx: usize,
+        vals: &[String],
+        ctx: &mut ViewContext<Self>,
+    ) {
+        if self.skip_tmp_suggestions_update {
+            return;
+        }
+
+        if let Some(token) = entry.tokens.get(active_idx) {
+            match token.token_type {
+                warp_completer::signatures::tmp::TokenType::Enum => {
+                    let query = vals.get(active_idx).cloned().unwrap_or_default();
+                    let options = token.values.clone().unwrap_or_default();
+                    self.input_suggestions.update(ctx, |suggestions, ctx| {
+                        suggestions.fuzzy_substring_search_without_selection(query, options, ctx);
+                    });
+                }
+                warp_completer::signatures::tmp::TokenType::Boolean => {
+                    let query = vals.get(active_idx).cloned().unwrap_or_default();
+                    let options = vec!["true".to_string(), "false".to_string()];
+                    self.input_suggestions.update(ctx, |suggestions, ctx| {
+                        suggestions.fuzzy_substring_search_without_selection(query, options, ctx);
+                    });
+                }
+                warp_completer::signatures::tmp::TokenType::File => {
+                    self.open_completion_suggestions(CompletionsTrigger::AsYouType, ctx);
+                }
+                _ => {
+                    self.input_suggestions.update(ctx, |suggestions, _| {
+                        suggestions.set_items(vec![]);
+                    });
+                }
+            }
+        } else {
+            self.input_suggestions.update(ctx, |suggestions, _| {
+                suggestions.set_items(vec![]);
+            });
+        }
+    }
+
     fn open_completion_suggestions(
         &mut self,
         completions_trigger: CompletionsTrigger,
@@ -11389,7 +11471,9 @@ impl Input {
 
                 // If suggestions menu is open, cycle backwards through suggestions instead of switching fields
                 if idx < entry.tokens.len() 
-                    && entry.tokens[idx].token_type == warp_completer::signatures::tmp::TokenType::File 
+                    && (entry.tokens[idx].token_type == warp_completer::signatures::tmp::TokenType::File 
+                        || entry.tokens[idx].token_type == warp_completer::signatures::tmp::TokenType::Enum 
+                        || entry.tokens[idx].token_type == warp_completer::signatures::tmp::TokenType::Boolean)
                     && !self.input_suggestions.as_ref(ctx).is_empty() 
                 {
                     self.input_suggestions.update(ctx, |suggestions, ctx| {
@@ -11398,6 +11482,7 @@ impl Input {
                     if let Some(selected_text) = self.input_suggestions.as_ref(ctx).get_selected_item_text() {
                         vals[idx] = selected_text.to_string();
                         let assembled = warp_completer::signatures::tmp::build_assembled_command(&entry, &vals, false);
+                        self.skip_tmp_suggestions_update = true;
                         self.editor.update(ctx, |editor, ctx| {
                             editor.set_buffer_text_ignoring_undo(&assembled, ctx);
                             let char_len = editor.buffer_text(ctx).chars().count() as u32;
@@ -11413,6 +11498,7 @@ impl Input {
                                 ctx,
                             );
                         });
+                        self.skip_tmp_suggestions_update = false;
                     }
                     return;
                 }
@@ -11632,58 +11718,27 @@ impl Input {
             let token = &entry.tokens[idx];
 
             match token.token_type {
-                warp_completer::signatures::tmp::TokenType::Boolean => {
-                    let cur_val = vals[idx].as_str();
-                    vals[idx] = if cur_val == "true" { "false" } else { "true" }.to_string();
-                    let assembled = warp_completer::signatures::tmp::build_assembled_command(&entry, &vals, false);
-                    self.editor.update(ctx, |editor, ctx| {
-                        editor.set_buffer_text_ignoring_undo(&assembled, ctx);
-                        let char_len = editor.buffer_text(ctx).chars().count() as u32;
-                        editor.reset_selections_to_point(&BufferPoint::new(0, char_len), ctx);
-                    });
-                    self.suggestions_mode_model.update(ctx, |m, ctx| {
-                        m.set_mode(
-                            InputSuggestionsMode::TmpFormPanel {
-                                command_entry: entry,
-                                active_token_index: idx,
-                                token_values: vals,
-                            },
-                            ctx,
-                        );
-                    });
-                }
-                warp_completer::signatures::tmp::TokenType::Enum => {
-                    if let Some(ref values) = token.values {
-                        if !values.is_empty() {
-                            let cur_val = &vals[idx];
-                            let pos = values.iter().position(|v| v == cur_val);
-                            let next = match pos {
-                                Some(p) => (p + 1) % values.len(),
-                                None => 0,
-                            };
-                            vals[idx] = values[next].clone();
-                            let assembled = warp_completer::signatures::tmp::build_assembled_command(&entry, &vals, false);
-                            self.editor.update(ctx, |editor, ctx| {
-                                editor.set_buffer_text_ignoring_undo(&assembled, ctx);
-                                let char_len = editor.buffer_text(ctx).chars().count() as u32;
-                                editor.reset_selections_to_point(&BufferPoint::new(0, char_len), ctx);
+                warp_completer::signatures::tmp::TokenType::File
+                | warp_completer::signatures::tmp::TokenType::Enum
+                | warp_completer::signatures::tmp::TokenType::Boolean => {
+                    if self.input_suggestions.as_ref(ctx).is_empty() {
+                        if token.token_type == warp_completer::signatures::tmp::TokenType::File {
+                            self.open_completion_suggestions(CompletionsTrigger::Keybinding, ctx);
+                        } else {
+                            if idx + 1 < entry.tokens.len() {
+                                idx += 1;
+                            }
+                            self.suggestions_mode_model.update(ctx, |m, ctx| {
+                                m.set_mode(
+                                    InputSuggestionsMode::TmpFormPanel {
+                                        command_entry: entry,
+                                        active_token_index: idx,
+                                        token_values: vals,
+                                    },
+                                    ctx,
+                                );
                             });
                         }
-                    }
-                    self.suggestions_mode_model.update(ctx, |m, ctx| {
-                        m.set_mode(
-                            InputSuggestionsMode::TmpFormPanel {
-                                command_entry: entry,
-                                active_token_index: idx,
-                                token_values: vals,
-                            },
-                            ctx,
-                        );
-                    });
-                }
-                warp_completer::signatures::tmp::TokenType::File => {
-                    if self.input_suggestions.as_ref(ctx).is_empty() {
-                        self.open_completion_suggestions(CompletionsTrigger::Keybinding, ctx);
                     } else {
                         self.input_suggestions.update(ctx, |suggestions, ctx| {
                             suggestions.select_next(ctx);
@@ -11691,6 +11746,7 @@ impl Input {
                         if let Some(selected_text) = self.input_suggestions.as_ref(ctx).get_selected_item_text() {
                             vals[idx] = selected_text.to_string();
                             let assembled = warp_completer::signatures::tmp::build_assembled_command(&entry, &vals, false);
+                            self.skip_tmp_suggestions_update = true;
                             self.editor.update(ctx, |editor, ctx| {
                                 editor.set_buffer_text_ignoring_undo(&assembled, ctx);
                                 let char_len = editor.buffer_text(ctx).chars().count() as u32;
@@ -11706,6 +11762,7 @@ impl Input {
                                     ctx,
                                 );
                             });
+                            self.skip_tmp_suggestions_update = false;
                         }
                     }
                 }

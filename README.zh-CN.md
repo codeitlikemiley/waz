@@ -23,6 +23,7 @@ Waz is an open, local-first terminal with first-class AI and agent support. Plug
 - **Rendering fixes** — tuned Markdown pipeline; CJK soft-wrap caret and bold subpixel fixes.
 - **Localized UI** — English / Simplified Chinese / Japanese out of the box, community-extensible.
 - **Privacy defaults** — Cloud Agent / Computer Use / Referral / telemetry off by default.
+- **Token Model Protocol (TMP)** — Mapped JSON schemas that power supercharged path/flag tabbing autocomplete in the terminal Form Panel, and translate dynamically into structured MCP-aligned tools for AI agents with strict validation.
 
 ## Migrating from OpenWarp or Warp
 

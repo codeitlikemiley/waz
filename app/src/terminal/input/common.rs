@@ -330,7 +330,7 @@ pub(super) fn add_input_suggestions_overlays(
             active_token_index,
             token_values,
         } => {
-            let relative_position_id = TabCompletionsMenuPosition::AtLastCursor.to_position_id(input.editor.id());
+            let form_position_id = TabCompletionsMenuPosition::AtFirstCursor.to_position_id(input.editor.id());
             stack.add_positioned_overlay_child(
                 input.render_tmp_form_panel(
                     appearance,
@@ -341,13 +341,13 @@ pub(super) fn add_input_suggestions_overlays(
                 ),
                 OffsetPositioning::from_axes(
                     PositioningAxis::relative_to_stack_child(
-                        &relative_position_id,
+                        &form_position_id,
                         PositionedElementOffsetBounds::WindowByPosition,
                         OffsetType::Pixel(0.),
                         AnchorPair::new(XAxisAnchor::Left, XAxisAnchor::Left),
                     ),
                     PositioningAxis::relative_to_stack_child(
-                        &relative_position_id,
+                        &form_position_id,
                         PositionedElementOffsetBounds::Unbounded,
                         OffsetType::Pixel(0.),
                         menu_positioning.completion_suggestions_y_anchor(),
@@ -356,9 +356,12 @@ pub(super) fn add_input_suggestions_overlays(
             );
 
             if let Some(token) = command_entry.tokens.get(*active_token_index) {
-                if token.token_type == warp_completer::signatures::tmp::TokenType::File
+                if (token.token_type == warp_completer::signatures::tmp::TokenType::File
+                    || token.token_type == warp_completer::signatures::tmp::TokenType::Enum
+                    || token.token_type == warp_completer::signatures::tmp::TokenType::Boolean)
                     && !input.input_suggestions.read(app, |suggestions, _| suggestions.is_empty())
                 {
+                    let relative_position_id = TabCompletionsMenuPosition::AtLastCursor.to_position_id(input.editor.id());
                     let completions_y_anchor = match menu_positioning {
                         MenuPositioning::AboveInputBox => AnchorPair::new(YAxisAnchor::Bottom, YAxisAnchor::Top),
                         MenuPositioning::BelowInputBox => AnchorPair::new(YAxisAnchor::Top, YAxisAnchor::Bottom),

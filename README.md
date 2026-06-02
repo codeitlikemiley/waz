@@ -39,12 +39,14 @@ TMP schemas can be checked into git under your repository's workspace root:
 - `.warp/tmp/*.json` — Legacy fallback directory for local scripts.
 
 #### Schema Example (`cargo build` structure)
-Schemas define subcommands, descriptions, required parameters, and dynamic autocomplete resolvers:
+Schemas define subcommands, descriptions, required parameters, dynamic autocomplete resolvers, and alias flags:
 ```json
 {
   "meta": {
+    "schema_version": 2,
     "tool": "cargo",
-    "description": "Rust compilation manager"
+    "description": "Rust compilation manager",
+    "discovery_method": "help"
   },
   "commands": [
     {
@@ -59,6 +61,7 @@ Schemas define subcommands, descriptions, required parameters, and dynamic autoc
           "required": false,
           "token_type": "Enum",
           "flag": "--package",
+          "aliases": ["-p"],
           "data_source": {
             "resolver": "cargo:packages"
           }
@@ -68,7 +71,8 @@ Schemas define subcommands, descriptions, required parameters, and dynamic autoc
           "description": "Build release binary",
           "required": false,
           "token_type": "Boolean",
-          "flag": "--release"
+          "flag": "--release",
+          "aliases": ["-r"]
         }
       ]
     }
@@ -76,10 +80,16 @@ Schemas define subcommands, descriptions, required parameters, and dynamic autoc
 }
 ```
 
+### Schema Validation
+Waz includes a JSON meta-schema and validation script to verify schemas:
+* **Meta-Schema**: Located at `resources/tmp/meta-schema.json`.
+* **Validator Tool**: Run `./script/validate_tmp_schema.sh <path-to-schema.json>` to run automated structure checks, meta-schema validation, and type correctness checks.
+
 ### Autocomplete & Dynamic Resolvers
 TMP schemas support dynamic autocomplete values (Resolvers) for arguments:
-- **Built-in Resolvers**: `git:status_files` (resolves modified/untracked files via porcelain git status), `git:branches`, `git:remotes`, `cargo:packages`, and `npm:scripts`.
+- **Built-in Resolvers**: `git:status_files` (resolves modified/untracked files via porcelain git status), `git:branches`, `git:remotes`, `git:tags`, `cargo:packages`, and `npm:scripts`.
 - **Command-line Resolvers**: Execute arbitrary shell command resolvers (`data_source.command`) to fetch suggestion lists dynamically.
+- **Resolver Fallbacks**: Support `data_source.fallback` to chain resolving attempts if the primary resolver returns no results.
 
 ### Security & Trust Boundary
 Because custom schemas can define arbitrary shell commands to resolve suggestions (e.g., `data_source.command`), Waz enforces a strict security boundary:

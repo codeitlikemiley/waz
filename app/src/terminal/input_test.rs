@@ -7209,3 +7209,76 @@ fn test_tmp_form_panel_confirm_and_shift_tab() {
         });
     });
 }
+
+#[test]
+fn test_tmp_form_panel_enum_and_boolean_completions() {
+    App::test((), |mut app| async move {
+        initialize_app(&mut app);
+        let terminal = add_window_with_bootstrapped_terminal(&mut app, None, None).await;
+        let input = terminal.read(&app, |terminal, _| terminal.input().clone());
+
+        // Prepare a TmpFormPanel command entry with an Enum token
+        let command_entry = warp_completer::signatures::tmp::CommandEntry {
+            command: "git checkout".to_string(),
+            description: "checkout branch".to_string(),
+            tokens: vec![
+                warp_completer::signatures::tmp::TokenDef {
+                    name: "branch".to_string(),
+                    description: "branch name".to_string(),
+                    required: true,
+                    token_type: warp_completer::signatures::tmp::TokenType::Enum,
+                    default: None,
+                    values: Some(vec!["main".to_string(), "develop".to_string(), "feature".to_string()]),
+                    flag: None,
+                    aliases: vec![],
+                    data_source: None,
+                }
+            ],
+            group: "git".to_string(),
+            verified: true,
+        };
+
+        // Transition to TmpFormPanel mode manually
+        input.update(&mut app, |input, ctx| {
+            input.suggestions_mode_model.update(ctx, |m, ctx| {
+                m.set_mode(
+                    InputSuggestionsMode::TmpFormPanel {
+                        command_entry,
+                        active_token_index: 0,
+                        token_values: vec!["".to_string()],
+                    },
+                    ctx,
+                );
+            });
+        });
+
+        // The suggestions should be populated automatically via update_tmp_suggestions.
+        // Let's verify they are populated with the enum values.
+        input.read(&app, |input, ctx| {
+            let suggestions = input.input_suggestions.read(ctx, |s, _| s.items().iter().map(|item| item.text().to_string()).collect::<Vec<_>>());
+            assert_eq!(suggestions, vec!["main", "develop", "feature"]);
+        });
+
+        // Simulating the user typing "de" to filter the enum options:
+        input.update(&mut app, |input, ctx| {
+            input.clear_buffer_and_reset_undo_stack(ctx);
+            input.user_insert("git checkout de", ctx);
+        });
+
+        // The suggestions list should now only contain "develop" due to fuzzy substring filtering in buffer change handler:
+        input.read(&app, |input, ctx| {
+            let suggestions = input.input_suggestions.read(ctx, |s, _| s.items().iter().map(|item| item.text().to_string()).collect::<Vec<_>>());
+            assert_eq!(suggestions, vec!["develop"]);
+        });
+
+        // Pressing Tab should cycle selection and update the buffer text:
+        input.update(&mut app, |input, ctx| {
+            input.input_tab(ctx);
+        });
+
+        assert_eq!(
+            input.read(&app, |input, ctx| input.buffer_text(ctx)),
+            "git checkout develop"
+        );
+    });
+}
