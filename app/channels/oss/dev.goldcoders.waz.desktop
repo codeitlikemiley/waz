@@ -12,11 +12,11 @@ GenericName=TerminalEmulator
 # AppImage 打包时 bundle_appimage 会用 sed 把这一行替换为 `Exec=waz-oss %U`,
 # 直接指向 AppImage 内部的二进制。
 Exec=waz %U
-StartupWMClass=dev.waz.Waz
+StartupWMClass=dev.goldcoders.waz
 
 Keywords=shell;prompt;command;commandline;cmd;
 
-Icon=dev.waz.Waz
+Icon=dev.goldcoders.waz
 
 Categories=System;TerminalEmulator;
 
