@@ -4,7 +4,7 @@
 
 # Waz
 
-https://github.com/user-attachments/assets/b466b266-ac46-432c-936d-ef7f0fe69aaa
+https://github.com/user-attachments/assets/443ecfeb-b0db-442a-bc4a-706891ba0360
 
 [Simplified Chinese](./README.zh-CN.md) · [Japanese](./README.ja.md)
 <sub><i>Currently based on <a href="https://github.com/warpdotdev/warp">Warp</a>; evolving independently going forward.</i></sub>
