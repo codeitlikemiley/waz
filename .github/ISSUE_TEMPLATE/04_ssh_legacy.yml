@@ -1,0 +1,106 @@
+name: Legacy SSH Issue (no subshell bootstrap)
+description: "(Legacy) The shell does not bootstrap as a subshell over SSH in Waz."
+labels: ["bug", "area:ssh"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template when **Waz** fails to bootstrap a subshell over SSH (the legacy non-tmux Warpify path).
+
+        - Cloud-account or Warpify-SSO issues belong to upstream Waz, not Waz.
+        - If your failure is specifically with **tmux Warpification**, use the *SSH Warpify (tmux)* template instead.
+  - type: checkboxes
+    attributes:
+      label: "Pre-submit Checks"
+      options:
+        - label: "I have [searched Waz SSH issues](https://github.com/zerx-lab/warp/issues?q=is%3Aissue+label%3Aarea%3Assh) and there are no duplicates."
+          required: true
+        - label: "This is reproducible in **Waz** (not only in upstream Waz)."
+          required: true
+        - label: "I have included relevant logs (`RUST_LOG=info` output, SSH session output). Optional, but greatly speeds up triage."
+          required: false
+  - type: dropdown
+    id: "os"
+    attributes:
+      label: "Local operating system (OS)"
+      multiple: false
+      options:
+        - "Select an OS"
+        - macOS
+        - Linux
+        - Windows
+    validations:
+      required: true
+  - type: input
+    id: "os-version"
+    attributes:
+      label: "Local OS and version"
+      description: "For example: Windows 10 22H2, macOS 14.5, Debian 12."
+    validations:
+      required: true
+  - type: input
+    id: "local-shell-version"
+    attributes:
+      label: "Local shell version"
+      description: "Output of `echo $BASH_VERSION` / `echo $ZSH_VERSION` / `$PSVersionTable`."
+    validations:
+      required: true
+  - type: input
+    id: "remote-shell-version"
+    attributes:
+      label: "Remote shell version"
+      description: "Output of `echo $BASH_VERSION` or `echo $ZSH_VERSION` on the SSH target."
+    validations:
+      required: true
+  - type: input
+    id: "waz-version"
+    attributes:
+      label: "Waz version / commit"
+      description: "Open Settings → About to copy the version, or run `git rev-parse --short HEAD` if built from source."
+    validations:
+      required: true
+  - type: checkboxes
+    id: "rcfiles"
+    attributes:
+      label: "Have you tried commenting out your system & user rc files?"
+      description: "Many SSH bootstrap failures are caused by exotic rc-file logic on the remote. Please try isolating the issue first."
+      options:
+      - label: "Yes, I've isolated my rc files."
+  - type: textarea
+    id: "screenshots-logs"
+    attributes:
+      label: "Screenshots, videos, and logs"
+      description: "Attach anything that helps reproduce the failure. Redact hostnames, IPs, usernames, and secrets."
+    validations:
+      required: false
+  - type: textarea
+    id: "xtrace-output"
+    attributes:
+      label: "Include shell xtrace output"
+      description: "Run `WARP_DEBUG_MODE=1 ssh YOUR-HOSTNAME-HERE` from inside Waz and paste the full output starting from the SSH command block. Redact secrets before posting."
+    validations:
+      required: true
+  - type: dropdown
+    id: "blocker"
+    attributes:
+      label: "Does this block your daily use of Waz?"
+      description: "All feedback is reviewed even if you select 'No'."
+      multiple: false
+      options:
+        - "No"
+        - "Yes — this prevents me from using Waz daily."
+    validations:
+      required: true
+  - type: dropdown
+    id: "terminals"
+    attributes:
+      label: "Reproducible only in Waz?"
+      description: "Verifying whether other terminals are affected helps narrow down the root cause."
+      multiple: false
+      options:
+        - "Only in Waz."
+        - "Also reproducible in upstream Waz."
+        - "Also reproducible in other terminals (iTerm2, Windows Terminal, Alacritty, etc.)."
+        - "Not tested elsewhere."
+    validations:
+      required: true

@@ -1,0 +1,216 @@
+---
+import LandingLayout from '../layouts/LandingLayout.astro';
+---
+<LandingLayout
+  title="Waz · 404 — Not Found"
+  description="The page you are looking for doesn't exist on this site."
+>
+  <main class="nf-shell">
+    <div class="wrap nf-wrap">
+      <div class="nf-mark">
+        <span class="nf-glyph">404</span>
+        <span class="nf-blip"></span>
+      </div>
+
+      <h1 class="nf-title">
+        <span data-lang="en">Page not found.</span>
+        <span data-lang="zh">页面不存在。</span>
+        <span data-lang="ja">ページが見つかりません。</span>
+      </h1>
+
+      <p class="nf-lede">
+        <span data-lang="en">The route you tried to open isn't part of this site. It may have been moved, renamed, or never existed.</span>
+        <span data-lang="zh">你试图访问的路径不属于本站。它可能已被移动、重命名,或本就不存在。</span>
+        <span data-lang="ja">アクセスしようとしたパスはこのサイトに存在しません。移動・名称変更されたか、もともと存在しなかった可能性があります。</span>
+      </p>
+
+      <!-- A simulated "shell" style prompt box, matching the design of the entire site -->
+      <div class="nf-term">
+        <div class="nf-term-bar">
+          <div class="nf-term-dots"><span></span><span></span><span></span></div>
+          <div class="nf-term-title">~ - fish</div>
+        </div>
+        <div class="nf-term-body">
+          <div><span class="nf-p">$</span> open <span class="nf-path" id="nf-attempted">/unknown</span></div>
+          <div class="nf-err">
+            <span data-lang="en">waz: route not found.</span>
+            <span data-lang="zh">waz: 路由不存在。</span>
+            <span data-lang="ja">waz: ルートが見つかりません。</span>
+          </div>
+          <div class="nf-dim">
+            <span data-lang="en">Try one of these:</span>
+            <span data-lang="zh">试试以下入口:</span>
+            <span data-lang="ja">以下から选んでください:</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="nf-actions">
+        <a class="btn" href="/">
+          <span data-lang="en">Back to home</span>
+          <span data-lang="zh">返回首页</span>
+          <span data-lang="ja">ホームへ</span>
+          <span class="arr">→</span>
+        </a>
+        <a class="btn alt" href="/docs/quickstart">
+          <span data-lang="en">Read the docs</span>
+          <span data-lang="zh">阅读文档</span>
+          <span data-lang="ja">ドキュメント</span>
+        </a>
+        <a class="btn alt" href="/changelog">
+          <span data-lang="en">Changelog</span>
+          <span data-lang="zh">更新日志</span>
+          <span data-lang="ja">変更履歴</span>
+        </a>
+      </div>
+
+      <p class="nf-foot">
+        <span data-lang="en">If you arrived here from a link on this site, please <a href="https://github.com/codeitlikemiley/waz/issues" target="_blank" rel="noopener">file an issue</a>.</span>
+        <span data-lang="zh">如果你是从站内链接到达这里的,请<a href="https://github.com/codeitlikemiley/waz/issues" target="_blank" rel="noopener">提交一个 issue</a>。</span>
+        <span data-lang="ja">サイト内のリンクからここに来た場合は<a href="https://github.com/codeitlikemiley/waz/issues" target="_blank" rel="noopener">issue を起票</a>してください。</span>
+      </p>
+    </div>
+  </main>
+</LandingLayout>
+
+<script>
+  // Display the current URL path inside the simulated terminal (to make the 404 feel more "real")
+  (function () {
+    const el = document.getElementById('nf-attempted');
+    if (el) el.textContent = window.location.pathname || '/unknown';
+  })();
+</script>
+
+<style is:global>
+  .nf-shell {
+    min-height: calc(100vh - 52px - 38px - 220px); /* 留出 banner / nav / footer 大致空间 */
+    display: flex;
+    align-items: center;
+    padding: 80px 0 100px;
+  }
+  .nf-wrap {
+    max-width: 720px;
+    text-align: center;
+  }
+
+  .nf-mark {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    font-family: "Inter Tight", system-ui, sans-serif;
+    font-weight: 600;
+    font-size: clamp(80px, 14vw, 140px);
+    line-height: 1;
+    letter-spacing: -0.04em;
+    color: var(--ink);
+    margin-bottom: 24px;
+  }
+  .nf-glyph {
+    background: linear-gradient(180deg, var(--ink) 0%, var(--muted) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .nf-blip {
+    display: inline-block;
+    width: 0.16em;
+    height: 0.16em;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 0.04em var(--accent-soft);
+    transform: translateY(-0.06em);
+    animation: nf-blip 1.5s ease-out infinite;
+  }
+  @keyframes nf-blip {
+    0%, 60% { opacity: 1; }
+    70%, 100% { opacity: 0.35; }
+  }
+
+  .nf-title {
+    font-family: "Inter Tight", system-ui, sans-serif;
+    font-size: clamp(24px, 3vw, 32px);
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: -0.015em;
+    color: var(--ink);
+    margin: 0 0 14px;
+  }
+  .nf-lede {
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--ink-2);
+    margin: 0 auto 32px;
+    max-width: 52ch;
+  }
+
+  .nf-term {
+    text-align: left;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 0 auto 32px;
+    box-shadow: var(--shadow-card);
+    max-width: 600px;
+  }
+  .nf-term-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--bg-3);
+    border-bottom: 1px solid var(--line);
+  }
+  .nf-term-dots {
+    display: inline-flex;
+    gap: 6px;
+  }
+  .nf-term-dots span {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--line-strong);
+  }
+  .nf-term-title {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .nf-term-body {
+    padding: 16px 18px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+    line-height: 1.75;
+    color: var(--ink-2);
+  }
+  .nf-term-body > div { white-space: pre-wrap; word-break: break-all; }
+  .nf-p { color: var(--accent); margin-right: 6px; }
+  .nf-path { color: var(--ink); }
+  .nf-err { color: var(--syn-num); }
+  .nf-dim { color: var(--muted); margin-top: 6px; }
+
+  .nf-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 28px;
+  }
+
+  .nf-foot {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 0 auto;
+    max-width: 50ch;
+  }
+  .nf-foot a {
+    color: var(--accent);
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.15s ease;
+  }
+  .nf-foot a:hover { border-bottom-color: var(--accent-line); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nf-blip { animation: none; }
+  }
+</style>

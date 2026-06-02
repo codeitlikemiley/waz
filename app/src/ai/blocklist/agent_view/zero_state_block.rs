@@ -1,0 +1,893 @@
+use itertools::Itertools as _;
+use markdown_parser::parse_markdown;
+use parking_lot::FairMutex;
+use settings::Setting as _;
+use std::{borrow::Cow, cmp::Reverse, path::Path, sync::Arc};
+use warp_core::ui::Icon;
+use warpui::{
+    elements::{
+        Container, CornerRadius, CrossAxisAlignment, Expanded, Flex, FormattedTextElement,
+        MainAxisSize, MouseStateHandle, ParentElement, Radius, Text,
+    },
+    fonts::{Properties, Weight},
+    keymap::Keystroke,
+    prelude::{ConstrainedBox, Cursor, Empty, Hoverable, SavePosition},
+    scene::Border,
+    AppContext, Element, Entity, ModelHandle, SingletonEntity, TypedActionView, View, ViewContext,
+};
+
+use crate::{
+    ai::{
+        agent::conversation::AIConversationId,
+        blocklist::{
+            agent_view::{
+                agent_view_bg_color, AgentViewController, AgentViewEntryOrigin,
+                ENTER_AGENT_VIEW_NEW_CONVERSATION_KEYSTROKE,
+            },
+            history_model::{BlocklistAIHistoryEvent, BlocklistAIHistoryModel},
+        },
+        conversation_navigation::ConversationNavigationData,
+    },
+    appearance::Appearance,
+    report_if_error,
+    settings::{InputSettings, InputSettingsChangedEvent},
+    terminal::{
+        self,
+        event::BlockType,
+        input::message_bar::{common::render_standard_message, Message, MessageItem},
+        model::{
+            blocks::BlockHeightItem,
+            session::{BootstrapSessionType, Session, SessionType, Sessions},
+        },
+        model_events::{AnsiHandlerEvent, ModelEvent, ModelEventDispatcher},
+        prompt,
+        view::{
+            ambient_agent::{AmbientAgentViewModel, AmbientAgentViewModelEvent},
+            TerminalAction,
+        },
+        TerminalModel,
+    },
+    util::time_format::format_approx_duration_from_now_utc,
+};
+
+const MAX_RECENT_CONVERSATION_COUNT: usize = 3;
+
+#[derive(Default)]
+struct StateHandles {
+    start_new_conversation: MouseStateHandle,
+    switch_model: MouseStateHandle,
+    exit: MouseStateHandle,
+    init_callout: MouseStateHandle,
+    recent_conversations: [MouseStateHandle; MAX_RECENT_CONVERSATION_COUNT],
+    // The hover state handle of the "×" button on the right side of the title will permanently hide the zero state shortcut key prompt after clicking it.
+    hide_hints: MouseStateHandle,
+}
+
+/// Zero state view shown when agent view is active but the conversation has no exchanges yet.
+pub struct AgentViewZeroStateBlock {
+    conversation_id: AIConversationId,
+    origin: AgentViewEntryOrigin,
+    agent_view_controller: ModelHandle<AgentViewController>,
+    sessions: ModelHandle<Sessions>,
+    terminal_model: Arc<FairMutex<TerminalModel>>,
+    current_working_directory: Option<String>,
+    cached_recent_conversations: Vec<ConversationNavigationData>,
+    should_hide: bool,
+    should_show_init_callout: bool,
+    has_parent_terminal: bool,
+    state_handles: StateHandles,
+}
+
+impl AgentViewZeroStateBlock {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        conversation_id: AIConversationId,
+        origin: AgentViewEntryOrigin,
+        agent_view_controller: ModelHandle<AgentViewController>,
+        sessions: &ModelHandle<Sessions>,
+        ambient_agent_view_model: &ModelHandle<AmbientAgentViewModel>,
+        terminal_model: Arc<FairMutex<TerminalModel>>,
+        model_events_dispatcher: &ModelHandle<ModelEventDispatcher>,
+        should_show_init_callout: bool,
+        ctx: &mut ViewContext<Self>,
+    ) -> Self {
+        let ambient_agent_view_model_clone = ambient_agent_view_model.clone();
+        let model_events_clone = model_events_dispatcher.clone();
+        ctx.subscribe_to_model(
+            &BlocklistAIHistoryModel::handle(ctx),
+            move |me, history_model, event, ctx| {
+                if let BlocklistAIHistoryEvent::AppendedExchange {
+                    conversation_id, ..
+                } = event
+                {
+                    if *conversation_id == me.conversation_id {
+                        me.should_hide = true;
+                        ctx.unsubscribe_to_model(&model_events_clone);
+                        ctx.unsubscribe_to_model(&history_model);
+                        ctx.unsubscribe_to_model(&ambient_agent_view_model_clone);
+                        ctx.notify();
+                        return;
+                    }
+                }
+
+                match event {
+                    BlocklistAIHistoryEvent::StartedNewConversation { .. }
+                    | BlocklistAIHistoryEvent::AppendedExchange { .. }
+                    | BlocklistAIHistoryEvent::UpdatedStreamingExchange { .. }
+                    | BlocklistAIHistoryEvent::UpdatedConversationStatus { .. }
+                    | BlocklistAIHistoryEvent::RestoredConversations { .. }
+                    | BlocklistAIHistoryEvent::RemoveConversation { .. }
+                    | BlocklistAIHistoryEvent::DeletedConversation { .. } => ctx.notify(),
+                    _ => {}
+                }
+            },
+        );
+
+        let ambient_agent_view_model_clone = ambient_agent_view_model.clone();
+        ctx.subscribe_to_model(
+            model_events_dispatcher,
+            move |me, model_events_dispatcher, event, ctx| {
+                match event {
+                    ModelEvent::BlockCompleted(block_completed) => {
+                        if matches!(block_completed.block_type, BlockType::User(..))
+                            && me.should_hide != me.should_hide(ctx)
+                        {
+                            me.should_hide = true;
+                            ctx.unsubscribe_to_model(&model_events_dispatcher);
+                            ctx.unsubscribe_to_model(&BlocklistAIHistoryModel::handle(ctx));
+                            ctx.unsubscribe_to_model(&ambient_agent_view_model_clone);
+                            ctx.notify();
+                        }
+                    }
+                    ModelEvent::Handler(AnsiHandlerEvent::Bootstrapped { .. }) => {
+                        // Session metadata such as pwd can be unavailable in zero-state until
+                        // bootstrap completes; refresh once bootstrapped.
+                        ctx.notify();
+                    }
+                    _ => {}
+                }
+            },
+        );
+
+        // Monitor the "Show Agent shortcut key prompts" setting changes, click × and re-render immediately to hide the prompts.
+        ctx.subscribe_to_model(&InputSettings::handle(ctx), |_, _, event, ctx| {
+            if matches!(
+                event,
+                InputSettingsChangedEvent::ShowAgentZeroStateHints { .. }
+            ) {
+                ctx.notify();
+            }
+        });
+
+        let model_events_clone = model_events_dispatcher.clone();
+        ctx.subscribe_to_model(ambient_agent_view_model, move |me, model, event, ctx| {
+            if false {
+                match event {
+                    AmbientAgentViewModelEvent::DispatchedAgent
+                    | AmbientAgentViewModelEvent::Cancelled
+                        if !me.should_hide =>
+                    {
+                        me.should_hide = true;
+                        ctx.unsubscribe_to_model(&model);
+                        ctx.unsubscribe_to_model(&model_events_clone);
+                        ctx.unsubscribe_to_model(&BlocklistAIHistoryModel::handle(ctx));
+                        ctx.notify();
+                    }
+                    _ => (),
+                }
+            } else if model.as_ref(ctx).should_show_status_footer() {
+                me.should_hide = true;
+                ctx.unsubscribe_to_model(&model);
+                ctx.unsubscribe_to_model(&model_events_clone);
+                ctx.unsubscribe_to_model(&BlocklistAIHistoryModel::handle(ctx));
+                ctx.notify();
+            }
+        });
+
+        let ambient_agent_view = ambient_agent_view_model.as_ref(ctx);
+        let has_parent_terminal =
+            !ambient_agent_view.is_ambient_agent() || ambient_agent_view.has_parent_terminal();
+        let state_handles = StateHandles::default();
+        let current_working_directory = {
+            let terminal_model = terminal_model.lock();
+            current_working_directory_for_zero_state(&terminal_model)
+        };
+        let cached_recent_conversations = current_working_directory
+            .as_deref()
+            .map(|current_working_directory| {
+                Self::recent_conversations_for_working_directory(current_working_directory, ctx)
+            })
+            .unwrap_or_default();
+
+        Self {
+            conversation_id,
+            origin,
+            agent_view_controller,
+            sessions: sessions.clone(),
+            terminal_model,
+            current_working_directory,
+            cached_recent_conversations,
+            should_hide: matches!(origin, AgentViewEntryOrigin::AcceptedPassiveCodeDiff),
+            should_show_init_callout,
+            has_parent_terminal,
+            state_handles,
+        }
+    }
+
+    fn should_hide(&self, app: &AppContext) -> bool {
+        let Some(conversation_id) = self
+            .agent_view_controller
+            .as_ref(app)
+            .agent_view_state()
+            .active_conversation_id()
+        else {
+            return true;
+        };
+
+        if conversation_id != self.conversation_id {
+            return true;
+        }
+
+        // Don't show zero state if there are visible content items (blocks, rich content)
+        // in the agent view. Inline banners alone should not prevent the zero state.
+        let has_visible_content = self
+            .terminal_model
+            .lock()
+            .block_list()
+            .has_visible_block_height_item_where(|item| {
+                !matches!(
+                    item,
+                    BlockHeightItem::InlineBanner { .. } | BlockHeightItem::Gap(..)
+                )
+            });
+
+        BlocklistAIHistoryModel::handle(app)
+            .as_ref(app)
+            .conversation(&conversation_id)
+            .is_none_or(|conv| conv.exchange_count() > 0)
+            || has_visible_content
+    }
+
+    fn active_session(&self, app: &AppContext) -> Option<Arc<Session>> {
+        let session_id = self
+            .terminal_model
+            .lock()
+            .block_list()
+            .active_block()
+            .session_id()?;
+        self.sessions.as_ref(app).get(session_id)
+    }
+
+    /// Returns the save position ID for this view, used to position overlays.
+    fn save_position_id(&self, app: &AppContext) -> Option<String> {
+        self.agent_view_controller
+            .as_ref(app)
+            .agent_view_state()
+            .zero_state_position_id()
+    }
+
+    fn recent_conversations_for_working_directory(
+        current_working_directory: &str,
+        app: &AppContext,
+    ) -> Vec<ConversationNavigationData> {
+        ConversationNavigationData::all_conversations(app)
+            .into_iter()
+            .filter(
+                |conversation_data| match conversation_data.latest_working_directory.as_ref() {
+                    Some(latest_working_directory) => {
+                        latest_working_directory == current_working_directory
+                    }
+                    None => conversation_data
+                        .initial_working_directory
+                        .as_ref()
+                        .is_some_and(|initial_working_directory| {
+                            initial_working_directory == current_working_directory
+                        }),
+                },
+            )
+            .sorted_by_key(|conversation_data| Reverse(conversation_data.last_updated))
+            .take(MAX_RECENT_CONVERSATION_COUNT)
+            .collect()
+    }
+}
+
+fn format_session_location(session: &Session, working_directory: Option<&str>) -> Option<String> {
+    let display_path = display_working_directory(working_directory, session.home_dir())?;
+    let session_type = session.session_type();
+    let user = session.user();
+    let hostname = session.hostname();
+    match session_type {
+        SessionType::Local => Some(display_path),
+        SessionType::WarpifiedRemote { .. } => Some(format!("{user}@{hostname}:{display_path}")),
+    }
+}
+
+fn display_working_directory(
+    working_directory: Option<&str>,
+    home_dir: Option<&str>,
+) -> Option<String> {
+    let working_directory = working_directory?.to_owned();
+    let home_dir = home_dir
+        .map(ToOwned::to_owned)
+        .or_else(|| dirs::home_dir().and_then(|home_dir| home_dir.to_str().map(ToOwned::to_owned)));
+    Some(prompt::display_path_string(
+        Some(&working_directory),
+        home_dir.as_deref(),
+    ))
+}
+
+impl View for AgentViewZeroStateBlock {
+    fn ui_name() -> &'static str {
+        "AgentViewZeroState"
+    }
+
+    fn render(&self, app: &AppContext) -> Box<dyn Element> {
+        if self.should_hide {
+            return Empty::new().finish();
+        }
+
+        // After the user clicks "×" to permanently close, the entire zero status area (title/description/three-piece shortcut key set/recent conversations
+        // /init callout) are not rendered to avoid leaving a blank area. If you need to restore it, you can turn it back on in settings.
+        if !*InputSettings::as_ref(app).show_agent_zero_state_hints {
+            return Empty::new().finish();
+        }
+
+        let appearance = Appearance::as_ref(app);
+        let theme = appearance.theme();
+
+        let active_session = self.active_session(app);
+        let location_label = active_session.as_deref().and_then(|session| {
+            format_session_location(session, self.current_working_directory.as_deref())
+        });
+        let local_description = match location_label {
+            Some(location_label) => crate::t!(
+                "agent-zero-state-description-with-location",
+                location = location_label
+            ),
+            None => crate::t!("agent-zero-state-description"),
+        };
+
+        let header_props = HeaderProps {
+            title: crate::t!("agent-zero-state-title").into(),
+            description: AgentViewDescription::PlainText(vec![local_description.into()]),
+            icon: if self.origin.is_ambient_agent() {
+                Icon::OzCloud
+            } else {
+                Icon::Oz
+            },
+            // The ambient agent does not provide a × button, and the rest of the scenes are displayed to the right of the title.
+            hide_hints_state: (!self.origin.is_ambient_agent())
+                .then(|| self.state_handles.hide_hints.clone()),
+        };
+
+        let mut content = Flex::column()
+            .with_main_axis_size(MainAxisSize::Min)
+            .with_children(render_title_and_description(header_props, app));
+
+        let body = render_body(
+            ZeroStateBodyProps {
+                origin: self.origin,
+                has_parent_terminal: self.has_parent_terminal,
+                should_show_init_callout: self.should_show_init_callout,
+                recent_conversations: &self.cached_recent_conversations,
+                active_session: active_session.as_deref(),
+                current_working_directory: self.current_working_directory.as_deref(),
+                state_handles: &self.state_handles,
+            },
+            app,
+        );
+        let body_item_count = body.len();
+        content.add_children(body.into_iter().enumerate().map(|(i, item)| {
+            if i == body_item_count - 1 {
+                item
+            } else {
+                Container::new(item).with_margin_bottom(8.).finish()
+            }
+        }));
+        let content = content.finish();
+
+        let show_bottom_border = !self.origin.is_ambient_agent();
+        let content = Container::new(content)
+            .with_horizontal_padding(*terminal::view::PADDING_LEFT)
+            .with_vertical_padding(styles::CONTAINER_VERTICAL_PADDING)
+            .with_border(
+                Border::new(1.)
+                    .with_sides(true, false, show_bottom_border, false)
+                    .with_border_fill(theme.outline()),
+            )
+            .finish();
+
+        if let Some(save_position_id) = self.save_position_id(app) {
+            SavePosition::new(content, &save_position_id).finish()
+        } else {
+            content
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum AgentViewZeroStateEvent {
+    ClickedInitCallout,
+    OpenConversation { conversation_id: AIConversationId },
+}
+
+impl Entity for AgentViewZeroStateBlock {
+    type Event = AgentViewZeroStateEvent;
+}
+
+#[derive(Debug, Clone)]
+pub enum AgentViewZeroStateAction {
+    ClickedInitCallout,
+    OpenConversation {
+        conversation_id: AIConversationId,
+    },
+    /// Click the "×" button on the right side of the title: permanently hide the zero state shortcut key prompts (including the row of message bar).
+    /// Users can re-enable it in "Settings → Waz Agent → AI Input".
+    HideZeroStateHints,
+}
+
+impl TypedActionView for AgentViewZeroStateBlock {
+    type Action = AgentViewZeroStateAction;
+
+    fn handle_action(&mut self, action: &Self::Action, ctx: &mut ViewContext<Self>) {
+        match action {
+            AgentViewZeroStateAction::ClickedInitCallout => {
+                ctx.emit(AgentViewZeroStateEvent::ClickedInitCallout);
+            }
+            AgentViewZeroStateAction::OpenConversation { conversation_id } => {
+                ctx.emit(AgentViewZeroStateEvent::OpenConversation {
+                    conversation_id: *conversation_id,
+                });
+            }
+            AgentViewZeroStateAction::HideZeroStateHints => {
+                InputSettings::handle(ctx).update(ctx, |settings, ctx| {
+                    report_if_error!(settings.show_agent_zero_state_hints.set_value(false, ctx));
+                });
+                // Setting the subscription will trigger ctx.notify, which will not be repeated here.
+            }
+        }
+    }
+}
+
+fn current_working_directory_for_zero_state(terminal_model: &TerminalModel) -> Option<String> {
+    terminal_model
+        .block_list()
+        .active_block()
+        .pwd()
+        .cloned()
+        .or_else(|| {
+            let is_bootstrapping_remote_shell = terminal_model.has_pending_ssh_session()
+                || terminal_model
+                    .get_pending_session_info()
+                    .as_ref()
+                    .is_some_and(|pending_session_info| {
+                        matches!(
+                            pending_session_info.session_type,
+                            BootstrapSessionType::WarpifiedRemote
+                        )
+                    });
+            (!terminal_model.block_list().is_bootstrapped() && !is_bootstrapping_remote_shell)
+                .then(|| {
+                    terminal_model
+                        .session_startup_path()
+                        .map(|path| path.to_string_lossy().into_owned())
+                })
+                .flatten()
+        })
+}
+
+/// Describes the description content for the header.
+enum AgentViewDescription {
+    /// Plain text descriptions (used for local agent mode).
+    PlainText(Vec<Cow<'static, str>>),
+}
+
+struct HeaderProps {
+    title: Cow<'static, str>,
+    description: AgentViewDescription,
+    icon: Icon,
+    /// If it is Some, render a × button on the right side of the title row to hide the zero state shortcut key tip.
+    hide_hints_state: Option<MouseStateHandle>,
+}
+
+fn render_title_and_description(props: HeaderProps, app: &AppContext) -> Vec<Box<dyn Element>> {
+    let appearance = Appearance::as_ref(app);
+    let theme = appearance.theme();
+
+    let HeaderProps {
+        title,
+        description,
+        icon,
+        hide_hints_state,
+    } = props;
+
+    let title_font_size = styles::title_font_size(appearance);
+    let mut title_row = Flex::row()
+        .with_cross_axis_alignment(CrossAxisAlignment::Center)
+        .with_child(
+            Container::new(
+                ConstrainedBox::new(
+                    icon.to_warpui_icon(
+                        theme
+                            .main_text_color(theme.background())
+                            .into_solid()
+                            .into(),
+                    )
+                    .finish(),
+                )
+                .with_height(title_font_size)
+                .with_width(title_font_size)
+                .finish(),
+            )
+            .with_margin_right(8.)
+            .finish(),
+        )
+        .with_child(
+            Text::new(title, appearance.ui_font_family(), title_font_size)
+                .with_color(theme.main_text_color(theme.background()).into_solid())
+                .with_style(Properties::default().weight(Weight::Bold))
+                .finish(),
+        );
+
+    if let Some(hide_hints_state) = hide_hints_state {
+        // spacer Push the × button to the far right of the title row.
+        title_row = title_row.with_child(Expanded::new(1., Empty::new().finish()).finish());
+        // × button: highlight color when hovering, click dispatch HideZeroStateHints to write settings.
+        let icon_size = appearance.monospace_font_size();
+        let close_button = Hoverable::new(hide_hints_state, move |state| {
+            let bg = theme.background();
+            let fill = if state.is_hovered() {
+                theme.main_text_color(bg).into_solid()
+            } else {
+                theme.sub_text_color(bg.into()).into_solid()
+            };
+            Container::new(
+                ConstrainedBox::new(Icon::X.to_warpui_icon(fill.into()).finish())
+                    .with_height(icon_size)
+                    .with_width(icon_size)
+                    .finish(),
+            )
+            .with_horizontal_padding(4.)
+            .with_vertical_padding(2.)
+            .finish()
+        })
+        .on_click(|ctx, _, _| {
+            ctx.dispatch_typed_action(AgentViewZeroStateAction::HideZeroStateHints);
+        })
+        .with_cursor(Cursor::PointingHand)
+        .finish();
+        title_row = title_row.with_child(close_button);
+    }
+
+    let title = title_row.finish();
+
+    let mut items = vec![];
+    items.push(
+        Container::new(title)
+            .with_margin_bottom(styles::TITLE_MARGIN_BOTTOM)
+            .finish(),
+    );
+
+    let bg = agent_view_bg_color(app);
+    let sub_text_color = theme.sub_text_color(bg.into()).into_solid();
+    let main_text_color = theme.main_text_color(bg.into()).into_solid();
+
+    match description {
+        AgentViewDescription::PlainText(text_items) => {
+            let description_items = text_items.into_iter().map(|description_item| {
+                FormattedTextElement::new(
+                    parse_markdown(&description_item).expect("is valid markdown"),
+                    appearance.monospace_font_size(),
+                    appearance.ui_font_family(),
+                    appearance.ui_font_family(),
+                    sub_text_color,
+                    Default::default(),
+                )
+                .with_inline_code_properties(Some(main_text_color), None)
+                .finish()
+            });
+            items.extend(description_items.map(|rendered_item| {
+                Container::new(rendered_item)
+                    .with_margin_bottom(styles::TITLE_MARGIN_BOTTOM)
+                    .finish()
+            }));
+        }
+    }
+
+    items
+}
+
+struct ZeroStateBodyProps<'a> {
+    origin: AgentViewEntryOrigin,
+    has_parent_terminal: bool,
+    should_show_init_callout: bool,
+    recent_conversations: &'a [ConversationNavigationData],
+    active_session: Option<&'a Session>,
+    current_working_directory: Option<&'a str>,
+    state_handles: &'a StateHandles,
+}
+
+fn render_body(props: ZeroStateBodyProps<'_>, app: &AppContext) -> Vec<Box<dyn Element>> {
+    let ZeroStateBodyProps {
+        origin,
+        has_parent_terminal,
+        should_show_init_callout,
+        recent_conversations,
+        active_session,
+        current_working_directory,
+        state_handles,
+    } = props;
+
+    // Ambient-agent mode doesn't show keyboard shortcuts.
+    if origin.is_ambient_agent() {
+        return vec![];
+    }
+    let mut body_items = if let Some(recent_conversations_section) =
+        render_recent_conversations_section(
+            RecentConversationProps {
+                recent_conversations,
+                active_session,
+                current_working_directory,
+                state_handles,
+            },
+            app,
+        ) {
+        vec![recent_conversations_section]
+    } else {
+        let mut body_items = vec![
+            render_standard_message(
+                Message::new(vec![MessageItem::clickable(
+                    vec![
+                        MessageItem::keystroke(ENTER_AGENT_VIEW_NEW_CONVERSATION_KEYSTROKE.clone()),
+                        MessageItem::text(crate::t!("terminal-zero-state-start-agent")),
+                    ],
+                    |ctx| {
+                        ctx.dispatch_typed_action(TerminalAction::StartNewAgentConversation);
+                    },
+                    state_handles.start_new_conversation.clone(),
+                )]),
+                app,
+            ),
+            render_standard_message(
+                Message::new(vec![MessageItem::clickable(
+                    vec![
+                        MessageItem::keystroke(Keystroke {
+                            key: "/model".to_owned(),
+                            ..Default::default()
+                        }),
+                        MessageItem::text(crate::t!("agent-zero-state-switch-model")),
+                    ],
+                    |ctx| {
+                        ctx.dispatch_typed_action(TerminalAction::OpenModelSelector);
+                    },
+                    state_handles.switch_model.clone(),
+                )]),
+                app,
+            ),
+        ];
+
+        // Only show "escape to go back" if there's a parent terminal
+        if has_parent_terminal {
+            body_items.push(render_standard_message(
+                Message::new(vec![MessageItem::clickable(
+                    vec![
+                        MessageItem::keystroke(Keystroke {
+                            key: "escape".to_owned(),
+                            ..Default::default()
+                        }),
+                        MessageItem::text(crate::t!("agent-zero-state-go-back-to-terminal")),
+                    ],
+                    |ctx| {
+                        ctx.dispatch_typed_action(TerminalAction::ExitAgentView);
+                    },
+                    state_handles.exit.clone(),
+                )]),
+                app,
+            ));
+        }
+
+        body_items
+    };
+
+    if should_show_init_callout {
+        let appearance = Appearance::as_ref(app);
+        let theme = appearance.theme();
+        let main_text_color = theme
+            .main_text_color(agent_view_bg_color(app).into())
+            .into_solid();
+        let init_message = Message::new(vec![
+            MessageItem::keystroke(Keystroke {
+                key: "/init".to_owned(),
+                ..Default::default()
+            }),
+            MessageItem::text(
+                "to index this codebase and generate an AGENTS.md for optimal performance",
+            ),
+        ])
+        .with_text_color(main_text_color);
+        body_items.push(
+            Hoverable::new(state_handles.init_callout.clone(), move |_| {
+                Container::new(render_standard_message(init_message.clone(), app))
+                    .with_background_color(
+                        theme
+                            .accent()
+                            .with_opacity(12)
+                            .into_solid_bias_right_color(),
+                    )
+                    .with_corner_radius(CornerRadius::with_all(Radius::Pixels(4.)))
+                    .with_vertical_padding(4.)
+                    .with_horizontal_padding(4.)
+                    .finish()
+            })
+            .on_click(|ctx, _, _| {
+                ctx.dispatch_typed_action(AgentViewZeroStateAction::ClickedInitCallout);
+            })
+            .with_cursor(Cursor::PointingHand)
+            .finish(),
+        );
+    }
+
+    body_items
+}
+
+struct RecentConversationProps<'a> {
+    recent_conversations: &'a [ConversationNavigationData],
+    active_session: Option<&'a Session>,
+    current_working_directory: Option<&'a str>,
+    state_handles: &'a StateHandles,
+}
+
+fn render_recent_conversations_section(
+    props: RecentConversationProps<'_>,
+    app: &AppContext,
+) -> Option<Box<dyn Element>> {
+    let RecentConversationProps {
+        recent_conversations,
+        active_session,
+        current_working_directory,
+        state_handles,
+    } = props;
+
+    if recent_conversations.is_empty() {
+        return None;
+    }
+
+    let appearance = Appearance::as_ref(app);
+    let theme = appearance.theme();
+
+    let last_path_segment = current_working_directory
+        .and_then(|working_directory| {
+            display_working_directory(
+                Some(working_directory),
+                active_session.and_then(Session::home_dir),
+            )
+        })
+        .as_deref()
+        .and_then(|working_directory| Path::new(working_directory).iter().next_back())
+        .map(|path_segment| path_segment.to_string_lossy().into_owned())?;
+    let disabled_text_color = theme.disabled_text_color(theme.background()).into_solid();
+    let header_font_size = appearance.monospace_font_size() - 4.;
+    let section_header = Flex::row()
+        .with_cross_axis_alignment(CrossAxisAlignment::Center)
+        .with_child(
+            Container::new(
+                Text::new(
+                    crate::t!("agent-zero-state-recent-activity"),
+                    appearance.ui_font_family(),
+                    header_font_size,
+                )
+                .with_color(disabled_text_color)
+                .with_style(Properties::default().weight(Weight::Semibold))
+                .finish(),
+            )
+            .with_margin_right(6.)
+            .finish(),
+        )
+        .with_child(
+            Container::new(
+                Text::new(
+                    last_path_segment,
+                    appearance.ui_font_family(),
+                    header_font_size + 1.,
+                )
+                .with_color(disabled_text_color)
+                .finish(),
+            )
+            .with_background_color(theme.surface_overlay_1().into_solid())
+            .with_corner_radius(CornerRadius::with_all(Radius::Pixels(2.)))
+            .with_horizontal_padding(2.)
+            .with_vertical_padding(1.)
+            .finish(),
+        )
+        .finish();
+    let mut conversations = Flex::column()
+        .with_cross_axis_alignment(CrossAxisAlignment::Start)
+        .with_main_axis_size(MainAxisSize::Min)
+        .with_spacing(8.);
+
+    for (i, recent_conversation) in recent_conversations.iter().enumerate() {
+        let conversation_id = recent_conversation.id;
+        let title = recent_conversation.title.clone();
+        let last_updated = recent_conversation.last_updated;
+
+        let row = Hoverable::new(
+            state_handles.recent_conversations[i].clone(),
+            move |state| {
+                let (title_text_color, secondary_text_color) = if state.is_hovered() {
+                    (
+                        theme.accent().into_solid(),
+                        theme.accent().with_opacity(80).into_solid(),
+                    )
+                } else {
+                    (
+                        theme.main_text_color(theme.background()).into_solid(),
+                        theme.disabled_text_color(theme.background()).into_solid(),
+                    )
+                };
+
+                Flex::row()
+                    .with_cross_axis_alignment(CrossAxisAlignment::Center)
+                    .with_children([
+                        Container::new(
+                            Text::new_inline(
+                                title.clone(),
+                                appearance.ui_font_family(),
+                                appearance.monospace_font_size() - 2.,
+                            )
+                            .with_color(title_text_color)
+                            .soft_wrap(false)
+                            .finish(),
+                        )
+                        .with_margin_right(8.)
+                        .finish(),
+                        Text::new_inline(
+                            format_approx_duration_from_now_utc(last_updated.to_utc()),
+                            appearance.ui_font_family(),
+                            appearance.monospace_font_size() - 1.,
+                        )
+                        .with_color(secondary_text_color)
+                        .soft_wrap(false)
+                        .finish(),
+                    ])
+                    .finish()
+            },
+        )
+        .on_click(move |ctx, _, _| {
+            ctx.dispatch_typed_action(AgentViewZeroStateAction::OpenConversation {
+                conversation_id,
+            });
+        })
+        .with_cursor(Cursor::PointingHand)
+        .finish();
+
+        conversations = conversations.with_child(row);
+    }
+
+    Some(
+        Flex::column()
+            .with_cross_axis_alignment(CrossAxisAlignment::Start)
+            .with_main_axis_size(MainAxisSize::Min)
+            .with_child(
+                Container::new(section_header)
+                    .with_margin_bottom(styles::SECTION_HEADER_MARGIN_BOTTOM)
+                    .finish(),
+            )
+            .with_child(conversations.finish())
+            .finish(),
+    )
+}
+
+mod styles {
+    use warp_core::ui::appearance::Appearance;
+
+    pub const CONTAINER_VERTICAL_PADDING: f32 = 16.;
+    pub const TITLE_MARGIN_BOTTOM: f32 = 8.;
+    pub const SECTION_HEADER_MARGIN_BOTTOM: f32 = 8.;
+    pub fn title_font_size(appearance: &Appearance) -> f32 {
+        appearance.monospace_font_size() + 6.
+    }
+}
+
+#[cfg(test)]
+#[path = "zero_state_block_tests.rs"]
+mod tests;

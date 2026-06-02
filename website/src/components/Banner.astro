@@ -1,0 +1,17 @@
+---
+// Top status banner shared by landing & docs.
+interface Props {
+  en: string;
+  zh: string;
+  ja: string;
+}
+const { en, zh, ja } = Astro.props;
+---
+<div class="banner">
+  <div class="banner-inner">
+    <span class="dot"></span>
+    <span data-lang="en">{en}</span>
+    <span data-lang="zh">{zh}</span>
+    <span data-lang="ja">{ja}</span>
+  </div>
+</div>

@@ -1,0 +1,14 @@
+Package: @@PACKAGE_NAME@@
+Version: @@VERSION@@
+Section: devel
+Depends: fontconfig, libegl1, libwayland-client0, libwayland-egl1, libx11-6, libxcb1, libxcursor1, libxi6, libxkbcommon-x11-0, zlib1g
+Recommends: libgl1-mesa-dri, yaru-icon-theme | adwaita-icon-theme-full
+Priority: optional
+Architecture: @@ARCH@@
+Maintainer: Waz Maintainers <waz-maintainers@localhost>
+Homepage: https://github.com/zerx-lab/warp
+Description: Waz, a community fork of the Rust-based Warp terminal
+ Waz strips the mandatory cloud dependency from Warp, opens up the AI
+ provider layer, ships a built-in SSH host manager, and lets you plug in
+ any third-party CLI agent. All credentials, conversations and agent
+ history stay on your machine.

@@ -1,0 +1,87 @@
+#!/bin/bash
+#
+# linuxdeploy input plugin for restructuring the AppDir to match Waz's
+# standard Linux install layout.
+#
+# By default, linuxdeploy places the executable at usr/bin/ inside the AppDir.
+# This plugin moves it to a directory tree that matches the deb/rpm/arch
+# package install layout (controlled by WARP_OPT_DIR), creates a symlink from
+# usr/bin/ to the new location, and copies bundled resources alongside the
+# binary.
+#
+# This means that extracting an AppImage produces the same filesystem layout
+# as installing a .deb or .rpm package.
+#
+# Required environment variables:
+#   WARP_BINARY_NAME:           Name of the binary (e.g. "waz").
+#   WARP_OPT_DIR:               Absolute /opt-rooted directory for the
+#                               install layout inside the AppDir (e.g.
+#                               "/opt/waz" for the Waz OSS channel, or
+#                               "/opt/warpdotdev/warp-terminal-dev" for
+#                               upstream-style internal channels).
+#   WARP_BUNDLED_RESOURCES_DIR: Path to the staged resources directory to copy.
+
+set -e
+
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --plugin-api-version)
+      echo "0"
+      exit 0
+      ;;
+    --appdir)
+      APPDIR="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+if [ -z "$APPDIR" ]; then
+  echo "ERROR: --appdir is required" >&2
+  exit 1
+fi
+
+for var in WARP_BINARY_NAME WARP_OPT_DIR WARP_BUNDLED_RESOURCES_DIR; do
+  if [ -z "${!var}" ]; then
+    echo "ERROR: $var environment variable is not set" >&2
+    exit 1
+  fi
+done
+
+if [ ! -d "$WARP_BUNDLED_RESOURCES_DIR" ]; then
+  echo "ERROR: Bundled resources directory does not exist: $WARP_BUNDLED_RESOURCES_DIR" >&2
+  exit 1
+fi
+
+SRC_BIN="$APPDIR/usr/bin/$WARP_BINARY_NAME"
+if [ ! -f "$SRC_BIN" ]; then
+  echo "ERROR: Expected binary not found at $SRC_BIN" >&2
+  exit 1
+fi
+
+# Create the /opt install directory inside the AppDir. WARP_OPT_DIR is an
+# absolute path on the target machine (e.g. "/opt/waz"); prepend the AppDir
+# to nest it inside the AppImage.
+OPT_DIR="$APPDIR$WARP_OPT_DIR"
+mkdir -p "$OPT_DIR"
+
+# Move the binary from usr/bin/ to the OPT_DIR.
+echo "Relocating binary to $OPT_DIR/$WARP_BINARY_NAME"
+mv "$SRC_BIN" "$OPT_DIR/$WARP_BINARY_NAME"
+
+# Create a relative symlink so usr/bin/<name> still resolves to the binary.
+# usr/bin/<name> 的父目录是 usr/bin/,固定需要 ../../ 才能回到 AppDir 根,
+# 然后拼上去掉前导 / 的 WARP_OPT_DIR 与二进制文件名。
+echo "Creating symlink at usr/bin/$WARP_BINARY_NAME"
+ln -s "../..${WARP_OPT_DIR}/$WARP_BINARY_NAME" "$SRC_BIN"
+
+# Copy bundled resources alongside the binary.
+DEST_RESOURCES="$OPT_DIR/resources"
+echo "Copying bundled resources to $DEST_RESOURCES"
+mkdir -p "$DEST_RESOURCES"
+cp -R "$WARP_BUNDLED_RESOURCES_DIR/." "$DEST_RESOURCES/"
+
+echo "Successfully restructured AppDir for Waz"

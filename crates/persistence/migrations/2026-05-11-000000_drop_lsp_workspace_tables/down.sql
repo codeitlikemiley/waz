@@ -1,0 +1,2 @@
+-- Waz does not maintain down migrations: LSP and persisted workspace history have been permanently retired,
+-- and there is no reasonable rollback target. Keep this empty file to satisfy diesel migration directory conventions.

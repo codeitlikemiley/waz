@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+#
+# Builds a .rpm package as part of the bundling process.
+#
+# Required environment variables:
+#   - WORKSPACE_ROOT_DIR: The root directory of the Cargo workspace.
+#   - DIST_DIR: A temporary directory we can use for staging files as we build the package.
+#   - OUT_DIR: The directory into which we should place the final package.
+#   - CARGO_TARGET_OUTPUT_DIR: The cargo target directory containing build output.
+#   - RELEASE_CHANNEL: The release channel we're bundling (e.g.: "dev").
+#   - BUNDLE_ID: The app ID for the bundle (e.g.: "dev.warp.WarpDev").
+#   - EXECUTABLE_PATH: The path to the compiled executable we want to install.
+#   - BINARY_NAME: The name that the compiled executable should have on the target machine.
+#   - ARTIFACT: Which artifact to build: app or cli.
+
+set -e
+
+# Extract channel suffix from BINARY_NAME (other channels) or use oss-specific naming.
+if [ "$RELEASE_CHANNEL" = "oss" ]; then
+  CHANNEL_SUFFIX=""
+  if [ "$ARTIFACT" = "app" ]; then
+    PACKAGE_NAME="waz"
+  else
+    PACKAGE_NAME="waz-cli"
+  fi
+  REPO_NAME="waz"
+  OPT_DIR="/opt/$PACKAGE_NAME"
+elif [ "$ARTIFACT" = "cli" ]; then
+  CHANNEL_SUFFIX="${BINARY_NAME#oz}"
+  PACKAGE_NAME="oz$CHANNEL_SUFFIX"
+  REPO_NAME="warpdotdev$CHANNEL_SUFFIX"
+  OPT_DIR="/opt/warpdotdev/$PACKAGE_NAME"
+else
+  CHANNEL_SUFFIX="${BINARY_NAME#warp}"
+  PACKAGE_NAME="warp-terminal$CHANNEL_SUFFIX"
+  REPO_NAME="warpdotdev$CHANNEL_SUFFIX"
+  OPT_DIR="/opt/warpdotdev/$PACKAGE_NAME"
+fi
+
+# On Linux, we keep the `-stable` suffix for stable to avoid package conflicts.
+# The binary name is still `oz`, and the repo name is still `warpdotdev`.
+if [ "$ARTIFACT" = "cli" -a "$RELEASE_CHANNEL" = "stable" ]; then
+  CHANNEL_SUFFIX="-stable"
+  PACKAGE_NAME="oz$CHANNEL_SUFFIX"
+  OPT_DIR="/opt/warpdotdev/$PACKAGE_NAME"
+fi
+
+ARTIFACT="${ARTIFACT:-app}"
+
+BUILD_ARCH="${BUILD_ARCH:-$(uname -m)}"
+if [ "$BUILD_ARCH" = "aarch64" ]; then
+  ARCH="aarch64"
+else
+  ARCH="x86_64"
+fi
+
+RPMBUILD_DIR="$DIST_DIR/rpmbuild"
+
+FULL_PACKAGE_NAME="$PACKAGE_NAME-$ARCH"
+PKGDIR="$DIST_DIR/rpmpkg/$FULL_PACKAGE_NAME"
+
+cleanup() {
+  # Delete the rpmbuild directory where the build took place.
+  if [ -d "$RPMBUILD_DIR" ]; then
+    rm -rf "$RPMBUILD_DIR"
+  fi
+}
+
+# Run cleanup() when the script terminates (whether it succeeded or failed).
+trap cleanup EXIT
+
+# Construct a directory that contains the build tree.
+# rpmbuild 在 _topdir 下需要 SPEC/RPMS/BUILD/BUILDROOT/SOURCES/SRPMS 六个目录,
+# 部分版本不会自动创建,事先建好避免「No such file or directory」。
+rm -rf "$RPMBUILD_DIR"
+mkdir -p "$RPMBUILD_DIR"/{SPEC,RPMS,BUILD,BUILDROOT,SOURCES,SRPMS}
+
+# Move the RPM-specific package metadata into the package directory.
+# 去掉标签的前导 `v`,与 deb 保持一致;RPM 的 Version 字段按惯例不带 `v` 前缀,
+# 同时也避免下游 `RPM_NAME` 拼接时混入 `v` 让文件名不规范。
+VERSION="${GIT_RELEASE_TAG#v}"
+RELEASE="1"
+sed \
+    "s#@@CHANNEL_SUFFIX@@#$CHANNEL_SUFFIX#g; \
+     s#@@PACKAGE_NAME@@#$PACKAGE_NAME#g; \
+     s#@@OPT_DIR@@#$OPT_DIR#g; \
+     s#@@BINARY_NAME@@#$BINARY_NAME#g; \
+     s#@@VERSION@@#$VERSION#g; \
+     s#@@RELEASE@@#$RELEASE#g; \
+     s#@@ARCH@@#$ARCH#g; \
+     s#@@WORKSPACEROOT@@#$WORKSPACE_ROOT_DIR#g; \
+     s#@@BUNDLEID@@#$BUNDLE_ID#g; \
+     s#@@REPO_NAME@@#$REPO_NAME#g; \
+     s#@@RELEASE_CHANNEL@@#$RELEASE_CHANNEL#g" \
+    < "$WORKSPACE_ROOT_DIR/resources/linux/rpm/$ARTIFACT/warp.spec.template" \
+    > "$RPMBUILD_DIR/SPEC/warp.spec"
+
+# Build the actual package.
+fakeroot rpmbuild -v -bb "$RPMBUILD_DIR/SPEC/warp.spec" --target="$ARCH" --define "_topdir $RPMBUILD_DIR"
+
+# Copy the package to the output directory.
+RPM_NAME="$PACKAGE_NAME-$VERSION-$RELEASE.$ARCH.rpm"
+cp "$RPMBUILD_DIR/RPMS/$ARCH/$RPM_NAME" "$OUT_DIR"
+
+# Waz 不使用上游 Waz 的 RPM 签名 key；GitHub 构建只产出未签名本地包。
+if [ "${GITHUB_ACTIONS}" == "true" ]; then
+  echo "Skipping upstream Waz RPM signing for Waz."
+fi
+
+echo "Successfully built .rpm package at $OUT_DIR/$RPM_NAME!"

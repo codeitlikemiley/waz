@@ -1,0 +1,30 @@
+---
+const languages = [
+  { value: 'en', label: 'English', mark: 'EN' },
+  { value: 'zh', label: '简体中文', mark: '中' },
+  { value: 'ja', label: '日本語', mark: '日' },
+];
+---
+<div class="lang" data-locale-menu>
+  <button class="lang-trigger" type="button" data-locale-trigger aria-haspopup="listbox" aria-expanded="false" aria-label="Language" title="Language">
+    <svg class="lang-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.25"/>
+      <path d="M1.75 8h12.5"/>
+      <path d="M8 1.75c1.9 2 2.9 4.1 2.9 6.25S9.9 12.25 8 14.25"/>
+      <path d="M8 1.75c-1.9 2-2.9 4.1-2.9 6.25S6.1 12.25 8 14.25"/>
+    </svg>
+    <span class="sr-only">
+      <span data-lang="en">Language</span>
+      <span data-lang="zh">语言</span>
+      <span data-lang="ja">言語</span>
+    </span>
+  </button>
+  <div class="lang-menu" data-locale-options role="listbox" hidden>
+    {languages.map((language) => (
+      <button class={language.value === 'en' ? 'lang-option active' : 'lang-option'} type="button" data-set-lang={language.value} role="option" aria-selected={language.value === 'en' ? 'true' : 'false'}>
+        <span class="lang-option-mark">{language.mark}</span>
+        <span>{language.label}</span>
+      </button>
+    ))}
+  </div>
+</div>

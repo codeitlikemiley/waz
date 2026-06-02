@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+#
+# Builds an Arch Linux package as part of the bundling process.
+#
+# Required environment variables:
+#   - WORKSPACE_ROOT_DIR: The root directory of the Cargo workspace.
+#   - DIST_DIR: A temporary directory we can use for staging files as we build the package.
+#   - OUT_DIR: The directory into which we should place the final package.
+#   - CARGO_TARGET_OUTPUT_DIR: The cargo target directory containing build output.
+#   - RELEASE_CHANNEL: The release channel we're bundling (e.g.: "dev").
+#   - BUNDLE_ID: The app ID for the bundle (e.g.: "dev.warp.WarpDev").
+#   - EXECUTABLE_PATH: The path to the compiled executable we want to install.
+#   - BINARY_NAME: The name that the compiled executable should have on the target machine.
+#   - ARTIFACT: Which artifact to build: app or cli.
+
+set -e
+
+# Extract channel suffix from BINARY_NAME (other channels) or use oss-specific naming.
+if [ "$RELEASE_CHANNEL" = "oss" ]; then
+  CHANNEL_SUFFIX=""
+  if [ "$ARTIFACT" = "app" ]; then
+    PACKAGE_NAME="waz"
+  else
+    PACKAGE_NAME="waz-cli"
+  fi
+elif [ "$ARTIFACT" = "cli" ]; then
+  CHANNEL_SUFFIX="${BINARY_NAME#oz}"
+  PACKAGE_NAME="oz$CHANNEL_SUFFIX"
+else
+  CHANNEL_SUFFIX="${BINARY_NAME#warp}"
+  PACKAGE_NAME="warp-terminal$CHANNEL_SUFFIX"
+fi
+
+# On Linux, we keep the `-stable` suffix for stable to avoid package conflicts.
+# The binary name is still `oz`, and the repo name is still `warpdotdev`.
+if [ "$ARTIFACT" = "cli" -a "$RELEASE_CHANNEL" = "stable" ]; then
+  CHANNEL_SUFFIX="-stable"
+  PACKAGE_NAME="oz$CHANNEL_SUFFIX"
+fi
+
+BUILD_ARCH="${BUILD_ARCH:-$(uname -m)}"
+if [ "$BUILD_ARCH" = "aarch64" ]; then
+  ARCH="aarch64"
+else
+  ARCH="x86_64"
+fi
+
+PKGDIR="$DIST_DIR/archpkg"
+
+cleanup() {
+  # Delete the AppDir that was used as a staging area during the bundling
+  # process.
+  if [ -d "$PKGDIR" ]; then
+    rm -rf "$PKGDIR"
+  fi
+}
+
+# Run cleanup() when the script terminates (whether it succeeded or failed).
+trap cleanup EXIT
+
+# Construct a directory that contains all of the output data.
+rm -rf "$PKGDIR"
+mkdir -p "$PKGDIR"
+
+# Bundle the base filesystem into an archive to be unpacked by makepkg.
+mkdir "$PKGDIR/stage"
+if [ "$RELEASE_CHANNEL" = "oss" ]; then
+  OPT_DIR="/opt/$PACKAGE_NAME"
+else
+  OPT_DIR="/opt/warpdotdev/$PACKAGE_NAME"
+fi
+source "$WORKSPACE_ROOT_DIR/script/linux/bundle_install" "$PKGDIR/stage"
+tar cvf "$PKGDIR/data.tar" -C "$PKGDIR/stage" .
+
+# Move the Arch-specific package metadata into the package directory.
+# Arch pkgver 不允许 - / : / / / 空白,完整 sanitize 并剩除 v 前缀。
+VERSION="$GIT_RELEASE_TAG"
+PKGVER="$(echo "$VERSION" | sed -E 's/^v//; s/[-:/[:space:]]+/_/g')"
+RELEASE=1
+sed \
+    "s#@@CHANNEL_SUFFIX@@#$CHANNEL_SUFFIX#g; s#@@PACKAGE_NAME@@#$PACKAGE_NAME#g; s#@@OPT_DIR@@#$OPT_DIR#g; s#@@VERSION@@#$VERSION#g; s#@@PKGVER@@#$PKGVER#g; s#@@RELEASE@@#$RELEASE#g; s#@@ARCH@@#$ARCH#g; s#@@OUTDIR@@#$OUT_DIR#g; s#@@BINARY_NAME@@#$BINARY_NAME#g" \
+    < "$WORKSPACE_ROOT_DIR/resources/linux/arch/$ARTIFACT/PKGBUILD.template" \
+    > "$PKGDIR/PKGBUILD"
+
+# Only create wrapper script for app artifact
+if [ "$ARTIFACT" = "app" ]; then
+  sed \
+      "s#@@CHANNEL_SUFFIX@@#$CHANNEL_SUFFIX#g; s#@@PACKAGE_NAME@@#$PACKAGE_NAME#g; s#@@OPT_DIR@@#$OPT_DIR#g; s#@@BINARY_NAME@@#$BINARY_NAME#g" \
+      < "$WORKSPACE_ROOT_DIR/resources/linux/arch/$ARTIFACT/warp.sh.template" \
+      > "$PKGDIR/$PACKAGE_NAME.sh"
+fi
+
+# Build the actual package.
+#
+# We install any needed build and runtime dependencies before making the
+# package, and remove them again afterwards.  We also skip verifying
+# checksums for the source files, as we generate them above and there's not
+# much reason to generate the checksums and then verify them immediately
+# afterwards.
+if [ "${GITHUB_ACTIONS}" == "true" ]; then
+  # If we're running in a GitHub action, don't ask for confirmation before
+  # installing packages.
+  EXTRA_ARGS="--noconfirm"
+fi
+cd "$PKGDIR"
+# 允许调用方通过 MAKEPKG_EXTRA_ARGS 追加 makepkg 参数(如 CI 容器里
+# 需要 --assume-installed opengl-driver 跳过不在官方仓库的虚拟包)。
+# 用数组展开避免空字符串当作多余参数传入。
+read -r -a _makepkg_extra <<< "${MAKEPKG_EXTRA_ARGS:-}"
+PKGDEST="$OUT_DIR" CARCH="$ARCH" makepkg -cfrs --needed --skipchecksums $EXTRA_ARGS "${_makepkg_extra[@]}"
+
+PACKAGE_PATH="$OUT_DIR/${PACKAGE_NAME}-${PKGVER}-${RELEASE}-${ARCH}.pkg.tar.zst"
+
+echo "Successfully built Arch package at $PACKAGE_PATH!"

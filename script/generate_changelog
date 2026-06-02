@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+#
+# Local preview of Waz Release notes — shares the same cliff.toml config with
+# .github/workflows/waz_release.yml to ensure consistency between CI-generated
+# release body and what you see locally.
+#
+# Usage:
+#   script/generate_changelog                   # From last v* tag to HEAD (unreleased part)
+#   script/generate_changelog v2026.05.27.2     # Specify the current tag to release
+#   script/generate_changelog v2026.05.27.2 v2026.05.06.preview
+#                                               # Explicitly specify the previous tag, skipping git describe
+#
+# Outputs to stdout; redirect if you want to save: `... > preview.md`.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$REPO_ROOT"
+
+if ! command -v git-cliff >/dev/null 2>&1; then
+    echo "error: git-cliff is not installed. On Arch Linux use 'pacman -S git-cliff', on other platforms use" >&2
+    echo "       'cargo install --locked git-cliff' or 'cargo binstall git-cliff'." >&2
+    exit 1
+fi
+
+THIS_TAG="${1:-HEAD}"
+PREV_TAG="${2:-}"
+
+if [[ -z "$PREV_TAG" ]]; then
+    # Same strategy as in workflow: if THIS_TAG is a tag, start searching from THIS_TAG^, otherwise start from HEAD.
+    if git rev-parse "$THIS_TAG" >/dev/null 2>&1 && \
+       git describe --tags --exact-match "$THIS_TAG" >/dev/null 2>&1; then
+        PREV_TAG=$(git describe --tags --abbrev=0 --match='v*' "${THIS_TAG}^" 2>/dev/null || echo "")
+    else
+        PREV_TAG=$(git describe --tags --abbrev=0 --match='v*' HEAD 2>/dev/null || echo "")
+    fi
+fi
+
+ARGS=(--config cliff.toml --strip header --tag "$THIS_TAG")
+if [[ -n "$PREV_TAG" ]]; then
+    ARGS+=("${PREV_TAG}..HEAD")
+    echo "# preview: ${PREV_TAG} → ${THIS_TAG}" >&2
+else
+    echo "# preview: First release (no prev tag) → ${THIS_TAG}" >&2
+fi
+
+git-cliff "${ARGS[@]}"

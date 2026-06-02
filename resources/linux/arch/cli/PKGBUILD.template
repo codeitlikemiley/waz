@@ -1,0 +1,37 @@
+pkgname=@@PACKAGE_NAME@@
+pkgver=@@PKGVER@@
+pkgrel=@@RELEASE@@
+pkgdesc="Waz CLI — community fork of Warp's local orchestration platform"
+arch=('@@ARCH@@')
+url="https://github.com/zerx-lab/warp"
+license=('custom')
+depends=(
+	'curl'
+	'zlib'
+)
+replaces=(
+	'warp-cli'
+	'warp-cli-stable'
+)
+conflicts=(
+	'warp-cli'
+	'warp-cli-stable'
+)
+optdepends=(
+	'org.freedesktop.secrets: for securely storing passwords'
+)
+# Don't perform additional stripping of binaries; we already do the amount of
+# stripping we want as part of the bundle_install script.
+options=('!strip')
+source=(
+	'data.tar'
+)
+
+package() {
+	# Unpack the base package into the output directory.
+	bsdtar -xf data.tar -C "$pkgdir/"
+
+	# Create a symlink to the binary in /usr/bin.
+	install -d "$pkgdir"/usr/bin
+	ln -s "@@OPT_DIR@@/@@BINARY_NAME@@" "$pkgdir/usr/bin/@@BINARY_NAME@@"
+}

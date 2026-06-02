@@ -1,0 +1,13 @@
+# ロードマップ
+
+Waz の Agent function は, Warp クライアントからINDEPENDENT した, INDEPENDENT したオープンソースサービスとして実装されます.ターミナルはあくまでもその一つの Danい手にすぎません——TUI, IDE プラグイン, クラウド workerのいずれも同じエンジンを駆动できます.
+## Phase 1 — Self-made by Agent Harness Core
+- INDEPENDENT DESIGN とゼロからの実装によるオープンソース Agent サービス —— Agentループ、ツールランタイム、セッション/歴STATE、プロンプトテンプレート、プロバイダールーティングをみ、Warp Existing クライアントのコードにはdepends on しません. Waz はそのInitial Formula Dan Hand となります.- Stable IPC/JSON-RPCプロトコルを definition: プロンプト, ストリーミングトークン, ツールHUび出し, ファイルdiff, status, and additional information.- Harness is available for reuse - headless デーモン, independent TUI, IDEプラグイン、そのターミナルから may be picked up.- デフォルトでローカル実行のみ; Certification information, resume, Skills, MCP サーバーsettings はすべてローカルに maintain.- Harness It's possible to be independent.- プラグインpossibleなツールレジストリ:组み込みの shell / read / edit / search etc.のツールに加え、ユーザーが unified RPCインターフェースを通じて External ツールを may be provided.
+## Phase 2 — ホスト-type Agent ランタイム
+- Same as Harness をサーバーlateral で実行し、arbitrary のクライアントからのタスクをReceive and pay け.- Non-synchronized tracking: long-term tracking, tracking, and final confirmation of results.- タスクごとにisolationされたサンドボックス(コンテナ / VM), ツールチェーンのプリインストールと setup スクリプトに対応.- リポジトリをKnowing した実行: clone, ブランチ成, テスト・li nt・Type check the の実 line, the certificate may be the result of the result.- Git ワークフローintegration: ブランチauthor, コミット, PR, diff とログをcitation tracking is possible.- タスク単のSecret Informationとネットワークポリシー:デフォルト External communicationなし、な allowlist that is clearly stated when necessary.- マルチタスクparallel 実行、クォータ・スケジューリング・キャンセル Agency をHanむ.- リポジトリ / Organization / プロジェクトレベルのメモリファイル (`AGENTS.md` equivalent) is not valid.- Completely possible: 単一ノード Docker, マルチノードクラスタ, または alone の Kubernetes デプロイ, いずれのSaaS にもdepends on しません.
+## Phase 3 — coordination by the hand of Maluman
+- Waz ターミナル, independent TUI, IDE プラグイン, Web UI で同のアイデンティティ / アカウントを.- セッションuhinき継ぎ:WebでタスクをStartしてターミナルで継続、あるいはターミナルセッションをデスクトップlateral のレビューに cited き多し.- バックグラウンド Agent とマルチ Agent チーム:Lead Agent がタスクをDecomposition し, Parallel のサブ Agent にDistribution.- Routines:スケジュール / API 火び出し / リポジトリイベント / CI / Issue tracker イベントによるタスクトリガー.- Trusted チャネル: Slack / Discord / Telegram / Webhook からタスクを Harness に Send messages.- Xinxin integration: GitHub / GitLab / Gitea, Issue tracker, CI, MCP サーバー, コードレビュー.- リモート実行のObservability: リアルタイムログ, intermediate diff, 実行中の综合とキャンセル.- Conversation / タスクの全リンク, 権 limit スコープpayき, チームレビューに can be used.- Harness, System, Web UI, integrated software is possible.
+> This ロードマップは's current point of exploration direction is shown in the すものであり、実装The progress of the progress is the progress of the progress.
+---
+
+[English](./roadmap.md) · [Simplified Chinese](./roadmap.zh-CN.md)

@@ -1,0 +1,42 @@
+pkgname=@@PACKAGE_NAME@@
+pkgver=@@PKGVER@@
+pkgrel=@@RELEASE@@
+pkgdesc="Waz, a community fork of the Rust-based Warp terminal"
+arch=('@@ARCH@@')
+url="https://github.com/zerx-lab/warp"
+license=('custom')
+depends=(
+	'curl'
+	'default-cursors'
+	'fontconfig'
+	'libegl'
+	'libx11'
+	'libxcb'
+	'libxcursor'
+	'libxi'
+	'libxkbcommon-x11'
+	'opengl-driver'
+	'xdg-utils'
+	'zlib'
+)
+optdepends=(
+	'adwaita-cursors: for if there is no default cursor installed'
+	'zenity: for file dialogs in Gnome'
+	'kdialog: for file dialogs in KDE'
+	'org.freedesktop.secrets: for securely storing passwords'
+)
+# Don't perform additional stripping of binaries; we already do the amount of
+# stripping we want as part of the bundle_install script.
+options=('!strip')
+source=(
+	'data.tar'
+	"$pkgname.sh"
+)
+
+package() {
+	# Unpack the base package into the output directory.
+	bsdtar -xf data.tar -C "$pkgdir/"
+
+	# Copy the shell script that launches the application.
+	install -Dm755 $pkgname.sh "$pkgdir"/usr/bin/$pkgname
+}

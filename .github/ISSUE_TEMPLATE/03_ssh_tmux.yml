@@ -1,0 +1,76 @@
+name: SSH Warpify (tmux) Issue
+description: "SSH Warpification with tmux fails in Waz. Use this template for that specific scenario."
+labels: ["bug", "area:ssh"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template only when SSH **Warpification** (subshell bootstrap over SSH with tmux) fails in **Waz**.
+
+        - Cloud-account or Warpify-SSO issues belong to upstream Waz, not Waz.
+        - For non-tmux SSH bootstrap failures, use the *Legacy SSH* template instead.
+  - type: checkboxes
+    attributes:
+      label: "Pre-submit Checks"
+      options:
+        - label: "I have [searched Waz SSH issues](https://github.com/zerx-lab/warp/issues?q=is%3Aissue+label%3Aarea%3Assh) and there are no duplicates."
+          required: true
+        - label: "This is reproducible in **Waz** (not only in upstream Waz)."
+          required: true
+        - label: "I have included relevant logs (`RUST_LOG=info` output, SSH/tmux session output). Optional, but greatly speeds up triage."
+          required: false
+  - type: textarea
+    id: "shell-output"
+    attributes:
+      label: "Include shell output"
+      description: "Click the top-right icon of your terminal block, select `Copy`, and paste the contents here. Redact hostnames, IPs, usernames, and any secrets."
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: "screenshots-logs"
+    attributes:
+      label: "Screenshots, videos, and logs"
+      description: "Attach anything that helps reproduce or understand the failure. Redact secrets first."
+    validations:
+      required: false
+  - type: dropdown
+    id: "os"
+    attributes:
+      label: "Local operating system (OS)"
+      multiple: false
+      options:
+        - "Select an OS"
+        - macOS
+        - Linux
+        - Windows
+    validations:
+      required: true
+  - type: input
+    id: "os-version"
+    attributes:
+      label: "Local OS and version"
+      description: "For example: Windows 10 22H2, macOS 14.5, Debian 12."
+    validations:
+      required: true
+  - type: input
+    id: "remote-os"
+    attributes:
+      label: "Remote OS and version (the SSH target)"
+      description: "For example: Ubuntu 22.04, Alpine 3.19, FreeBSD 14."
+    validations:
+      required: false
+  - type: input
+    id: "tmux-version"
+    attributes:
+      label: "tmux version on the remote"
+      description: "Output of `tmux -V` on the SSH target."
+    validations:
+      required: false
+  - type: input
+    id: "waz-version"
+    attributes:
+      label: "Waz version / commit"
+      description: "Open Settings → About to copy the version, or run `git rev-parse --short HEAD` if built from source."
+    validations:
+      required: true

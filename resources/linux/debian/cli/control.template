@@ -1,0 +1,13 @@
+Package: @@PACKAGE_NAME@@
+Version: @@VERSION@@
+Section: devel
+Depends: zlib1g
+Priority: optional
+Architecture: @@ARCH@@
+Maintainer: Waz Maintainers <waz-maintainers@localhost>
+Homepage: https://github.com/zerx-lab/warp
+Replaces: warp-cli (<< @@VERSION@@)
+Conflicts: warp-cli (<< @@VERSION@@)
+Description: Waz CLI — community fork of Warp's local orchestration platform
+ Waz CLI is a tool for running, managing, and orchestrating coding agents
+ locally. It is the CLI half of the Waz community fork of Warp.

@@ -1,0 +1,156 @@
+//! Transport abstraction for [`RemoteServerManager`].
+//!
+//! Separates SSH-specific concerns (ControlMaster sockets, binary install,
+//! process spawning) from the transport-agnostic session lifecycle managed
+//! by [`RemoteServerManager`]. Alternative transports (Docker exec,
+//! in-process for tests) implement the same trait without touching the
+//! manager.
+//!
+//! Returns boxed futures for object safety — the manager stores
+//! `Arc<dyn RemoteTransport>` for reconnection.
+//!
+//! [`RemoteServerManager`]: crate::manager::RemoteServerManager
+#[cfg(not(target_family = "wasm"))]
+use std::path::PathBuf;
+use std::pin::Pin;
+
+use async_channel::Receiver;
+use warpui::r#async::executor;
+
+use crate::client::{ClientEvent, RemoteServerClient};
+use crate::setup::{PreinstallCheckResult, RemotePlatform};
+
+/// A successful return from [`RemoteTransport::connect`].
+///
+/// Bundles the live [`RemoteServerClient`] and its [`ClientEvent`]
+/// receiver together with any transport-specific resources whose
+/// lifetime must match the session (notably an owning `Child` for
+/// subprocess-backed transports). The caller -- typically
+/// [`RemoteServerManager`] -- stashes the whole `Connection` on its
+/// per-session state so that dropping the state cleans everything up at
+/// once.
+///
+/// [`RemoteServerManager`]: crate::manager::RemoteServerManager
+#[cfg_attr(target_family = "wasm", allow(dead_code))]
+pub struct Connection {
+    pub client: RemoteServerClient,
+    pub event_rx: Receiver<ClientEvent>,
+    /// The subprocess whose stdio backs the client (e.g.
+    /// `ssh … remote-server-proxy`). Spawned with `kill_on_drop(true)`
+    /// by the transport, so dropping this `Child` sends SIGKILL to the
+    /// subprocess. The [`RemoteServerManager`] holds it for the
+    /// lifetime of the session and drops it on teardown.
+    ///
+    /// [`RemoteServerManager`]: crate::manager::RemoteServerManager
+    #[cfg(not(target_family = "wasm"))]
+    pub child: async_process::Child,
+    /// For transports that multiplex through a local SSH
+    /// `ControlMaster` socket: the path to that socket, used on
+    /// explicit teardown (after the user's shell exits) to run
+    /// `ssh -O exit` and force the master to terminate without
+    /// waiting for half-closed channels. `None` for transports with
+    /// no separate master process (in-process tests, etc.).
+    ///
+    /// See [`crate::ssh::stop_control_master`] for the exact command.
+    #[cfg(not(target_family = "wasm"))]
+    pub control_path: Option<PathBuf>,
+}
+
+/// Transport abstraction for remote server connections.
+///
+/// Object-safe: returns boxed futures so implementations can be stored
+/// as `Arc<dyn RemoteTransport>` for reconnection.
+pub trait RemoteTransport: Send + Sync + std::fmt::Debug {
+    /// Detects the remote host's OS and architecture by running `uname -sm`.
+    ///
+    /// Returns the parsed [`RemotePlatform`] on success, or an error string
+    /// if the command fails or the output cannot be parsed.
+    fn detect_platform(
+        &self,
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<RemotePlatform, String>> + Send>>;
+
+    /// Runs the preinstall check script ([`crate::setup::PREINSTALL_CHECK_SCRIPT`])
+    /// over the existing connection and parses its structured stdout into
+    /// a [`PreinstallCheckResult`].
+    ///
+    /// This runs **before** any user-visible install affordance (the
+    /// install choice block, auto-install, auto-update, or connect) and
+    /// is the gate that decides whether to proceed with the install
+    /// pipeline or fall back to the legacy SSH flow.
+    ///
+    /// Returns `Ok(_)` on success (including when the script reported
+    /// `Unknown` — that's a parser-level outcome, not a transport-level
+    /// failure). Returns `Err(_)` only on SSH-level failure (timeout,
+    /// broken pipe, non-zero exit with no parseable summary), which the
+    /// caller treats as inconclusive (fail open).
+    fn run_preinstall_check(
+        &self,
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<PreinstallCheckResult, String>> + Send>>;
+
+    /// Checks whether the remote server binary is present on the remote host.
+    ///
+    /// Pure I/O — does not emit any events. The caller
+    /// ([`RemoteServerManager::check_binary`]) is responsible for emitting
+    /// [`SetupStateChanged`] and [`BinaryCheckComplete`].
+    ///
+    /// Returns `Ok(true)` if the binary is installed and executable,
+    /// `Ok(false)` if it is definitively not installed, and
+    /// `Err(_)` if the check failed (e.g. SSH timeout/unreachable).
+    fn check_binary(
+        &self,
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<bool, String>> + Send>>;
+
+    /// Checks whether the remote host already has an existing install
+    /// of the remote server binary.
+    ///
+    /// Used by the manager to distinguish a fresh install (no prior
+    /// install on disk, user should be prompted) from an update (prior
+    /// install present, install should happen automatically).
+    ///
+    /// Returns `Ok(true)` if a prior install was detected, `Ok(false)`
+    /// if not, and `Err(_)` on SSH failure.
+    fn check_has_old_binary(
+        &self,
+    ) -> Pin<Box<dyn std::future::Future<Output = anyhow::Result<bool>> + Send>>;
+
+    /// Installs the remote server binary on the remote host.
+    ///
+    /// Pure I/O — does not emit any events. The caller
+    /// ([`RemoteServerManager::install_binary`]) is responsible for emitting
+    /// [`SetupStateChanged`] and [`BinaryInstallComplete`].
+    ///
+    /// Returns `Ok(())` if the install succeeded, and
+    /// `Err(_)` if the install failed (e.g. SSH timeout, script error).
+    fn install_binary(
+        &self,
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send>>;
+
+    /// Establish a new connection to the remote server.
+    ///
+    /// Called on both the initial connect and every subsequent reconnect
+    /// attempt. Returns a [`Connection`] carrying the live client, its
+    /// event channel, and any transport-specific resources (e.g. an
+    /// owning `Child`) whose lifetime must match the session.
+    ///
+    /// The implementation is responsible for any transport-specific setup
+    /// required before messages can flow (e.g. spawning a process, connecting
+    /// a socket). Stderr forwarding to local logging should also happen here.
+    fn connect(
+        &self,
+        executor: std::sync::Arc<executor::Background>,
+    ) -> Pin<Box<dyn std::future::Future<Output = anyhow::Result<Connection>> + Send>>;
+
+    /// Remove the remote server binary, forcing a reinstall on the next
+    /// [`install_binary`] call.
+    ///
+    /// Called by the manager after the initialize handshake reports a
+    /// version that disagrees with the client's: the file at the expected
+    /// path is stale/wrong, so we remove it so the next setup sees a miss
+    /// and reinstalls from the CDN instead of looping on the same bad
+    /// binary.
+    ///
+    /// [`install_binary`]: RemoteTransport::install_binary
+    fn remove_remote_server_binary(
+        &self,
+    ) -> Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send>>;
+}

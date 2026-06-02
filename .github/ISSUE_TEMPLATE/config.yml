@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Waz Issue Search
+    url: https://github.com/zerx-lab/warp/issues?q=is%3Aissue+sort%3Areactions-%2B1-desc
+    about: Search existing Waz bugs and feature requests before opening a new one.
+  - name: Waz README
+    url: https://github.com/zerx-lab/warp#readme
+    about: BYOP setup, supported providers, and core features of Waz.
+  - name: Waz Docs
+    url: https://github.com/zerx-lab/warp/tree/main/docs
+    about: Architecture notes, upstream-sync plan, and design docs in the repo.
+  - name: Upstream Waz (reference only)
+    url: https://github.com/warpdotdev/warp
+    about: Waz is an unaffiliated community fork — upstream Waz is shown for reference only. Cloud / billing / account / Warpify SSO issues belong upstream, not here.

@@ -1,0 +1,27 @@
+{
+  "name": "waz-website",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "sync:changelog": "node -e \"const fs=require('fs');const src='../CHANGELOG.md';if(fs.existsSync(src)){fs.copyFileSync(src,'CHANGELOG.md');console.log('synced CHANGELOG.md from repo root')}else if(fs.existsSync('CHANGELOG.md')){console.log('repo-root CHANGELOG.md not found; keeping existing website/CHANGELOG.md')}else{fs.writeFileSync('CHANGELOG.md','# Changelog\\n\\n_No changelog available in this build context._\\n');console.warn('WARN: no CHANGELOG.md found; wrote placeholder')}\"",
+    "predev": "bun run sync:changelog",
+    "prestart": "bun run sync:changelog",
+    "prebuild": "bun run sync:changelog",
+    "prepreview": "bun run sync:changelog",
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build && pagefind --site dist",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "astro": "^5.0.0",
+    "@astrojs/mdx": "^4.0.0",
+    "@astrojs/sitemap": "^3.2.0",
+    "@openpanel/astro": "^1.4.1"
+  },
+  "devDependencies": {
+    "pagefind": "^1.1.1"
+  }
+}

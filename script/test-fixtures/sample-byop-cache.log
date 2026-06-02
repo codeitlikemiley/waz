@@ -1,0 +1,10 @@
+2026-05-19T08:00:00Z [INFO] [byop] stream stats: start=1 chunks=12 (456B) reasoning=0 (0B) tool_chunks=0 ends=1 other=0 captured_tools=0
+2026-05-19T08:00:00Z [INFO] [byop-cache] prompt_tokens=8000 cache_read=0 (0.0%) cache_create=7800 (97.5%) model=claude-opus-4-7 compaction=none
+2026-05-19T08:00:30Z [INFO] [byop-cache] prompt_tokens=8500 cache_read=7800 (91.8%) cache_create=200 (2.4%) model=claude-opus-4-7 compaction=none
+2026-05-19T08:01:00Z [INFO] [byop-cache] prompt_tokens=9000 cache_read=8000 (88.9%) cache_create=300 (3.3%) model=claude-opus-4-7 compaction=inactive
+2026-05-19T08:02:00Z [INFO] [byop-cache] prompt_tokens=5000 cache_read=0 (0.0%) cache_create=4500 (90.0%) model=gpt-5-mini compaction=none
+2026-05-19T08:02:30Z [INFO] [byop-cache] prompt_tokens=5500 cache_read=4500 (81.8%) cache_create=200 (3.6%) model=gpt-5-mini compaction=none
+2026-05-19T08:05:00Z [INFO] [byop] stream stats: end of stream
+2026-05-19T08:05:30Z [INFO] [byop-cache] prompt_tokens=10000 cache_read=8500 (85.0%) cache_create=400 (4.0%) model=claude-opus-4-7 compaction=none
+2026-05-19T08:10:00Z [INFO] [byop-cache] prompt_tokens=4500 cache_read=0 (0.0%) cache_create=4400 (97.7%) model=claude-opus-4-7 compaction=active(hidden=8)
+2026-05-19T08:10:30Z [INFO] [byop-cache] prompt_tokens=4800 cache_read=4400 (91.6%) cache_create=300 (6.2%) model=claude-opus-4-7 compaction=active(hidden=8)

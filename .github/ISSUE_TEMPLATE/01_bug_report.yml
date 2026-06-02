@@ -1,0 +1,156 @@
+name: Bug Report
+description: "Found a bug in Waz? Please search existing issues first. For SSH-specific failures, use one of the SSH templates below."
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve **Waz** — a community fork of Waz focused on BYOP (bring-your-own-provider) AI, local credentials, and a privacy-first terminal.
+
+        **Out of scope (please do not file here):**
+        - Waz cloud account / billing / Waz AI quota / Warpify SSO / Waz Drive cloud sync — these belong to upstream Waz, not Waz.
+        - Issues only reproducible with Waz's first-party cloud agent (Waz ships it disabled).
+  - type: checkboxes
+    attributes:
+      label: "Pre-submit Checks"
+      options:
+        - label: "I have [searched Waz issues](https://github.com/zerx-lab/warp/issues?q=is%3Aissue+label%3Abug) and there are no duplicates."
+          required: true
+        - label: "This bug is in Waz itself — not in upstream Waz's cloud account, billing, Warpify SSO, or cloud-only features."
+          required: true
+        - label: "I have included relevant logs (`RUST_LOG=info` output, panic traces, etc.). Optional, but greatly speeds up triage."
+          required: false
+        - label: "If the bug is in the AI / BYOP path, I have included the provider name, base URL pattern (redacted), and model id."
+          required: false
+  - type: textarea
+    id: "describe-the-bug"
+    attributes:
+      label: "Describe the bug"
+      description: "A clear and concise description of what the bug is."
+      placeholder: Tell us what you see.
+    validations:
+      required: true
+  - type: textarea
+    id: "to-reproduce"
+    attributes:
+      label: "To reproduce"
+      description: "Bug reports with a clear repro will be prioritized higher."
+      placeholder: "Steps to reproduce: 1. Go to '...' 2. Click on '...' 3. Scroll down to '...' 4. See error '...'"
+    validations:
+      required: true
+  - type: textarea
+    id: "expected-behavior"
+    attributes:
+      label: "Expected behavior"
+      description: "A clear and concise description of what you expected to happen."
+      placeholder: Tell us what you expect to see.
+    validations:
+      required: false
+  - type: textarea
+    id: "screenshots-logs"
+    attributes:
+      label: "Screenshots, videos, and logs"
+      description: "If applicable, attach screenshots/videos/logs. Redact any API keys, tokens, or personal data before posting."
+    validations:
+      required: false
+  - type: dropdown
+    id: "os"
+    attributes:
+      label: "Operating system (OS)"
+      multiple: false
+      options:
+        - "Select an OS"
+        - macOS
+        - Linux
+        - Windows
+    validations:
+      required: true
+  - type: input
+    id: "os-version"
+    attributes:
+      label: "Operating system and version"
+      description: "For example: Windows 10 22H2, macOS 14.5, Debian 12."
+    validations:
+      required: true
+  - type: input
+    id: "local-shell-version"
+    attributes:
+      label: "Shell version"
+      description: "For example, `bash 5.2` / `zsh 5.9` / PowerShell 7.4. Run `bash --version`, `zsh --version`, or `$PSVersionTable`."
+    validations:
+      required: false
+  - type: input
+    id: "waz-version"
+    attributes:
+      label: "Waz version / commit"
+      description: "Open Settings → About to copy the version, or run `git rev-parse --short HEAD` if you built from source."
+    validations:
+      required: true
+  - type: dropdown
+    id: "ai-path"
+    attributes:
+      label: "AI / BYOP path involved?"
+      description: "Does this bug involve the AI agent, model picker, prompt templates, or a configured BYOP provider?"
+      multiple: false
+      options:
+        - "No — non-AI bug (terminal, blocks, UI, shortcuts, etc.)"
+        - "Yes — BYOP / model / prompt template / agent path"
+    validations:
+      required: true
+  - type: input
+    id: "byop-provider"
+    attributes:
+      label: "BYOP provider (if applicable)"
+      description: "If the bug is in the AI path, which provider/protocol? e.g. OpenAI / Anthropic / DeepSeek / Gemini / Ollama / OpenRouter / custom proxy. Do NOT paste API keys."
+    validations:
+      required: false
+  - type: dropdown
+    id: "regression"
+    attributes:
+      label: "Regression"
+      description: "Is this a regression compared to a previous Waz build?"
+      multiple: false
+      options:
+        - "No, this issue has existed throughout my use of Waz."
+        - "Yes, this started after a recent Waz build / upstream sync."
+        - "Unknown."
+    validations:
+      required: true
+  - type: input
+    id: "last-known-good"
+    attributes:
+      label: "Last known good build / date (if regression)"
+      description: "Most recent commit SHA or date where Waz behaved as expected."
+    validations:
+      required: false
+  - type: textarea
+    id: "additional-context"
+    attributes:
+      label: "Additional context"
+      description: "Anything else worth knowing. On Linux, mention X11 vs Wayland. For graphical issues, run with `RUST_LOG=wgpu_core=info,wgpu_hal=info MESA_DEBUG=1 EGL_LOG_LEVEL=debug` and attach the output of `eglinfo`."
+    validations:
+      required: false
+  - type: dropdown
+    id: "blocker"
+    attributes:
+      label: "Does this block your daily use of Waz?"
+      description: "All feedback is reviewed even if you select 'No'."
+      multiple: false
+      options:
+        - "No"
+        - "Yes — this prevents me from using Waz daily."
+    validations:
+      required: true
+  - type: dropdown
+    id: "terminals"
+    attributes:
+      label: "Reproducible only in Waz?"
+      description: "Verifying whether other terminals are affected helps narrow down the root cause."
+      multiple: false
+      options:
+        - "Only in Waz."
+        - "Also reproducible in upstream Waz."
+        - "Also reproducible in other terminals (iTerm2, Windows Terminal, Alacritty, etc.)."
+        - "Not tested elsewhere."
+    validations:
+      required: true

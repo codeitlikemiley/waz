@@ -1,0 +1,1 @@
+ALTER TABLE ssh_nodes ADD COLUMN is_collapsed BOOLEAN NOT NULL DEFAULT 0;

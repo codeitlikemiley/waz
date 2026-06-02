@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 512 512"
+   version="1.0"
+   id="waz"
+   xmlns="http://www.w3.org/2000/svg">
+  <g
+     transform="skewX(-8)"
+     id="g11"
+     fill="#ff0000">
+    <rect
+       x="70"
+       y="332"
+       width="80"
+       height="140"
+       rx="18"
+       id="rect1" />
+    <rect
+       x="166"
+       y="252"
+       width="90"
+       height="200"
+       rx="20"
+       id="rect2" />
+    <rect
+       x="272"
+       y="162"
+       width="110"
+       height="260"
+       rx="25"
+       id="rect3" />
+    <rect
+       x="400"
+       y="72"
+       width="120"
+       height="320"
+       rx="30"
+       id="rect4" />
+  </g>
+</svg>

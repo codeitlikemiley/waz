@@ -1,0 +1,32 @@
+---
+import GhIcon from './GhIcon.astro';
+import LanguageSelect from './LanguageSelect.astro';
+import ThemeToggle from './ThemeToggle.astro';
+const repo = 'https://github.com/codeitlikemiley/waz';
+---
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="/">
+      <img class="brand-logo" src="/logo.svg" alt="Waz" width="26" height="26" />
+      Waz
+    </a>
+    <nav class="nav-links" id="primary-nav">
+      <a href="#how" data-lang="en">Terminal</a><a href="#how" data-lang="zh">终端</a><a href="#how" data-lang="ja">ターミナル</a>
+      <a href="#adapt" data-lang="en">Providers</a><a href="#adapt" data-lang="zh">服务商</a><a href="#adapt" data-lang="ja">プロバイダー</a>
+      <a href="/docs/quickstart" data-lang="en">Docs</a><a href="/docs/quickstart" data-lang="zh">文档</a><a href="/docs/quickstart" data-lang="ja">ドキュメント</a>
+      <a href="/changelog" data-lang="en">Changelog</a><a href="/changelog" data-lang="zh">更新日志</a><a href="/changelog" data-lang="ja">変更履歴</a>
+    </nav>
+    <div class="nav-spacer"></div>
+    <div class="nav-right">
+      <ThemeToggle />
+      <LanguageSelect />
+      <a class="gh" href={repo} target="_blank" rel="noopener">
+        <GhIcon />
+        <span>GitHub</span>
+      </a>
+      <button class="nav-toggle" type="button" aria-label="Toggle menu" aria-controls="primary-nav" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+    </div>
+  </div>
+</header>

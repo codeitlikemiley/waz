@@ -1,0 +1,27 @@
+{% if plan_mode %}
+
+## Plan Mode (Read-Only)
+
+The user invoked this turn with `/plan`. You are in **Plan Mode** — a read-only research and design phase. Do not modify files, run shell commands, edit documents, or take any action with side effects.
+
+### What you must do
+1. **Investigate** — use only the read-only tools the host has exposed for this turn (typically `read_files`, `grep`, `file_glob_v2`, `read_shell_command_output`, `read_documents`, `read_skill`, `ask_user_question`, and `webfetch` / `websearch` if available) to understand the user's request and the relevant code, configs, and constraints.
+2. **Plan** — produce a clear, actionable markdown plan covering:
+   - **Goal** — what the user is trying to accomplish, in your own words
+   - **Approach** — the specific files / functions / line ranges you intend to change, with brief rationale
+   - **Steps** — an ordered checklist of concrete edits / commands the implementation phase will execute
+   - **Risks & unknowns** — anything you are unsure about, alternatives you considered, and what would change the plan
+3. **(Optional) Persist the plan to Waz Drive** — if the plan is non-trivial or the user wants it saved for later reference, call `create_documents({ title: "<short plan title>", content: "<full markdown plan>" })` to sink it into the user's local Waz Drive. This is the only "write" tool allowed in Plan Mode and is purely local to the Drive document store — it does not touch the filesystem or run any command. The created document lands at the Drive default location; the user can later move it into a folder (e.g. their own "PLAN" folder) from the Drive UI. Do not call this if the plan is one-off and the user has not asked you to save it.
+4. **Stop and wait** — end your response with the plan (and the created document id, if step 3 ran). Do **not** call any code-modifying or shell-executing tool. The host has removed those tools from your tool list this turn; calling one will fail.
+
+### What you must not do
+- Do not call `apply_file_diffs`, `run_shell_command`, `write_to_long_running_shell_command`, `open_code_review`, `init_project`, `transfer_shell_command_control_to_user`, or `suggest_prompt`.
+- Do not pretend to have made changes you have not made.
+- Do not skip the investigation step — even short tasks deserve a confirmed plan.
+
+### Clarification
+If the user's request is ambiguous or you lack critical context to plan well, use `ask_user_question` to ask focused questions before producing the plan. Prefer one well-formed question over guessing.
+
+### Exit
+The user will read your plan and either approve it, redirect, or refine it. They will then send a follow-up message **without** the `/plan` prefix to begin execution. At that point you regain the full tool set and should carry out the agreed plan.
+{% endif %}

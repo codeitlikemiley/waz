@@ -1,0 +1,16 @@
+{
+    "documentation": "See the README.md file in this directory.",
+    "channels": [
+        {
+            "channel": "oss",
+            "type": "weekly",
+            "is_prerelease": false,
+            "is_autopush": false,
+            "release_base_name": "Waz",
+            "release_body_text": "Waz release (fork of Waz Terminal, oss channel)",
+            "changelog_slack_channel": "",
+            "gcs_cache_control_value": "",
+            "web_gcs_bucket_prefix": ""
+        }
+    ]
+}

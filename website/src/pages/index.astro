@@ -1,0 +1,873 @@
+---
+import LandingLayout from '../layouts/LandingLayout.astro';
+
+const repo = 'https://github.com/codeitlikemiley/waz';
+
+// Centralized copy management to avoid scattering data-lang tags for three languages everywhere
+const t = {
+  hero: {
+    badge:  { en: 'v0 · OSS preview',     zh: 'v0 · OSS 预览版',     ja: 'v0 · OSS プレビュー' },
+    h1a:    { en: 'The terminal,',         zh: '把终端,',              ja: 'ターミナルを、' },
+    h1b:    { en: 'rebuilt around you.',   zh: '重新交还给你。',         ja: 'あなたの手元に戻す。' },
+    lede:   {
+      en: 'Waz is a derivative product built on Warp — a fully open, local-first take on the agentic terminal. Every credential, conversation and key stays on your machine. Bring your own provider, your own keys, your own rules.',
+      zh: 'Waz 是基于 Warp 的衍生产品 — 完全开放、本地优先的 agentic 终端。凭证、会话与密钥全部保存在本地。自带服务商、自带密钥、自带规则。',
+      ja: 'Waz は Warp を基にした派生プロダクト — 完全オープンでローカルファーストな agentic ターミナル。認証情報、会話、鍵はすべて手元のマシンに残ります。プロバイダーも鍵もルールも自分のもの。',
+    },
+    primary:   { en: 'Install Waz',     zh: '安装 Waz',     ja: 'Waz をインストール' },
+    secondary: { en: 'View on GitHub',  zh: '在 GitHub 查看', ja: 'GitHub で見る' },
+  },
+  logos: {
+    title: {
+      en: 'Native protocols — bring any provider',
+      zh: '原生协议 — 自带任意服务商',
+      ja: 'ネイティブプロトコル — 任意のプロバイダーを接続',
+    },
+  },
+  feat1: {
+    eyebrow: { en: 'TERMINAL',    zh: '终端',          ja: 'ターミナル' },
+    h:       { en: 'A real terminal, with an AI you actually own.',  zh: '一个真正的终端,搭配你自己掌控的 AI。',  ja: '本物のターミナル、自分で制御できる AI 付き。' },
+    p:       {
+      en: 'Every Block — cwd, env, exit code — feeds an AI conversation you can swap, replay or kill at any time. No telemetry, no remote calls, no hidden cloud.',
+      zh: '每一个 Block(工作目录、环境变量、退出码)都为 AI 会话提供上下文,而对话本身可以随时替换、重放、终止。无遥测、无远程调用、无隐藏云服务。',
+      ja: 'すべての Block(cwd、env、終了コード)が AI 会話に流れ込み、いつでも切り替え・再実行・停止できます。テレメトリも遠隔呼び出しも隠れたクラウドもありません。',
+    },
+    more: { en: 'Read the docs →', zh: '查看文档 →', ja: 'ドキュメントを見る →' },
+  },
+  feat2: {
+    eyebrow: { en: 'PROVIDERS',   zh: '服务商',        ja: 'プロバイダー' },
+    h:       { en: 'Six native protocols. Hundreds of presets. Your keys.', zh: '6 种原生协议,数百个预设,你的密钥。', ja: '6 種のネイティブプロトコル、数百のプリセット、あなたの鍵。' },
+    p:       {
+      en: 'Pick from a directory of 250+ providers — OpenAI-compatible, Anthropic, Gemini, Ollama, DeepSeek, OpenAI-Response — or wire your own endpoint in one paste. Keys live in the OS keychain.',
+      zh: '从内置 250+ 服务商目录中挑选 — OpenAI 兼容、Anthropic、Gemini、Ollama、DeepSeek、OpenAI-Response — 也可一键粘贴你自己的端点。密钥仅保存在系统密钥库。',
+      ja: '内蔵の 250+ プロバイダーディレクトリから選択(OpenAI 互換、Anthropic、Gemini、Ollama、DeepSeek、OpenAI-Response)。あるいは自分のエンドポイントを 1 度の貼り付けで接続。鍵は OS のキーチェーンに保管されます。',
+    },
+    more: { en: 'See provider list →', zh: '查看服务商列表 →', ja: 'プロバイダー一覧を見る →' },
+  },
+  feat3: {
+    eyebrow: { en: 'LOCALIZED',   zh: '本地化',        ja: 'ローカライズ' },
+    h:       { en: 'Localized end-to-end. Not just labels.',  zh: '端到端本地化,不只是标签翻译。', ja: '端から端までローカライズ。ラベルだけではありません。' },
+    p:       {
+      en: 'Settings, prompts, command palette, telemetry banners — all rewritten in English, 简体中文 and 日本語. Switch any time; preference persists locally.',
+      zh: '设置、Prompt、命令面板、隐私横幅 — 全部用 English / 简体中文 / 日本語 重写。可随时切换,偏好仅保存在本地。',
+      ja: '設定、プロンプト、コマンドパレット、テレメトリバナー — すべて English / 简体中文 / 日本語 で書き直されています。いつでも切替可能、設定はローカルに保存。',
+    },
+    more: { en: 'Switch language ↑', zh: '切换语言 ↑', ja: '言語を切り替える ↑' },
+  },
+  quote: {
+    text: {
+      en: 'The terminal was always a local tool. Waz keeps it that way — even when the AI joins.',
+      zh: '终端从来都是本地工具。即便引入 AI,Waz 也让它继续如此。',
+      ja: 'ターミナルはずっとローカルなツールでした。AI が入っても、Waz はそのままにします。',
+    },
+    cite: { en: 'Project ethos', zh: '项目理念', ja: 'プロジェクトの理念' },
+  },
+  install: {
+    eyebrow: { en: 'INSTALL',    zh: '安装',           ja: 'インストール' },
+    h:       { en: 'Build it yourself in two commands.', zh: '两条命令,自行构建。',          ja: '2 つのコマンドで自分でビルド。' },
+    p:       {
+      en: 'No installer in preview — Waz is source-available and ships only as a build script. Clone, bootstrap, run.',
+      zh: 'preview 阶段不提供安装包 — Waz 完全源码公开,只通过构建脚本发布。Clone、bootstrap、run。',
+      ja: 'preview 段階ではインストーラーはありません。Waz はソース公開で、ビルドスクリプトのみが配布物です。Clone、bootstrap、run。',
+    },
+    tabMac: 'macOS', tabLinux: 'Linux', tabWin: 'Windows',
+  },
+  cta: {
+    h:       { en: 'Your terminal. Your keys.',  zh: '你的终端。你的密钥。', ja: 'あなたのターミナル。あなたの鍵。' },
+    p:       { en: 'Source-available · Self-hostable · Built with Rust', zh: '源码公开 · 可自托管 · 基于 Rust 构建', ja: 'ソース公開 · セルフホスト可能 · Rust 製' },
+    primary: { en: 'Quickstart',  zh: '快速开始',  ja: 'クイックスタート' },
+    secondary: { en: 'Read the changelog', zh: '查看更新日志', ja: '変更履歴を読む' },
+  },
+};
+
+// Provider examples (corresponding to the chip-grid in simulation 2)
+const providerChips = ['302.AI (97)', 'Abacus (65)', 'abliteration.ai (1)', 'AIHubMix (50)', 'Alibaba (48)', 'Alibaba (China) (80)', 'Alibaba Coding (9)', 'Together (16)'];
+
+// Logos (Trust Wall) — since we don't have real partners, change to "names of natively supported protocols"
+const protocols = ['OpenAI', 'Anthropic', 'Gemini', 'Ollama', 'DeepSeek', 'OpenAI-Response'];
+---
+<LandingLayout>
+  <!-- ============== HERO ============== -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div class="fade-in">
+        <span class="hero-badge"><span class="pulse-dot"></span>
+          <span data-lang="en">{t.hero.badge.en}</span><span data-lang="zh">{t.hero.badge.zh}</span><span data-lang="ja">{t.hero.badge.ja}</span>
+        </span>
+        <h1>
+          <span data-lang="en">{t.hero.h1a.en}<br/><span class="em">{t.hero.h1b.en}</span></span>
+          <span data-lang="zh">{t.hero.h1a.zh}<br/><span class="em">{t.hero.h1b.zh}</span></span>
+          <span data-lang="ja">{t.hero.h1a.ja}<br/><span class="em">{t.hero.h1b.ja}</span></span>
+        </h1>
+        <p class="lede" data-lang="en">{t.hero.lede.en}</p>
+        <p class="lede" data-lang="zh">{t.hero.lede.zh}</p>
+        <p class="lede" data-lang="ja">{t.hero.lede.ja}</p>
+        <div class="hero-cta">
+          <a class="btn" href="#install">
+            <span data-lang="en">{t.hero.primary.en}</span><span data-lang="zh">{t.hero.primary.zh}</span><span data-lang="ja">{t.hero.primary.ja}</span>
+            <span class="arr">→</span>
+          </a>
+          <a class="btn alt" href={repo} target="_blank" rel="noopener">
+            <span data-lang="en">{t.hero.secondary.en}</span><span data-lang="zh">{t.hero.secondary.zh}</span><span data-lang="ja">{t.hero.secondary.ja}</span>
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Below Hero: Simulated terminal window (full horizontal width, left shortcut card + right terminal area) -->
+    <div class="wrap">
+      <div class="hero-art fade-in delay-1" aria-hidden="true">
+        <div class="app-window mock-terminal hero-window">
+          <div class="app-titlebar">
+            <div class="tb-icon" title="sidebar">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M6 3v10"/></svg>
+            </div>
+            <div class="app-tabs">
+              <div class="app-tab active"><span>~ - fish</span></div>
+              <div class="app-tab add">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3v10M3 8h10"/></svg>
+                <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" style="width:9px;height:9px;opacity:.6"><path d="M3 4l3 4 3-4"/></svg>
+              </div>
+            </div>
+            <div class="app-controls">
+              <div class="tb-icon"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 9l5-5 5 5M8 4v9"/></svg></div>
+              <div class="tb-icon"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.5" y="3" width="11" height="8" rx="1"/><path d="M2.5 7h11"/></svg></div>
+              <button class="tb-icon tb-theme" type="button" data-theme-toggle title="Toggle theme" aria-label="Toggle color theme">
+                <svg class="tb-theme-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                  <g class="tb-sun">
+                    <circle cx="8" cy="8" r="3"/>
+                    <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.2 3.2l1.4 1.4M11.4 11.4l1.4 1.4M3.2 12.8l1.4-1.4M11.4 4.6l1.4-1.4"/>
+                  </g>
+                  <path class="tb-moon" d="M14 9.5A6 6 0 1 1 6.5 2a5 5 0 0 0 7.5 7.5z"/>
+                </svg>
+              </button>
+              <div class="tb-icon"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 8h10"/></svg></div>
+              <div class="tb-icon"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="3" width="10" height="10" rx="1"/></svg></div>
+              <div class="tb-icon"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 4l8 8M12 4l-8 8"/></svg></div>
+            </div>
+          </div>
+          <div class="app-body">
+            <!-- Left side: Shortcut hint card + status bar -->
+            <div class="hero-side">
+              <div class="hero-hint">
+                <div class="hh-title">
+                  <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 11l4-4 4 4M3 7l4-4 4 4"/></svg>
+                  <span data-lang="en">New terminal session</span><span data-lang="zh">新建终端会话</span><span data-lang="ja">新しいセッション</span>
+                </div>
+                <div class="hh-row">
+                  <span class="kbds"><span class="kbd">ctrl</span><span class="kbd">shift</span><span class="kbd">↩</span></span>
+                  <span data-lang="en">New Agent chat</span><span data-lang="zh">新 Agent 对话</span><span data-lang="ja">新しい Agent 会話</span>
+                </div>
+                <div class="hh-row">
+                  <span class="kbds"><span class="kbd">↑</span></span>
+                  <span data-lang="en">History</span><span data-lang="zh">历史记录</span><span data-lang="ja">履歴</span>
+                </div>
+                <div class="hh-row">
+                  <span class="kbds"><span class="kbd">⌘</span><span class="kbd">K</span></span>
+                  <span data-lang="en">Command palette</span><span data-lang="zh">命令面板</span><span data-lang="ja">コマンドパレット</span>
+                </div>
+              </div>
+              <div class="hero-status">
+                <span class="ok">anthropic / claude-4-7</span>
+                <span>local · no telemetry</span>
+              </div>
+            </div>
+
+            <!-- Right side: Terminal output + executable input -->
+            <div class="hero-main">
+              <div class="term-stage"></div>
+              <div class="term-input live">
+                <div class="ti-fakeshell">
+                  <span class="ps1">~ $</span>
+                  <input
+                    id="hero-shell-input"
+                    type="text"
+                    autocomplete="off"
+                    spellcheck="false"
+                    data-lang="en"
+                    placeholder="Try: help, ls, agent fix the linker error, provider list"
+                  />
+                  <input
+                    type="text"
+                    autocomplete="off"
+                    spellcheck="false"
+                    data-lang="zh"
+                    placeholder="试试:help、ls、agent 修复链接错误、provider list"
+                  />
+                  <input
+                    type="text"
+                    autocomplete="off"
+                    spellcheck="false"
+                    data-lang="ja"
+                    placeholder="例:help、ls、agent リンカーエラーを修正、provider list"
+                  />
+                </div>
+                <div class="ti-help">
+                  <span data-lang="en">Type <code>help</code> for commands · <code>↑</code>/<code>↓</code> history · <code>clear</code> reset</span>
+                  <span data-lang="zh"><code>help</code> 查看命令 · <code>↑</code>/<code>↓</code> 历史 · <code>clear</code> 清屏</span>
+                  <span data-lang="ja"><code>help</code> で一覧 · <code>↑</code>/<code>↓</code> 履歴 · <code>clear</code> でクリア</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== LOGOS / PROTOCOLS ============== -->
+  <div class="logos fade-in">
+    <p class="logos-title">
+      <span data-lang="en">{t.logos.title.en}</span><span data-lang="zh">{t.logos.title.zh}</span><span data-lang="ja">{t.logos.title.ja}</span>
+    </p>
+    <div class="logos-track">
+      {protocols.map((p) => <span class="item">{p}</span>)}
+    </div>
+  </div>
+
+  <!-- ============== FEAT 1: Terminal ============== -->
+  <section class="section" id="how">
+    <div class="wrap">
+      <article class="feat-card fade-in">
+        <div class="feat-text">
+          <div class="feat-eyebrow">
+            <span data-lang="en">{t.feat1.eyebrow.en}</span><span data-lang="zh">{t.feat1.eyebrow.zh}</span><span data-lang="ja">{t.feat1.eyebrow.ja}</span>
+          </div>
+          <h3 data-lang="en">{t.feat1.h.en}</h3>
+          <h3 data-lang="zh">{t.feat1.h.zh}</h3>
+          <h3 data-lang="ja">{t.feat1.h.ja}</h3>
+          <p data-lang="en">{t.feat1.p.en}</p>
+          <p data-lang="zh">{t.feat1.p.zh}</p>
+          <p data-lang="ja">{t.feat1.p.ja}</p>
+          <a class="more" href="/docs/quickstart">
+            <span data-lang="en">{t.feat1.more.en}</span><span data-lang="zh">{t.feat1.more.zh}</span><span data-lang="ja">{t.feat1.more.ja}</span>
+          </a>
+        </div>
+        <div class="feat-vis">
+          <div class="app-window mock-terminal" style="min-height:340px">
+            <div class="app-titlebar">
+              <div class="tb-icon"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M6 3v10"/></svg></div>
+              <div class="app-tabs">
+                <div class="app-tab active">~/waz - fish</div>
+                <div class="app-tab add">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3v10M3 8h10"/></svg>
+                </div>
+              </div>
+            </div>
+            <div class="app-body">
+              <div class="term-stage">
+                <div class="typing-line"><span class="p">$</span> cargo build --release</div>
+                <div class="typing-line dim">   Compiling waz v0.1.0</div>
+                <div class="typing-line dim">   Compiling warp_terminal v0.1.0</div>
+                <div class="typing-line"><span class="ok">✓</span> <span class="dim">Finished in 12.4s</span></div>
+              </div>
+              <div class="term-input" style="margin-top:auto">
+                <span class="ti-chip">block · cwd · env · exit</span>
+                <div class="ti-prompt" data-lang="en">▌ Why did the linker fail on this target?</div>
+                <div class="ti-prompt" data-lang="zh">▌ 这个 target 链接为什么失败?</div>
+                <div class="ti-prompt" data-lang="ja">▌ なぜこのターゲットでリンカーが失敗したのか?</div>
+                <div class="ti-meta">
+                  <span style="font-family: 'JetBrains Mono', monospace; color: var(--accent)">/agent</span>
+                  <span data-lang="en">Anthropic · claude-opus-4-7</span><span data-lang="zh">Anthropic · claude-opus-4-7</span><span data-lang="ja">Anthropic · claude-opus-4-7</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ============== FEAT 2: Providers (reverse layout) ============== -->
+  <section class="section" id="adapt">
+    <div class="wrap">
+      <article class="feat-card reverse fade-in">
+        <div class="feat-text">
+          <div class="feat-eyebrow">
+            <span data-lang="en">{t.feat2.eyebrow.en}</span><span data-lang="zh">{t.feat2.eyebrow.zh}</span><span data-lang="ja">{t.feat2.eyebrow.ja}</span>
+          </div>
+          <h3 data-lang="en">{t.feat2.h.en}</h3>
+          <h3 data-lang="zh">{t.feat2.h.zh}</h3>
+          <h3 data-lang="ja">{t.feat2.h.ja}</h3>
+          <p data-lang="en">{t.feat2.p.en}</p>
+          <p data-lang="zh">{t.feat2.p.zh}</p>
+          <p data-lang="ja">{t.feat2.p.ja}</p>
+          <a class="more" href={repo} target="_blank" rel="noopener">
+            <span data-lang="en">{t.feat2.more.en}</span><span data-lang="zh">{t.feat2.more.zh}</span><span data-lang="ja">{t.feat2.more.ja}</span>
+          </a>
+        </div>
+        <div class="feat-vis">
+          <div class="app-window mock-settings">
+            <div class="app-titlebar">
+              <div class="tb-icon"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M6 3v10"/></svg></div>
+              <div class="app-tabs">
+                <div class="app-tab">~ - fish</div>
+                <div class="app-tab active">
+                  <span data-lang="en">Settings</span><span data-lang="zh">设置</span><span data-lang="ja">設定</span>
+                </div>
+                <div class="app-tab add">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3v10M3 8h10"/></svg>
+                </div>
+              </div>
+            </div>
+            <div class="app-body">
+              <!-- Left sidebar -->
+              <div class="set-sidebar">
+                <div class="ss-search">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M14 14l-3.5-3.5"/></svg>
+                  <span data-lang="en">Search</span><span data-lang="zh">搜索</span><span data-lang="ja">検索</span>
+                </div>
+                <div class="ss-group">
+                  <span>Agents</span><span class="chev">▾</span>
+                </div>
+                <a class="ss-item" data-lang="en">Waz agent</a><a class="ss-item" data-lang="zh">Waz 智能体</a><a class="ss-item" data-lang="ja">Waz エージェント</a>
+                <a class="ss-item" data-lang="en">Config</a><a class="ss-item" data-lang="zh">配置</a><a class="ss-item" data-lang="ja">設定</a>
+                <a class="ss-item active" data-lang="en">Providers</a><a class="ss-item active" data-lang="zh">提供商</a><a class="ss-item active" data-lang="ja">プロバイダー</a>
+                <a class="ss-item" data-lang="en">MCP servers</a><a class="ss-item" data-lang="zh">MCP 服务器</a><a class="ss-item" data-lang="ja">MCP サーバー</a>
+                <a class="ss-item">Rules</a>
+                <a class="ss-top muted" data-lang="en">Code</a><a class="ss-top muted" data-lang="zh">代码</a><a class="ss-top muted" data-lang="ja">コード</a>
+                <a class="ss-top muted" data-lang="en">Appearance</a><a class="ss-top muted" data-lang="zh">外观</a><a class="ss-top muted" data-lang="ja">外観</a>
+                <a class="ss-top muted" data-lang="en">Features</a><a class="ss-top muted" data-lang="zh">功能</a><a class="ss-top muted" data-lang="ja">機能</a>
+              </div>
+
+              <!-- Right content -->
+              <div class="set-content">
+                <div class="sc-head">
+                  <h4 class="sc-h3">
+                    <span data-lang="en">Agent providers</span><span data-lang="zh">Agent 提供商</span><span data-lang="ja">Agent プロバイダー</span>
+                  </h4>
+                  <button class="sc-add" type="button">+ <span data-lang="en">Add</span><span data-lang="zh">添加提供商</span><span data-lang="ja">追加</span></button>
+                </div>
+                <p class="sc-desc">
+                  <span data-lang="en">Configure any OpenAI-compatible / Anthropic / Gemini / Ollama / DeepSeek endpoint. Keys are stored in the OS keychain.</span>
+                  <span data-lang="zh">配置任意 OpenAI 兼容 / Anthropic / Gemini / Ollama / DeepSeek 端点。密钥保存在系统密钥库。</span>
+                  <span data-lang="ja">任意の OpenAI 互換 / Anthropic / Gemini / Ollama / DeepSeek エンドポイントを設定。鍵は OS のキーチェーンに保管されます。</span>
+                </p>
+
+                <div class="sc-quickadd">
+                  <div class="qa-head">
+                    <span data-lang="en">Quick add</span><span data-lang="zh">快速添加</span><span data-lang="ja">クイック追加</span>
+                    <span class="qa-search" data-lang="en">Search providers…</span><span class="qa-search" data-lang="zh">搜索提供商…</span><span class="qa-search" data-lang="ja">プロバイダーを検索…</span>
+                  </div>
+                  <div class="chip-grid">
+                    {providerChips.map((p) => (
+                      <span class="pchip"><span class="plus">+</span>{p}</span>
+                    ))}
+                    <span class="pchip more">+ 247 more ▾</span>
+                  </div>
+                </div>
+
+                <div class="set-form">
+                  <div class="sf-row">
+                    <div class="sf-label">
+                      <span data-lang="en">Name</span><span data-lang="zh">名称</span><span data-lang="ja">名前</span>
+                    </div>
+                    <div class="sf-val">Anthropic</div>
+                  </div>
+                  <div class="sf-row">
+                    <div class="sf-label">API <span data-lang="en">protocol</span><span data-lang="zh">协议</span><span data-lang="ja">プロトコル</span></div>
+                    <div class="sf-protocols">
+                      <span class="ptab">OpenAI</span>
+                      <span class="ptab">OpenAI-Response</span>
+                      <span class="ptab">Gemini</span>
+                      <span class="ptab active">Anthropic</span>
+                      <span class="ptab">Ollama</span>
+                      <span class="ptab">DeepSeek</span>
+                    </div>
+                  </div>
+                  <div class="sf-actions">
+                    <button class="sf-btn" type="button" data-lang="en">+ Add model</button><button class="sf-btn" type="button" data-lang="zh">+ 添加模型</button><button class="sf-btn" type="button" data-lang="ja">+ モデル追加</button>
+                    <button class="sf-btn primary" type="button" data-lang="en">Save</button><button class="sf-btn primary" type="button" data-lang="zh">保存</button><button class="sf-btn primary" type="button" data-lang="ja">保存</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ============== FEAT 3: Localization ============== -->
+  <section class="section" id="privacy">
+    <div class="wrap">
+      <article class="feat-card fade-in">
+        <div class="feat-text">
+          <div class="feat-eyebrow">
+            <span data-lang="en">{t.feat3.eyebrow.en}</span><span data-lang="zh">{t.feat3.eyebrow.zh}</span><span data-lang="ja">{t.feat3.eyebrow.ja}</span>
+          </div>
+          <h3 data-lang="en">{t.feat3.h.en}</h3>
+          <h3 data-lang="zh">{t.feat3.h.zh}</h3>
+          <h3 data-lang="ja">{t.feat3.h.ja}</h3>
+          <p data-lang="en">{t.feat3.p.en}</p>
+          <p data-lang="zh">{t.feat3.p.zh}</p>
+          <p data-lang="ja">{t.feat3.p.ja}</p>
+        </div>
+        <div class="feat-vis">
+          <div class="app-window mock-language">
+            <div class="app-titlebar">
+              <div class="tb-icon"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M6 3v10"/></svg></div>
+              <div class="app-tabs">
+                <div class="app-tab active">
+                  <span data-lang="en">Settings · Appearance</span><span data-lang="zh">设置 · 外观</span><span data-lang="ja">設定 · 外観</span>
+                </div>
+                <div class="app-tab add">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3v10M3 8h10"/></svg>
+                </div>
+              </div>
+            </div>
+            <div class="app-body">
+              <div class="lang-block">
+                <div class="lb-h" data-lang="en">Language</div><div class="lb-h" data-lang="zh">语言</div><div class="lb-h" data-lang="ja">言語</div>
+                <div class="lb-row">
+                  <div class="lb-text">
+                    <div class="t" data-lang="en">Language</div><div class="t" data-lang="zh">语言</div><div class="t" data-lang="ja">言語</div>
+                    <div class="d" data-lang="en">Restart Waz to fully apply this change.</div>
+                    <div class="d" data-lang="zh">重启 Waz 以让此更改完全生效。</div>
+                    <div class="d" data-lang="ja">Waz を再起動すると完全に反映されます。</div>
+                  </div>
+                  <div class="lb-select" id="hero-lang-select">
+                    <span class="lb-current" data-locale-current="en">System default</span>
+                    <span class="lb-current" data-locale-current="zh">系统默认</span>
+                    <span class="lb-current" data-locale-current="ja">システムデフォルト</span>
+                    <div class="lang-dropdown">
+                      <button class="ldi" type="button" data-mock-lang="system">
+                        <span data-lang="en">System default</span><span data-lang="zh">系统默认</span><span data-lang="ja">システムデフォルト</span>
+                      </button>
+                      <button class="ldi" type="button" data-mock-lang="en">English</button>
+                      <button class="ldi" type="button" data-mock-lang="zh">简体中文</button>
+                      <button class="ldi" type="button" data-mock-lang="ja">日本語</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="lang-block">
+                <div class="lb-h" data-lang="en">Window</div><div class="lb-h" data-lang="zh">窗口</div><div class="lb-h" data-lang="ja">ウィンドウ</div>
+                <div class="lb-row">
+                  <div class="lb-text">
+                    <div class="t" data-lang="en">Window opacity: 100</div>
+                    <div class="t" data-lang="zh">窗口不透明度: 100</div>
+                    <div class="t" data-lang="ja">ウィンドウ不透明度: 100</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ============== QUOTE (Single) ============== -->
+  <section class="quote fade-in">
+    <div class="wrap">
+      <blockquote data-lang="en">{t.quote.text.en}</blockquote>
+      <blockquote data-lang="zh">{t.quote.text.zh}</blockquote>
+      <blockquote data-lang="ja">{t.quote.text.ja}</blockquote>
+      <div class="cite">
+        — <span data-lang="en">{t.quote.cite.en}</span><span data-lang="zh">{t.quote.cite.zh}</span><span data-lang="ja">{t.quote.cite.ja}</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== INSTALL ============== -->
+  <section class="section" id="install">
+    <div class="wrap">
+      <div class="fade-in" style="max-width: 720px;">
+        <div class="feat-eyebrow">
+          <span data-lang="en">{t.install.eyebrow.en}</span><span data-lang="zh">{t.install.eyebrow.zh}</span><span data-lang="ja">{t.install.eyebrow.ja}</span>
+        </div>
+        <h2 class="sec-h2" data-lang="en">{t.install.h.en}</h2>
+        <h2 class="sec-h2" data-lang="zh">{t.install.h.zh}</h2>
+        <h2 class="sec-h2" data-lang="ja">{t.install.h.ja}</h2>
+        <p class="sec-lede" data-lang="en">{t.install.p.en}</p>
+        <p class="sec-lede" data-lang="zh">{t.install.p.zh}</p>
+        <p class="sec-lede" data-lang="ja">{t.install.p.ja}</p>
+      </div>
+
+      <div class="install-card fade-in delay-1">
+        <div class="install-tabs">
+          <button data-tab="macos" class="active">macOS</button>
+          <button data-tab="linux">Linux</button>
+          <button data-tab="windows">Windows<span class="meta">.ps1</span></button>
+        </div>
+
+        <div class="pre-wrap" data-pane="macos">
+          <pre class="code"><span class="com"># 1. Bootstrap dependencies (Xcode CLT + cargo helpers)</span>
+git clone https://github.com/codeitlikemiley/waz.git waz
+<span class="key">cd</span> waz
+./script/bootstrap
+
+<span class="com"># 2. Build &amp; run</span>
+./script/run --release</pre>
+          <button class="copy" type="button" data-copy>Copy</button>
+        </div>
+
+        <div class="pre-wrap" data-pane="linux" hidden>
+          <pre class="code"><span class="com"># Debian / Ubuntu (apt + cargo)</span>
+git clone https://github.com/codeitlikemiley/waz.git waz
+<span class="key">cd</span> waz
+./script/bootstrap
+
+<span class="com"># Build &amp; run</span>
+./script/run --release</pre>
+          <button class="copy" type="button" data-copy>Copy</button>
+        </div>
+
+        <div class="pre-wrap" data-pane="windows" hidden>
+          <pre class="code"><span class="com"># Run from PowerShell (winget + rustup)</span>
+git clone https://github.com/codeitlikemiley/waz.git waz
+<span class="key">cd</span> waz
+./script/bootstrap
+
+<span class="com"># Build &amp; run</span>
+./script/run --release</pre>
+          <button class="copy" type="button" data-copy>Copy</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== CTA ============== -->
+  <section class="cta-band">
+    <div class="wrap fade-in">
+      <h2>
+        <span data-lang="en">{t.cta.h.en}</span><span data-lang="zh">{t.cta.h.zh}</span><span data-lang="ja">{t.cta.h.ja}</span>
+      </h2>
+      <p data-lang="en">{t.cta.p.en}</p>
+      <p data-lang="zh">{t.cta.p.zh}</p>
+      <p data-lang="ja">{t.cta.p.ja}</p>
+      <div class="btn-row">
+        <a class="btn" href="/docs/quickstart">
+          <span data-lang="en">{t.cta.primary.en}</span><span data-lang="zh">{t.cta.primary.zh}</span><span data-lang="ja">{t.cta.primary.ja}</span>
+          <span class="arr">→</span>
+        </a>
+        <a class="btn alt" href="/changelog">
+          <span data-lang="en">{t.cta.secondary.en}</span><span data-lang="zh">{t.cta.secondary.zh}</span><span data-lang="ja">{t.cta.secondary.ja}</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Terminal typing lines (rendered only once, typing-fade starts after LandingLayout's IntersectionObserver triggers .in) -->
+  <!-- The actual typing content is already filled within .term-stage of mock-terminal -->
+</LandingLayout>
+
+<script>
+  // ============================================================
+  // Hero Simulated Terminal: Executable fake shell
+  // - Preset commands: help / ls / pwd / clear / agent / provider / theme / whoami / echo
+  // - Responsive to locale switching (English/Chinese/Japanese)
+  // - Up/Down arrow keys navigate command history
+  // ============================================================
+  (function () {
+    const stage = document.querySelector('.hero-art .term-stage') as HTMLElement | null;
+    if (!stage) return;
+
+    // Initial animation lines (when page first loads) — rendered according to current locale
+    // Commands themselves remain in English (as in a real shell), only the human language output is localized
+    const initLinesByLocale: Record<'en' | 'zh' | 'ja', string[]> = {
+      en: [
+        `<span class="p">$</span> npm run build`,
+        `<span class="dim">› vite v5.4 · production</span>`,
+        `<span class="dim">› 248 modules transformed</span>`,
+        `<span class="ok">✓ built in 1.24s</span>`,
+      ],
+      zh: [
+        `<span class="p">$</span> npm run build`,
+        `<span class="dim">› vite v5.4 · 生产构建</span>`,
+        `<span class="dim">› 已转换 248 个模块</span>`,
+        `<span class="ok">✓ 1.24s 内构建完成</span>`,
+      ],
+      ja: [
+        `<span class="p">$</span> npm run build`,
+        `<span class="dim">› vite v5.4 · 本番ビルド</span>`,
+        `<span class="dim">› 248 モジュールを変換</span>`,
+        `<span class="ok">✓ 1.24 秒でビルド完了</span>`,
+      ],
+    };
+    function renderInitLines() {
+      stage.innerHTML = initLinesByLocale[locale()]
+        .map((l) => `<div class="typing-line">${l}</div>`)
+        .join('');
+    }
+
+    const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('.ti-fakeshell input'));
+    if (!inputs.length) {
+      // Even if there is no input box, at least render the initial animation lines
+      renderInitLines();
+      return;
+    }
+    const history: string[] = [];
+    let histIdx = -1;
+
+    function locale(): 'en' | 'zh' | 'ja' {
+      const l = document.body.dataset.locale || document.documentElement.getAttribute('data-locale') || 'en';
+      if (l === 'zh' || l === 'ja') return l;
+      return 'en';
+    }
+
+    // First render of the initial animation lines
+    renderInitLines();
+
+    function pickInput(): HTMLInputElement | null {
+      const lc = locale();
+      return inputs.find((el) => el.dataset.lang === lc) || inputs[0] || null;
+    }
+    function escape(s: string) {
+      return s.replace(/&/g, '&amp;').replace(/[<]/g, '&lt;').replace(/[>]/g, '&gt;');
+    }
+    function printRaw(html: string, cls = '') {
+      const div = document.createElement('div');
+      div.className = 'out-line' + (cls ? ' ' + cls : '');
+      div.innerHTML = html;
+      stage.appendChild(div);
+      stage.scrollTop = stage.scrollHeight;
+    }
+    function printLines(lines: string[], cls = '') {
+      lines.forEach((l, i) => {
+        setTimeout(() => printRaw(l, cls), i * 60);
+      });
+    }
+
+    // Multilingual response table
+    const responses: Record<string, Record<'en' | 'zh' | 'ja', string[]>> = {
+      help: {
+        en: [
+          'Available commands:',
+          '  help               show this list',
+          '  ls                 list current directory',
+          '  pwd                print working directory',
+          '  whoami             print current user',
+          '  echo &lt;text&gt;        print text back',
+          '  agent &lt;prompt&gt;     send a prompt to the local AI agent',
+          '  provider list      list configured AI providers',
+          '  theme              toggle dark / light',
+          '  clear              clear the screen',
+        ],
+        zh: [
+          '可用命令:',
+          '  help               显示本列表',
+          '  ls                 列出当前目录',
+          '  pwd                输出当前路径',
+          '  whoami             输出当前用户',
+          '  echo &lt;文本&gt;        原样输出文本',
+          '  agent &lt;prompt&gt;     向本地 AI 代理发送提示',
+          '  provider list      列出已配置的服务商',
+          '  theme              切换深/浅色主题',
+          '  clear              清屏',
+        ],
+        ja: [
+          '利用可能なコマンド:',
+          '  help               この一覧を表示',
+          '  ls                 カレントディレクトリ表示',
+          '  pwd                現在のパスを表示',
+          '  whoami             現在のユーザーを表示',
+          '  echo &lt;テキスト&gt;    テキストをそのまま出力',
+          '  agent &lt;prompt&gt;     ローカル AI エージェントに送信',
+          '  provider list      設定済みプロバイダー一覧',
+          '  theme              ダーク / ライトを切り替え',
+          '  clear              画面をクリア',
+        ],
+      },
+      ls: {
+        en: ['Cargo.toml  CHANGELOG.md  README.md  app/  crates/  docs/  scripts/  website/'],
+        zh: ['Cargo.toml  CHANGELOG.md  README.md  app/  crates/  docs/  scripts/  website/'],
+        ja: ['Cargo.toml  CHANGELOG.md  README.md  app/  crates/  docs/  scripts/  website/'],
+      },
+      pwd: { en: ['/home/you/waz'], zh: ['/home/you/waz'], ja: ['/home/you/waz'] },
+      whoami: { en: ['you'], zh: ['you'], ja: ['you'] },
+      providerList: {
+        en: [
+          '<span class="k">PROTOCOL</span>           <span class="k">NAME</span>          <span class="k">STATUS</span>',
+          'openai            anthropic     <span class="s">ready</span>',
+          'anthropic         claude-4-7    <span class="s">ready</span>',
+          'deepseek          deepseek-v4   <span class="s">ready</span>',
+          'ollama            local         <span class="s">ready</span>',
+        ],
+        zh: [
+          '<span class="k">协议</span>             <span class="k">名称</span>          <span class="k">状态</span>',
+          'openai            anthropic     <span class="s">就绪</span>',
+          'anthropic         claude-4-7    <span class="s">就绪</span>',
+          'deepseek          deepseek-v4   <span class="s">就绪</span>',
+          'ollama            local         <span class="s">就绪</span>',
+        ],
+        ja: [
+          '<span class="k">プロトコル</span>         <span class="k">名前</span>          <span class="k">状態</span>',
+          'openai            anthropic     <span class="s">準備完了</span>',
+          'anthropic         claude-4-7    <span class="s">準備完了</span>',
+          'deepseek          deepseek-v4   <span class="s">準備完了</span>',
+          'ollama            local         <span class="s">準備完了</span>',
+        ],
+      },
+    };
+
+    function agentResponse(prompt: string): string[] {
+      const lc = locale();
+      const cleaned = prompt.trim() || (lc === 'zh' ? '没有输入提示' : lc === 'ja' ? 'プロンプトがありません' : 'no prompt');
+      if (lc === 'zh') {
+        return [
+          `<span class="k">[agent]</span> <span class="dim">路由至</span> anthropic/claude-4-7`,
+          `<span class="k">[agent]</span> <span class="dim">提示</span>: ${escape(cleaned)}`,
+          `<span class="dim">思考中...</span>`,
+          `<span class="s">→</span> 这是一个仿真响应。实际使用时会在本地调用你配置的服务商。`,
+          `<span class="dim">凭证、会话、上下文全部在本地。</span>`,
+        ];
+      }
+      if (lc === 'ja') {
+        return [
+          `<span class="k">[agent]</span> <span class="dim">ルーティング:</span> anthropic/claude-4-7`,
+          `<span class="k">[agent]</span> <span class="dim">プロンプト</span>: ${escape(cleaned)}`,
+          `<span class="dim">考え中...</span>`,
+          `<span class="s">→</span> これはシミュレーションです。実際にはローカルで設定済みプロバイダーを呼び出します。`,
+          `<span class="dim">認証、会話、コンテキストはすべてローカルに残ります。</span>`,
+        ];
+      }
+      return [
+        `<span class="k">[agent]</span> <span class="dim">routing to</span> anthropic/claude-4-7`,
+        `<span class="k">[agent]</span> <span class="dim">prompt</span>: ${escape(cleaned)}`,
+        `<span class="dim">thinking...</span>`,
+        `<span class="s">→</span> This is a simulated response. In real Waz this would call your configured provider locally.`,
+        `<span class="dim">Credentials, conversation and context all stay on your machine.</span>`,
+      ];
+    }
+
+    function run(raw: string) {
+      const cmd = raw.trim();
+      if (!cmd) return;
+      history.push(cmd);
+      histIdx = history.length;
+
+      // Echo command
+      printRaw(`<span class="p">$</span> ${escape(cmd)}`);
+
+      const lc = locale();
+      const lower = cmd.toLowerCase();
+      const head = cmd.split(/\s+/)[0].toLowerCase();
+      const rest = cmd.slice(head.length).trim();
+
+      if (lower === 'clear' || lower === 'cls') {
+        setTimeout(() => { stage.innerHTML = ''; }, 80);
+        return;
+      }
+      if (head === 'help') { printLines(responses.help[lc], 'dim'); return; }
+      if (head === 'ls')   { printLines(responses.ls[lc]); return; }
+      if (head === 'pwd')  { printLines(responses.pwd[lc]); return; }
+      if (head === 'whoami') { printLines(responses.whoami[lc]); return; }
+      if (head === 'echo') { printRaw(escape(rest)); return; }
+      if (head === 'theme') {
+        const cur = document.documentElement.getAttribute('data-theme') || 'dark';
+        const next = cur === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('waz:theme', next); } catch (_) {}
+        const themeName = lc === 'zh'
+          ? (next === 'dark' ? '深色' : '浅色')
+          : lc === 'ja'
+          ? (next === 'dark' ? 'ダーク' : 'ライト')
+          : next;
+        const msg = lc === 'zh'
+          ? `已切换至${themeName}主题`
+          : lc === 'ja'
+          ? `テーマを${themeName}に切り替えました`
+          : `Theme switched to ${themeName}`;
+        printRaw(msg, 'ok');
+        return;
+      }
+      if (head === 'provider' && rest === 'list') {
+        printLines(responses.providerList[lc]);
+        return;
+      }
+      if (head === 'agent') { printLines(agentResponse(rest)); return; }
+
+      // Unknown command
+      const errMsg = lc === 'zh'
+        ? `waz: 未知命令: ${escape(head)}。输入 <span class="s">help</span> 查看可用命令。`
+        : lc === 'ja'
+        ? `waz: コマンドが見つかりません: ${escape(head)}。<span class="s">help</span> で一覧。`
+        : `waz: command not found: ${escape(head)}. Type <span class="s">help</span> to list commands.`;
+      printRaw(errMsg, 'err');
+    }
+
+    inputs.forEach((input) => {
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const val = input.value;
+          input.value = '';
+          run(val);
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (history.length === 0) return;
+          histIdx = Math.max(0, histIdx - 1);
+          input.value = history[histIdx] || '';
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          if (histIdx < history.length - 1) {
+            histIdx += 1;
+            input.value = history[histIdx] || '';
+          } else {
+            histIdx = history.length;
+            input.value = '';
+          }
+        }
+      });
+    });
+
+    // "Language" dropdown inside the simulation window — syncs the entire site's locale on click, aligning with the language menu in the nav.
+    // Reuses the setLocale logic already present in LandingLayout: directly sets localStorage + body.dataset.locale +
+    // applyLocale. To avoid duplication, the same storage key and selector set are used.
+    function setLocaleAcrossSite(lc) {
+      const supported = ['en', 'zh', 'ja'];
+      let actual = lc;
+      if (lc === 'system') {
+        const nav = (navigator.language || 'en').toLowerCase();
+        actual = nav.startsWith('zh') ? 'zh' : nav.startsWith('ja') ? 'ja' : 'en';
+      }
+      if (!supported.includes(actual)) actual = 'en';
+      // 1. body.dataset.locale controls visibility of [data-lang]
+      document.body.dataset.locale = actual;
+      // 2. <html> lang attribute
+      document.documentElement.lang = actual === 'zh' ? 'zh-CN' : actual;
+      // 3. <html> data-locale (for other CSS use cases)
+      document.documentElement.setAttribute('data-locale', actual);
+      // 4. Persistence — so it is remembered on next visit
+      try { localStorage.setItem('waz:locale', actual); } catch (_) {}
+      // 5. Synchronously update active status in nav lang dropdown
+      document.querySelectorAll('[data-set-lang]').forEach((opt) => {
+        const active = opt.getAttribute('data-set-lang') === actual;
+        opt.classList.toggle('active', active);
+        opt.setAttribute('aria-selected', String(active));
+      });
+      // 6. Synchronously update active in mock dropdown (highlight current selection)
+      document.querySelectorAll('[data-mock-lang]').forEach((opt) => {
+        const v = opt.getAttribute('data-mock-lang');
+        opt.classList.toggle('active', v === actual || (v === 'system' && !localStorage.getItem('waz:locale')));
+      });
+    }
+    document.querySelectorAll('[data-mock-lang]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const target = btn.getAttribute('data-mock-lang') || 'en';
+        setLocaleAcrossSite(target);
+      });
+    });
+    // Sync initial highlight once page loads
+    document.querySelectorAll('[data-mock-lang]').forEach((opt) => {
+      const v = opt.getAttribute('data-mock-lang');
+      const cur = document.body.dataset.locale || 'en';
+      opt.classList.toggle('active', v === cur);
+    });
+
+    // Observe site-wide locale changes (triggered by nav, mock dropdown, or other inputs)
+    // Clear the simulated terminal and reprint the initial animation lines so the demo "follows the language"
+    let lastLocale = locale();
+    const localeObserver = new MutationObserver(() => {
+      const cur = locale();
+      if (cur === lastLocale) return;
+      lastLocale = cur;
+      renderInitLines();
+    });
+    localeObserver.observe(document.body, { attributes: true, attributeFilter: ['data-locale'] });
+  })();
+</script>

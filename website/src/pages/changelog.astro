@@ -1,0 +1,252 @@
+---
+import LandingLayout from '../layouts/LandingLayout.astro';
+// CHANGELOG.md 在 website 目录根(由 prebuild/predev 脚本从仓库根同步而来),
+// 通过 Vite ?raw import 静态内联。放在 website 内部是为了让 Dokploy/nixpacks
+// 这类只把 website/ 作为构建上下文的部署环境也能找到文件。
+import changelogRaw from '../../CHANGELOG.md?raw';
+
+type BulletNode = {
+  text: string;       // 已经渲染好的 HTML(粗体、code、链接)
+  children: BulletNode[];
+};
+
+type ReleaseEntry = {
+  version: string;
+  date: string | null;
+  bullets: BulletNode[];
+};
+
+// 渲染行内 markdown:**bold**、`code`、[text](url)
+// 注意:用字符类 [<] / [>] 替代裸 < / >,避免 esbuild 在 frontmatter 中
+// 把 RegExp 字面量误判为 JSX 标签开闭。
+function renderInline(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/[<]/g, '&lt;')
+    .replace(/[>]/g, '&gt;')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+}
+
+// 解析 CHANGELOG.md
+function parseChangelog(raw: string): ReleaseEntry[] {
+  const lines = raw.split('\n');
+  const releases: ReleaseEntry[] = [];
+  let current: ReleaseEntry | null = null;
+  let bulletStack: BulletNode[][] = [];
+
+  for (const line of lines) {
+    if (!line.trim() || /^\[[^\]]+\]:\s/.test(line)) continue;
+
+    const h2 = line.match(/^##\s+\[([^\]]+)\](?:\s*[—-]\s*(.+))?\s*$/);
+    if (h2) {
+      current = { version: h2[1], date: (h2[2] || '').trim() || null, bullets: [] };
+      releases.push(current);
+      bulletStack = [current.bullets];
+      continue;
+    }
+
+    const bullet = line.match(/^(\s*)-\s+(.+)$/);
+    if (bullet && current) {
+      const indent = bullet[1].length;
+      const level = Math.floor(indent / 2);
+      const node: BulletNode = { text: renderInline(bullet[2]), children: [] };
+
+      while (bulletStack.length > level + 1) bulletStack.pop();
+      if (bulletStack.length <= level) {
+        const parent = bulletStack[bulletStack.length - 1];
+        const last = parent[parent.length - 1];
+        if (last) bulletStack.push(last.children);
+      }
+      bulletStack[bulletStack.length - 1].push(node);
+      continue;
+    }
+
+    if (current && line.trim()) {
+      current.bullets.push({ text: renderInline(line.trim()), children: [] });
+    }
+  }
+
+  return releases;
+}
+
+function renderBullets(bullets: BulletNode[]): string {
+  if (!bullets.length) return '';
+  const inner = bullets.map((b) => '<li>' + b.text + renderBullets(b.children) + '</li>').join('');
+  return '<ul>' + inner + '</ul>';
+}
+
+const releases = parseChangelog(changelogRaw);
+---
+<LandingLayout
+  title="Waz · Changelog"
+  description="Waz 各个发布版本的功能更新与改动记录"
+>
+  <main class="changelog-shell">
+    <header class="changelog-hero wrap">
+      <div class="feat-eyebrow">
+        <span data-lang="en">CHANGELOG</span><span data-lang="zh">更新日志</span><span data-lang="ja">変更履歴</span>
+      </div>
+      <h1 data-lang="en">Changelog</h1>
+      <h1 data-lang="zh">更新日志</h1>
+      <h1 data-lang="ja">変更履歴</h1>
+      <p class="lede" data-lang="en">Notable changes shipped across Waz preview and OSS releases. Sourced from <code>CHANGELOG.md</code> in the repo.</p>
+      <p class="lede" data-lang="zh">Waz 各个 preview / OSS 版本中值得关注的改动,源自仓库根目录的 <code>CHANGELOG.md</code>。</p>
+      <p class="lede" data-lang="ja">Waz の preview / OSS リリースで導入された主要な変更です。リポジトリの <code>CHANGELOG.md</code> から生成しています。</p>
+    </header>
+
+    <div class="changelog-wrap wrap">
+      {releases.map((r) => (
+        <article class="cl-entry">
+          <aside class="cl-meta">
+            {r.date && <div class="cl-date">{r.date}</div>}
+            <div class="cl-version">
+              <span class="cl-dot"></span>
+              {r.version}
+            </div>
+          </aside>
+          <div class="cl-body">
+            <h2 class="cl-title">{r.version}</h2>
+            <div class="cl-content" set:html={renderBullets(r.bullets)}></div>
+          </div>
+        </article>
+      ))}
+    </div>
+
+    <div class="changelog-foot wrap">
+      <p class="muted" data-lang="en">Looking for the full git history? Browse the <a href="https://github.com/codeitlikemiley/waz/commits/main" target="_blank" rel="noopener">commits on GitHub</a>.</p>
+      <p class="muted" data-lang="zh">需要完整 git 历史?请查看 <a href="https://github.com/codeitlikemiley/waz/commits/main" target="_blank" rel="noopener">GitHub 上的 commits</a>。</p>
+      <p class="muted" data-lang="ja">完全な git 履歴は <a href="https://github.com/codeitlikemiley/waz/commits/main" target="_blank" rel="noopener">GitHub の commits</a> をご覧ください。</p>
+    </div>
+  </main>
+</LandingLayout>
+
+<style is:global>
+  /* Changelog 页面:Cursor 时间轴布局 */
+  .changelog-shell { padding: 64px 0 80px; }
+
+  .changelog-hero { max-width: 880px; padding-top: 24px; padding-bottom: 48px; border-bottom: 1px solid var(--line); margin-bottom: 56px; }
+  .changelog-hero h1 {
+    font-family: "Inter Tight", system-ui, sans-serif;
+    font-size: clamp(34px, 4.5vw, 48px);
+    font-weight: 500;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    margin: 14px 0 16px;
+    color: var(--ink);
+  }
+  .changelog-hero .lede {
+    font-size: 16px;
+    line-height: 1.65;
+    color: var(--ink-2);
+    margin: 0;
+    max-width: 60ch;
+  }
+  .changelog-hero .lede code {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 13px;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: var(--ink);
+  }
+
+  .changelog-wrap { max-width: 880px; }
+
+  .cl-entry {
+    display: grid;
+    grid-template-columns: 160px minmax(0, 1fr);
+    gap: 32px;
+    padding-bottom: 56px;
+    margin-bottom: 56px;
+    border-bottom: 1px solid var(--line);
+  }
+  .cl-entry:last-of-type { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
+  @media (max-width: 760px) {
+    .cl-entry { grid-template-columns: 1fr; gap: 12px; padding-bottom: 40px; margin-bottom: 40px; }
+  }
+
+  .cl-meta {
+    position: sticky;
+    top: 84px;
+    align-self: start;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  @media (max-width: 760px) {
+    .cl-meta { position: static; flex-direction: row; align-items: center; gap: 12px; }
+  }
+  .cl-date {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+  .cl-version {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: var(--ink-2);
+    padding: 3px 9px 3px 7px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface);
+    align-self: flex-start;
+    word-break: break-all;
+    max-width: 100%;
+  }
+  .cl-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+    flex-shrink: 0;
+  }
+
+  .cl-body { min-width: 0; }
+  .cl-title {
+    font-family: "Inter Tight", system-ui, sans-serif;
+    font-size: 24px;
+    font-weight: 500;
+    line-height: 1.25;
+    letter-spacing: -0.015em;
+    margin: 0 0 16px;
+    color: var(--ink);
+    word-break: break-word;
+  }
+  @media (max-width: 760px) {
+    .cl-title { font-size: 21px; }
+  }
+
+  .cl-content { color: var(--ink-2); font-size: 14.5px; line-height: 1.7; }
+  .cl-content ul { padding-left: 20px; margin: 0 0 12px; }
+  .cl-content ul ul { margin: 4px 0 6px; }
+  .cl-content li { margin: 6px 0; }
+  .cl-content li::marker { color: var(--muted-2); }
+  .cl-content strong { color: var(--ink); font-weight: 600; }
+  .cl-content code {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 12.5px;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: var(--ink);
+  }
+  .cl-content a {
+    color: var(--accent);
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.15s ease;
+  }
+  .cl-content a:hover { border-bottom-color: var(--accent-line); }
+
+  .changelog-foot { max-width: 880px; padding-top: 32px; border-top: 1px solid var(--line); margin-top: 24px; }
+  .changelog-foot .muted { font-size: 13px; color: var(--muted); margin: 0; }
+  .changelog-foot a { color: var(--accent); border-bottom: 1px solid transparent; transition: border-color 0.15s ease; }
+  .changelog-foot a:hover { border-bottom-color: var(--accent-line); }
+</style>

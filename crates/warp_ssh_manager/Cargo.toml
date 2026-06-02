@@ -1,0 +1,34 @@
+[package]
+name = "warp_ssh_manager"
+version = "0.1.0"
+edition = "2024"
+authors.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+command.workspace = true
+diesel = { workspace = true, features = ["chrono", "sqlite"] }
+dirs.workspace = true
+instant.workspace = true
+keyring.workspace = true
+log.workspace = true
+persistence.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+shell-escape.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["time", "rt-multi-thread"] }
+uuid.workspace = true
+waz_sync = { path = "../waz_sync" }
+zeroize = "1.8"
+
+[dev-dependencies]
+diesel = { workspace = true, features = ["chrono", "sqlite", "returning_clauses_for_sqlite_3_35"] }
+diesel_migrations = "2.2.0"
+# Statically link SQLite to avoid dependency on system-level sqlite3.lib (not present on Windows by default).
+libsqlite3-sys = { version = "0.33.0", features = ["bundled"] }
+tempfile.workspace = true

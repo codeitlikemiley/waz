@@ -1,0 +1,88 @@
+# git-cliff configuration — used to automatically generate "changes since the last tag" when releasing a Waz Release.
+#
+# Design Principles:
+# - Main groups are organized by conventional commit types (feat/fix/refactor/docs/test/build/ci/ui/perf/chore).
+# - The scope is preserved as a bold prefix `**(scope)**` for quick scanning by subsystem (ai/ssh/i18n/linux/...).
+# - Noise such as Merge commits, pure release chores, and Reverts are skipped directly.
+# - Non-conventional commits fall back to the "Other" group so no information is lost, without cluttering the main groups.
+# - Output is a pure fragment (no H1 title or date block), which is appended by the workflow to the top of release_body after the description.
+
+[changelog]
+# No `# Changelog` header is output at the top; the overall layout is handled by the publish_release workflow step.
+header = ""
+
+body = """
+{%- if previous %}
+{%- if previous.version %}
+**Change Range**: [`{{ previous.version }}` … `{{ version }}`]({{ self::compare_url(prev=previous.version, curr=version) }})
+
+{% endif -%}
+{%- endif -%}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+
+{% for commit in commits -%}
+- {% if commit.scope %}**({{ commit.scope }})** {% endif %}{{ commit.message | split(pat="\n") | first | trim }}{% if commit.id %} ([`{{ commit.id | truncate(length=7, end="") }}`]({{ self::commit_url(sha=commit.id) }})){% endif %}
+{% endfor %}
+{% endfor %}
+{%- macro compare_url(prev, curr) -%}
+https://github.com/zerx-lab/warp/compare/{{ prev }}...{{ curr }}
+{%- endmacro -%}
+{%- macro commit_url(sha) -%}
+https://github.com/zerx-lab/warp/commit/{{ sha }}
+{%- endmacro -%}
+"""
+
+# The comparison footer between tags is output by compare_url in the template; no additional footer is appended here.
+footer = ""
+
+trim = true
+
+[git]
+# Do not fail if parsing conventional commits fails; it falls back to the catch-all group in commit_parsers.
+conventional_commits = true
+filter_unconventional = false
+# Do not split multi-line bodies — one commit per record.
+split_commits = false
+
+# Tag naming: v prefix + any suffix (e.g., v2026.05.27.2 / v2026.05.06.preview / v2026.05.21.waztest01).
+tag_pattern = "v[0-9].*"
+
+# Order by the sequence in which commits appear in the git log (newest -> oldest) for readability.
+topo_order = false
+sort_commits = "newest"
+
+# Ignore merge commits and internal release tags that are meaningless to users.
+commit_preprocessors = [
+    # Remove the PR number parentheses at the end of the first line to avoid duplicating the hash link display below.
+    # Use `(?m)` to anchor `$` to the end of each line (commit subject is the first line), rather than the end of the entire message.
+    { pattern = '(?m) \(#[0-9]+\)$', replace = "" },
+    # Remove the gitmoji prefix from the start of the commit subject (e.g., "♻️ refactor: ..."),
+    # otherwise grouping rules like `^refactor` won't match and the commit will fall into "Other".
+    { pattern = '^(♻️|✨|🐛|🎨|🚀|🔥|💄|📝|🛠|⚡|🚧|🐳|🔧|🚨|✅|♿|🔒)[️]?\s*', replace = "" },
+]
+
+# Order sensitive: first match wins. Put noise skip rules at the very beginning.
+commit_parsers = [
+    # Noise: skip
+    { message = "^[Mm]erge ", skip = true },
+    { message = "^[Rr]evert ", skip = true },
+    { message = "^[Bb]ump ", skip = true },
+    { message = "^chore\\(release\\)", skip = true },
+    { message = "^chore: release", skip = true },
+    { message = "^v[0-9]+\\.", skip = true },
+
+    # Conventional commit main groups (rendered in this order)
+    { message = "^feat", group = "✨ Features" },
+    { message = "^fix", group = "🐛 Bug Fixes" },
+    { message = "^perf", group = "⚡ Performance" },
+    { message = "^refactor", group = "♻️ Refactoring" },
+    { message = "^ui", group = "🎨 Styling" },
+    { message = "^style", group = "🎨 Styling" },
+    { message = "^test", group = "🧪 Testing" },
+    { message = "^docs", group = "📝 Documentation" },
+    { message = "^(build|ci|chore)", group = "🛠 Build System & Chores" },
+
+    # Fallback: keep all other commit patterns and put them in the "Other" group to avoid missing non-conventional commits.
+    { message = ".*", group = "📦 Other Changes" },
+]

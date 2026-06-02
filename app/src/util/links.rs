@@ -1,0 +1,21 @@
+use crate::channel::ChannelState;
+
+// The upstream Warp's documentation site/Slack/privacy policy no longer applies to Waz fork,
+// These constants are reserved as placeholder empty strings and will be filled in after Waz's own channels are implemented.
+// `ctx.open_url("")` is a harmless no-op on the UI caller.
+pub const USER_DOCS_URL: &str = "";
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub const GITHUB_ISSUES_URL: &str = "https://github.com/codeitlikemiley/waz/issues";
+pub const SLACK_URL: &str = "";
+pub const PRIVACY_POLICY_URL: &str = "";
+
+pub fn feedback_form_url() -> String {
+    let mut url = url::Url::parse("https://github.com/codeitlikemiley/waz/issues/new/choose")
+        .expect("Should not fail to parse");
+    if let Some(version) = ChannelState::app_version() {
+        url.query_pairs_mut().append_pair("waz-version", version);
+    }
+    url.query_pairs_mut()
+        .append_pair("os-version", &os_info::get().version().to_string());
+    url.to_string()
+}

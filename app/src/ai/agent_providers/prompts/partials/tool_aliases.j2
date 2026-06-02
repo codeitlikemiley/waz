@@ -1,0 +1,8 @@
+{% if available_tools %}
+# Available Tools
+
+These are the tools registered for this turn. Use these exact names when emitting tool calls; only call tools listed here.
+
+{% for name in available_tools %}- `{{ name }}`
+{% endfor %}
+{% endif %}
