@@ -73,6 +73,11 @@ fn build_env() -> Environment<'static> {
         include_str!("prompts/commands/init_project.j2"),
     )
     .expect("init_project command template parses");
+    env.add_template(
+        "commands/generate_schema.j2",
+        include_str!("prompts/commands/generate_schema.j2"),
+    )
+    .expect("generate_schema command template parses");
 
     // Distribute system prompt (aligned opencode) by model id substring matching
     // `packages/opencode/src/session/system.ts::provider`). The OpenRouter path looks like
@@ -215,6 +220,11 @@ struct UserRuleCtx {
 #[derive(Debug, Default, Serialize)]
 struct InitProjectCommandContext {
     arguments: String,
+}
+
+#[derive(Debug, Default, Serialize)]
+struct GenerateSchemaCommandContext {
+    tool: String,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -383,6 +393,28 @@ pub fn render_init_project_command(arguments: Option<&str>) -> String {
     }
 }
 
+pub fn render_generate_schema_command(tool: &str) -> String {
+    let ctx = GenerateSchemaCommandContext {
+        tool: tool.trim().to_owned(),
+    };
+    let env = env();
+    let template_name = "commands/generate_schema.j2";
+    let tmpl = match env.get_template(template_name) {
+        Ok(t) => t,
+        Err(e) => {
+            log::error!("[byop prompt] failed to get template {template_name}: {e}");
+            return fallback_generate_schema_command(&ctx.tool);
+        }
+    };
+    match tmpl.render(Value::from_serialize(&ctx)) {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("[byop prompt] render {template_name} failed: {e}");
+            fallback_generate_schema_command(&ctx.tool)
+        }
+    }
+}
+
 /// Render the system message string ultimately sent to the upstream model.
 ///
 /// `ctx` usually comes from the latest `AIAgentInput::UserQuery.context` in `params.input`.
@@ -441,6 +473,13 @@ fn fallback_init_project_command(arguments: &str) -> String {
     )
 }
 
+fn fallback_generate_schema_command(tool: &str) -> String {
+    format!(
+        "Generate a Token Model Protocol (TMP) JSON schema for the CLI tool `{tool}`. \
+         Please identify its most common subcommands, options, and parameters, and design the schema."
+    )
+}
+
 /// Rendering system (only used when template loading/rendering fails, should not be triggered in normal paths).
 fn fallback_system(model_id: &str) -> String {
     format!(
@@ -463,6 +502,12 @@ mod tests {
         assert!(out.contains("Create or update `AGENTS.md`"), "{out}");
         assert!(out.contains("focus on test commands"), "{out}");
         assert!(out.contains("## Writing rules"), "{out}");
+    }
+
+    #[test]
+    fn render_generate_schema_command_uses_template() {
+        let out = render_generate_schema_command("docker");
+        assert!(out.contains("Generate a Token Model Protocol (TMP) JSON schema for the CLI tool \"docker\""), "{out}");
     }
 
     #[test]

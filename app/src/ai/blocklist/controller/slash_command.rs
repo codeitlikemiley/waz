@@ -31,6 +31,9 @@ pub enum SlashCommandRequest {
     InitProjectRules {
         arguments: Option<String>,
     },
+    GenerateSchema {
+        tool: String,
+    },
     Summarize {
         prompt: Option<String>,
         /// Waz BYOP local session compression: Whether this summary is automatically triggered by token-overflow.
@@ -62,6 +65,15 @@ impl SlashCommandRequest {
         {
             return Some(Self::InitProjectRules {
                 arguments: Some(arguments.to_string()),
+            });
+        }
+
+        if let Some(tool) = query
+            .strip_prefix(commands::WAZ_NAME)
+            .and_then(|query| query.strip_prefix(' '))
+        {
+            return Some(Self::GenerateSchema {
+                tool: tool.trim().to_string(),
             });
         }
 
@@ -222,6 +234,17 @@ impl SlashCommandRequest {
                 running_command: None,
                 intended_agent: None,
             }],
+            SlashCommandRequest::GenerateSchema { tool } => vec![AIAgentInput::UserQuery {
+                query: crate::ai::agent_providers::prompt_renderer::render_generate_schema_command(
+                    &tool,
+                ),
+                context,
+                static_query_type: None,
+                referenced_attachments: HashMap::<String, AIAgentAttachment>::new(),
+                user_query_mode: UserQueryMode::Normal,
+                running_command: None,
+                intended_agent: None,
+            }],
             SlashCommandRequest::Summarize { prompt, overflow } => {
                 vec![AIAgentInput::SummarizeConversation { prompt, overflow }]
             }
@@ -258,6 +281,7 @@ impl SlashCommandRequest {
             SlashCommandRequest::CloneRepository { .. } => EntrypointType::CloneRepository,
             SlashCommandRequest::InitProjectRules { .. } => EntrypointType::InitProjectRules,
             SlashCommandRequest::CreateNewProject { .. }
+            | SlashCommandRequest::GenerateSchema { .. }
             | SlashCommandRequest::Summarize { .. }
             | SlashCommandRequest::FetchReviewComments { .. }
             | SlashCommandRequest::InvokeSkill { .. } => EntrypointType::UserInitiated,

@@ -1,0 +1,39 @@
+Generate a Token Model Protocol (TMP) JSON schema for the CLI tool "{{ tool }}".
+
+A TMP schema defines the subcommand structure, parameters (flags and arguments), primitive token types, descriptions, and dynamic resolvers for a CLI tool.
+
+Please design a comprehensive and detailed schema file for "{{ tool }}", mapping its most common subcommands, options, and parameters.
+
+## Schema Specification and Format
+The output MUST be a valid JSON object matching the following structure:
+{
+  "meta": {
+    "tool": "{{ tool }}",
+    "description": "Short description of what the tool does."
+  },
+  "commands": [
+    {
+      "command": "{{ tool }} <subcommand>",
+      "description": "Short description of the subcommand.",
+      "group": "{{ tool }}",
+      "verified": true,
+      "tokens": [
+        {
+          "name": "parameter_name",
+          "description": "What this flag/argument does.",
+          "required": false,
+          "token_type": "Enum" | "Boolean" | "String" | "File" | "Number",
+          "flag": "--flag-name" (optional),
+          "data_source": { (optional)
+            "resolver": "git:branches" | "git:status_files" | "cargo:packages" | "npm:scripts" | etc.
+          }
+        }
+      ]
+    }
+  ]
+}
+
+## Guidelines
+1. The JSON must be valid and ready to be saved to `.waz/schemas/{{ tool }}.json`.
+2. Do not wrap the JSON in markdown code blocks or add conversational commentary; output ONLY the raw, clean JSON content.
+3. Make sure to define the correct `token_type` for each parameter. Use "Boolean" for flags that take no values (like --force or -f), "Enum" for parameters with specific values, "File" for paths/files, and "String" for generic text.
