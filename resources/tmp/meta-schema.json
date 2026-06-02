@@ -1,0 +1,274 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://warp.dev/schemas/tmp/meta-schema.json",
+  "title": "TMP (Token Model Protocol) Schema",
+  "description": "Validates TMP schema files used by the Waz project to describe CLI tool commands and their tokens.",
+  "type": "object",
+  "required": ["meta", "commands"],
+  "additionalProperties": false,
+  "properties": {
+    "meta": {
+      "$ref": "#/$defs/meta"
+    },
+    "commands": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/command"
+      }
+    }
+  },
+  "$defs": {
+    "meta": {
+      "type": "object",
+      "required": ["tool"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "enum": [1, 2],
+          "default": 2,
+          "description": "TMP schema version. Currently 1 or 2."
+        },
+        "tool": {
+          "type": "string",
+          "minLength": 1,
+          "description": "CLI tool name (e.g. 'git', 'cargo', 'npm')."
+        },
+        "version": {
+          "type": "integer",
+          "default": 0,
+          "description": "Schema revision number for this tool."
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of the tool."
+        },
+        "generated_by": {
+          "type": "string",
+          "default": "ai",
+          "description": "Who or what generated this schema."
+        },
+        "generated_with": {
+          "type": "string",
+          "description": "Tool/model used to generate this schema."
+        },
+        "verified": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this schema has been manually verified."
+        },
+        "verified_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of when the schema was verified."
+        },
+        "coverage": {
+          "type": "string",
+          "enum": ["partial", "full"],
+          "default": "partial",
+          "description": "How much of the tool's CLI surface this schema covers."
+        },
+        "discovery_method": {
+          "type": "string",
+          "enum": ["help", "man", "none"],
+          "description": "Method used to discover the tool's commands."
+        },
+        "discovery_log": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Breadcrumbs of the discovery process."
+        },
+        "requires_file": {
+          "type": "string",
+          "description": "File that must exist for this tool to work (e.g. 'Cargo.toml')."
+        },
+        "requires_file_kind": {
+          "type": "string",
+          "description": "Kind of the required file."
+        },
+        "requires_binary": {
+          "type": "string",
+          "description": "Binary that must be on PATH for this tool to work."
+        },
+        "keywords": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Search keywords for this tool schema."
+        },
+        "waz_version": {
+          "type": "string",
+          "description": "Minimum waz version that supports this schema."
+        }
+      }
+    },
+    "known_resolver": {
+      "type": "string",
+      "enum": [
+        "cargo:bins",
+        "cargo:examples",
+        "cargo:packages",
+        "cargo:features",
+        "cargo:profiles",
+        "cargo:tests",
+        "cargo:benches",
+        "git:branches",
+        "git:remotes",
+        "git:status_files",
+        "git:tags",
+        "npm:scripts"
+      ],
+      "description": "One of the known built-in resolvers."
+    },
+    "data_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "Shell command to run to produce candidate values."
+        },
+        "resolver": {
+          "$ref": "#/$defs/known_resolver"
+        },
+        "parse": {
+          "type": "string",
+          "enum": ["lines", "words"],
+          "default": "lines",
+          "description": "How to split command output into values."
+        },
+        "fallback": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "command": {
+              "type": "string"
+            },
+            "resolver": {
+              "$ref": "#/$defs/known_resolver"
+            },
+            "parse": {
+              "type": "string",
+              "enum": ["lines", "words"],
+              "default": "lines"
+            }
+          }
+        }
+      }
+    },
+    "token": {
+      "type": "object",
+      "required": ["name", "description", "token_type"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Token name used in the command template."
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of this token."
+        },
+        "required": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this token is required."
+        },
+        "token_type": {
+          "type": "string",
+          "enum": ["String", "Boolean", "Enum", "File", "Number"],
+          "description": "Data type of this token."
+        },
+        "default": {
+          "type": "string",
+          "description": "Default value for this token."
+        },
+        "values": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Allowed values (primarily for Enum tokens)."
+        },
+        "flag": {
+          "type": "string",
+          "pattern": "^-{1,2}[a-zA-Z][a-zA-Z0-9-]*$",
+          "description": "CLI flag (e.g. '--verbose', '-v')."
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^-{1,2}[a-zA-Z][a-zA-Z0-9-]*$"
+          },
+          "description": "Alternative flag names."
+        },
+        "data_source": {
+          "$ref": "#/$defs/data_source"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "token_type": { "const": "Boolean" } },
+            "required": ["token_type"]
+          },
+          "then": {
+            "not": {
+              "required": ["values"]
+            },
+            "properties": {
+              "values": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "token_type": { "const": "Enum" } },
+            "required": ["token_type"]
+          },
+          "then": {
+            "anyOf": [
+              { "required": ["values"] },
+              { "required": ["data_source"] }
+            ]
+          }
+        }
+      ]
+    },
+    "command": {
+      "type": "object",
+      "required": ["command", "description", "group"],
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Full command template (e.g. 'git commit {message}')."
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of this command."
+        },
+        "group": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Logical group this command belongs to (usually the tool name)."
+        },
+        "verified": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this command has been manually verified."
+        },
+        "tokens": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/token"
+          },
+          "default": [],
+          "description": "List of tokens (parameters) for this command."
+        }
+      }
+    }
+  }
+}

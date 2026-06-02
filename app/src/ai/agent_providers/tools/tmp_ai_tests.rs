@@ -47,6 +47,7 @@ fn test_token_to_json_schema() {
         default: None,
         flag: None,
         values: None,
+        aliases: vec![],
         data_source: None,
     };
     let schema_str = token_to_json_schema(&t_string);
@@ -61,6 +62,7 @@ fn test_token_to_json_schema() {
         default: Some("true".to_string()),
         flag: Some("--release".to_string()),
         values: None,
+        aliases: vec![],
         data_source: None,
     };
     let schema_bool = token_to_json_schema(&t_bool);
@@ -75,6 +77,7 @@ fn test_token_to_json_schema() {
         default: Some("fast".to_string()),
         flag: None,
         values: Some(vec!["fast".to_string(), "slow".to_string()]),
+        aliases: vec![],
         data_source: None,
     };
     let schema_enum = token_to_json_schema(&t_enum);
@@ -99,6 +102,7 @@ fn test_command_to_json_schema() {
                 default: None,
                 flag: Some("-p".to_string()),
                 values: None,
+                aliases: vec![],
                 data_source: None,
             },
             TokenDef {
@@ -109,6 +113,7 @@ fn test_command_to_json_schema() {
                 default: None,
                 flag: Some("--release".to_string()),
                 values: None,
+                aliases: vec![],
                 data_source: None,
             },
         ],
@@ -138,6 +143,7 @@ fn test_validate_tmp_arguments() {
                 default: None,
                 flag: Some("-p".to_string()),
                 values: None,
+                aliases: vec![],
                 data_source: None,
             },
             TokenDef {
@@ -148,6 +154,7 @@ fn test_validate_tmp_arguments() {
                 default: None,
                 flag: None,
                 values: Some(vec!["dev".to_string(), "release".to_string()]),
+                aliases: vec![],
                 data_source: None,
             },
         ],
@@ -214,6 +221,7 @@ fn test_compile_tmp_command() {
                 default: None,
                 flag: Some("-p".to_string()),
                 values: None,
+                aliases: vec![],
                 data_source: None,
             },
             TokenDef {
@@ -224,6 +232,7 @@ fn test_compile_tmp_command() {
                 default: Some("false".to_string()),
                 flag: Some("--release".to_string()),
                 values: None,
+                aliases: vec![],
                 data_source: None,
             },
             TokenDef {
@@ -234,6 +243,7 @@ fn test_compile_tmp_command() {
                 default: None,
                 flag: Some("-j".to_string()),
                 values: None,
+                aliases: vec![],
                 data_source: None,
             },
         ],

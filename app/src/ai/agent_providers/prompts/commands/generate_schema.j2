@@ -1,39 +1,172 @@
 Generate a Token Model Protocol (TMP) JSON schema for the CLI tool "{{ tool }}".
 
-A TMP schema defines the subcommand structure, parameters (flags and arguments), primitive token types, descriptions, and dynamic resolvers for a CLI tool.
+Your task is to dynamically discover the full CLI structure of "{{ tool }}" by running its help commands, then produce an exhaustive TMP v2 JSON schema. Do NOT rely on training knowledge alone — actually run the tool to discover its interface.
 
-Please design a comprehensive and detailed schema file for "{{ tool }}", mapping its most common subcommands, options, and parameters.
+## Step 1: Discover the help system
 
-## Schema Specification and Format
-The output MUST be a valid JSON object matching the following structure:
+Try each method in order and use the first one that succeeds:
+
+1. `{{ tool }} --help`
+2. `{{ tool }} -h`
+3. `man {{ tool }}`
+4. `{{ tool }}` (with no arguments — some tools print usage on bare invocation)
+
+Record which method produced output. If none work, fall back to your training knowledge and set `discovery_method` to `"none"`.
+
+Also discover the tool version by trying `{{ tool }} --version` or `{{ tool }} -V`.
+
+## Step 2: Discover the tool's description
+
+From the help output, extract a concise one-line description of what "{{ tool }}" does (the first sentence or tagline).
+
+## Step 3: Recursively discover ALL subcommands (max 3 levels deep)
+
+Parse the top-level help output for a list of subcommands or command groups.
+
+For each subcommand found:
+- Run `{{ tool }} <subcommand> --help` (or `-h` if `--help` is not supported)
+- Parse the output for nested subcommands
+- For nested subcommands, run `{{ tool }} <subcommand> <nested> --help`
+- Continue up to 3 levels deep (e.g. `{{ tool }} remote add --help`)
+
+If "{{ tool }}" has no subcommands (e.g. simple tools like `cat`, `echo`, `grep`), create a single command entry with `"command": "{{ tool }}"`.
+
+## Step 4: Extract ALL flags, options, and arguments
+
+For every command and subcommand, parse the help output exhaustively. For each parameter:
+
+1. **Name**: derive from the long flag (e.g. `--output` → `"output"`) or positional name
+2. **Flag**: the long form (e.g. `--output`)
+3. **Aliases**: short forms (e.g. `["-o"]`)
+4. **Required vs optional**: mark as `required: true` if the help text indicates it is mandatory or if it is a positional argument without a default
+5. **Token type** — apply these rules:
+   - `"Boolean"`: flags that take no value (e.g. `--release`, `--verbose`, `--force`)
+   - `"String"`: flags that accept a free-form string value
+   - `"Enum"`: flags with a known, finite set of valid values (e.g. `--format json|yaml|toml`)
+   - `"File"`: flags that accept a file or directory path (look for hints like `<FILE>`, `<PATH>`, `<DIR>`)
+   - `"Number"`: flags that accept a numeric value (e.g. `--jobs <N>`, `--depth <NUM>`)
+6. **Default**: extract the default value if documented (e.g. `[default: 4]`)
+7. **Values**: for `Enum` types, list all valid values as an array (e.g. `["json", "yaml", "toml"]`)
+8. **Description**: the help text for this parameter
+
+Every flag that appears in `--help` output MUST appear in the schema. Be exhaustive.
+
+## Step 5: Map data sources
+
+For parameters that accept dynamic values, attach a `data_source` object.
+
+### Built-in resolvers (use when applicable):
+
+| Resolver | Provides |
+|----------|----------|
+| `cargo:bins` | Binary target names from Cargo workspace |
+| `cargo:examples` | Example target names |
+| `cargo:packages` | Package names in workspace |
+| `cargo:features` | Feature flags |
+| `cargo:profiles` | Build profiles |
+| `cargo:tests` | Test target names |
+| `cargo:benches` | Benchmark target names |
+| `git:branches` | Git branch names |
+| `git:remotes` | Git remote names |
+| `git:status_files` | Files with uncommitted changes |
+| `git:tags` | Git tags |
+| `npm:scripts` | npm script names from package.json |
+
+### Command-based resolvers:
+
+For dynamic values not covered by built-in resolvers, specify a shell command that produces one value per line:
+
+```json
+"data_source": {
+  "resolver": null,
+  "command": "docker image ls --format '{{"{{"}}.Repository{{"}}"}}:{{"{{"}}.Tag{{"}}"}}'",
+  "parse": "lines",
+  "fallback": {
+    "command": "docker image ls -q"
+  }
+}
+```
+
+Use fallback chains when multiple sources exist. Set `data_source` to `null` for parameters that take literal user input.
+
+## Step 6: Determine metadata
+
+- `requires_binary`: set to `"{{ tool }}"` (the binary that must be on PATH)
+- `requires_file`: set to a project file if relevant (e.g. `"Cargo.toml"` for cargo, `"package.json"` for npm), otherwise `null`
+- `keywords`: 3-6 descriptive keywords for the tool
+
+## Output format
+
+Output a single valid JSON object with this exact structure. Do NOT wrap it in markdown code blocks. Do NOT add conversational commentary. Output ONLY the raw JSON.
+
+```
 {
   "meta": {
+    "schema_version": 2,
     "tool": "{{ tool }}",
-    "description": "Short description of what the tool does."
+    "version": 0,
+    "description": "<one-line description of the tool>",
+    "generated_by": "ai",
+    "generated_with": "waz-agent",
+    "verified": false,
+    "coverage": "full",
+    "discovery_method": "<help|man|none>",
+    "requires_file": "<filename or null>",
+    "requires_binary": "{{ tool }}",
+    "keywords": ["<keyword1>", "<keyword2>", "..."]
   },
   "commands": [
     {
       "command": "{{ tool }} <subcommand>",
-      "description": "Short description of the subcommand.",
+      "description": "<what this subcommand does>",
       "group": "{{ tool }}",
-      "verified": true,
+      "verified": false,
       "tokens": [
         {
-          "name": "parameter_name",
-          "description": "What this flag/argument does.",
+          "name": "<param_name>",
+          "description": "<what it does>",
           "required": false,
-          "token_type": "Enum" | "Boolean" | "String" | "File" | "Number",
-          "flag": "--flag-name" (optional),
-          "data_source": { (optional)
-            "resolver": "git:branches" | "git:status_files" | "cargo:packages" | "npm:scripts" | etc.
-          }
+          "token_type": "String",
+          "flag": "--flag-name",
+          "aliases": ["-f"],
+          "default": null,
+          "values": null,
+          "data_source": null
         }
       ]
     }
   ]
 }
+```
 
-## Guidelines
-1. The JSON must be valid and ready to be saved to `.waz/schemas/{{ tool }}.json`.
-2. Do not wrap the JSON in markdown code blocks or add conversational commentary; output ONLY the raw, clean JSON content.
-3. Make sure to define the correct `token_type` for each parameter. Use "Boolean" for flags that take no values (like --force or -f), "Enum" for parameters with specific values, "File" for paths/files, and "String" for generic text.
+### Field notes:
+- `command`: full invocation prefix, e.g. `"{{ tool }} build"`, `"{{ tool }} remote add"`, or just `"{{ tool }}"` for tools without subcommands
+- `group`: always `"{{ tool }}"`
+- `verified`: always `false` (this is AI-generated)
+- `token_type`: one of `"String"`, `"Boolean"`, `"Enum"`, `"File"`, `"Number"`
+- `aliases`: array of short flags, e.g. `["-f"]`, or `[]` if none
+- `values`: array of valid values for `Enum` type, or `null`
+- `data_source`: resolver object or `null`. Structure when present:
+  ```
+  {
+    "resolver": "<built_in_resolver or null>",
+    "command": "<shell_command or null>",
+    "parse": "lines",
+    "fallback": {
+      "command": "<fallback_command or null>"
+    }
+  }
+  ```
+
+## Step 7: Save the schema
+
+After generating the JSON, save it to `~/.waz/schemas/{{ tool }}.json`. Create the `~/.waz/schemas/` directory if it does not exist.
+
+## Important reminders
+
+- Actually run `{{ tool }} --help` and subcommand help — do not guess from memory
+- Every flag from the help output must appear in the schema — be exhaustive
+- The JSON must be valid and parseable
+- For tools with many subcommands (e.g. `git`, `docker`, `cargo`), this will require many help invocations — that is expected
+- Omit `data_source` (set to `null`) when the parameter takes literal user input with no dynamic completion
+- Group related subcommands logically but keep every subcommand as its own entry in the `commands` array

@@ -1,0 +1,3351 @@
+{
+  "meta": {
+    "schema_version": 2,
+    "tool": "git",
+    "version": 0,
+    "description": "Distributed version control system",
+    "generated_by": "ai",
+    "generated_with": "waz-agent",
+    "verified": false,
+    "coverage": "full",
+    "discovery_method": "help",
+    "discovery_log": [
+      "git --help → OK",
+      "git clone --help → OK",
+      "git init --help → OK",
+      "git add --help → OK",
+      "git commit --help → OK",
+      "git push --help → OK",
+      "git pull --help → OK",
+      "git fetch --help → OK",
+      "git checkout --help → OK",
+      "git switch --help → OK",
+      "git branch --help → OK",
+      "git merge --help → OK",
+      "git rebase --help → OK",
+      "git log --help → OK",
+      "git diff --help → OK",
+      "git status --help → OK",
+      "git stash --help → OK",
+      "git tag --help → OK",
+      "git remote --help → OK",
+      "git reset --help → OK",
+      "git revert --help → OK",
+      "git cherry-pick --help → OK",
+      "git show --help → OK"
+    ],
+    "requires_file": null,
+    "requires_binary": "git",
+    "keywords": ["git", "version control", "vcs", "github", "gitlab", "repository", "repo"]
+  },
+  "commands": [
+    {
+      "name": "clone",
+      "description": "Clone a repository into a new directory",
+      "tokens": [
+        {
+          "name": "repository",
+          "description": "The repository URL or path to clone",
+          "type": "String",
+          "required": true,
+          "positional": true
+        },
+        {
+          "name": "directory",
+          "description": "Target directory name for the clone",
+          "type": "String",
+          "required": false,
+          "positional": true
+        },
+        {
+          "name": "branch",
+          "description": "Checkout this branch instead of the remote HEAD",
+          "type": "String",
+          "flag": "--branch",
+          "aliases": ["-b"],
+          "required": false
+        },
+        {
+          "name": "depth",
+          "description": "Create a shallow clone with history truncated to the specified number of commits",
+          "type": "Number",
+          "flag": "--depth",
+          "required": false
+        },
+        {
+          "name": "single-branch",
+          "description": "Clone only the history leading to the tip of a single branch",
+          "type": "Boolean",
+          "flag": "--single-branch",
+          "required": false
+        },
+        {
+          "name": "no-checkout",
+          "description": "No checkout of HEAD is performed after the clone is complete",
+          "type": "Boolean",
+          "flag": "--no-checkout",
+          "aliases": ["-n"],
+          "required": false
+        },
+        {
+          "name": "bare",
+          "description": "Make a bare Git repository",
+          "type": "Boolean",
+          "flag": "--bare",
+          "required": false
+        },
+        {
+          "name": "mirror",
+          "description": "Set up a mirror of the source repository (implies --bare)",
+          "type": "Boolean",
+          "flag": "--mirror",
+          "required": false
+        },
+        {
+          "name": "origin",
+          "description": "Use this name for the remote instead of 'origin'",
+          "type": "String",
+          "flag": "--origin",
+          "aliases": ["-o"],
+          "required": false
+        },
+        {
+          "name": "recurse-submodules",
+          "description": "Initialize and clone submodules",
+          "type": "Boolean",
+          "flag": "--recurse-submodules",
+          "required": false
+        },
+        {
+          "name": "shallow-submodules",
+          "description": "Shallow clone submodules with a depth of 1",
+          "type": "Boolean",
+          "flag": "--shallow-submodules",
+          "required": false
+        },
+        {
+          "name": "jobs",
+          "description": "Number of submodules fetched at the same time",
+          "type": "Number",
+          "flag": "--jobs",
+          "aliases": ["-j"],
+          "required": false
+        },
+        {
+          "name": "filter",
+          "description": "Partial clone filter spec (e.g. blob:none)",
+          "type": "String",
+          "flag": "--filter",
+          "required": false
+        },
+        {
+          "name": "sparse",
+          "description": "Employ a sparse-checkout with only files in the toplevel directory",
+          "type": "Boolean",
+          "flag": "--sparse",
+          "required": false
+        },
+        {
+          "name": "quiet",
+          "description": "Operate quietly",
+          "type": "Boolean",
+          "flag": "--quiet",
+          "aliases": ["-q"],
+          "required": false
+        },
+        {
+          "name": "verbose",
+          "description": "Run verbosely",
+          "type": "Boolean",
+          "flag": "--verbose",
+          "aliases": ["-v"],
+          "required": false
+        },
+        {
+          "name": "progress",
+          "description": "Force progress status output",
+          "type": "Boolean",
+          "flag": "--progress",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "init",
+      "description": "Create an empty Git repository or reinitialize an existing one",
+      "tokens": [
+        {
+          "name": "directory",
+          "description": "Directory in which to create the repository",
+          "type": "File",
+          "required": false,
+          "positional": true
+        },
+        {
+          "name": "bare",
+          "description": "Create a bare repository",
+          "type": "Boolean",
+          "flag": "--bare",
+          "required": false
+        },
+        {
+          "name": "quiet",
+          "description": "Only print error and warning messages",
+          "type": "Boolean",
+          "flag": "--quiet",
+          "aliases": ["-q"],
+          "required": false
+        },
+        {
+          "name": "initial-branch",
+          "description": "Use the specified name for the initial branch",
+          "type": "String",
+          "flag": "--initial-branch",
+          "aliases": ["-b"],
+          "required": false
+        },
+        {
+          "name": "template",
+          "description": "Directory from which templates will be used",
+          "type": "File",
+          "flag": "--template",
+          "required": false
+        },
+        {
+          "name": "separate-git-dir",
+          "description": "Create a text file containing the path to the actual repository",
+          "type": "File",
+          "flag": "--separate-git-dir",
+          "required": false
+        },
+        {
+          "name": "object-format",
+          "description": "Specify the hash algorithm for the repository",
+          "type": "Enum",
+          "flag": "--object-format",
+          "required": false,
+          "enum_values": ["sha1", "sha256"]
+        },
+        {
+          "name": "ref-format",
+          "description": "Specify the ref storage format for the repository",
+          "type": "Enum",
+          "flag": "--ref-format",
+          "required": false,
+          "enum_values": ["files", "reftable"]
+        },
+        {
+          "name": "shared",
+          "description": "Specify that the repository is to be shared amongst several users",
+          "type": "Enum",
+          "flag": "--shared",
+          "required": false,
+          "enum_values": ["false", "true", "umask", "group", "all", "world", "everybody"]
+        }
+      ]
+    },
+    {
+      "name": "add",
+      "description": "Add file contents to the index",
+      "tokens": [
+        {
+          "name": "pathspec",
+          "description": "Files to add content from",
+          "type": "File",
+          "required": false,
+          "positional": true,
+          "data_source": {
+            "resolver": "git:status_files"
+          }
+        },
+        {
+          "name": "all",
+          "description": "Add all changes (new, modified, deleted files)",
+          "type": "Boolean",
+          "flag": "--all",
+          "aliases": ["-A", "--no-ignore-removal"],
+          "required": false
+        },
+        {
+          "name": "dry-run",
+          "description": "Don't actually add the file(s), just show what would happen",
+          "type": "Boolean",
+          "flag": "--dry-run",
+          "aliases": ["-n"],
+          "required": false
+        },
+        {
+          "name": "verbose",
+          "description": "Be verbose",
+          "type": "Boolean",
+          "flag": "--verbose",
+          "aliases": ["-v"],
+          "required": false
+        },
+        {
+          "name": "force",
+          "description": "Allow adding otherwise ignored files",
+          "type": "Boolean",
+          "flag": "--force",
+          "aliases": ["-f"],
+          "required": false
+        },
+        {
+          "name": "interactive",
+          "description": "Add modified contents interactively",
+          "type": "Boolean",
+          "flag": "--interactive",
+          "aliases": ["-i"],
+          "required": false
+        },
+        {
+          "name": "patch",
+          "description": "Interactively choose hunks of patch to add",
+          "type": "Boolean",
+          "flag": "--patch",
+          "aliases": ["-p"],
+          "required": false
+        },
+        {
+          "name": "edit",
+          "description": "Open the diff in an editor to edit before staging",
+          "type": "Boolean",
+          "flag": "--edit",
+          "aliases": ["-e"],
+          "required": false
+        },
+        {
+          "name": "update",
+          "description": "Update the index only where it already has an entry",
+          "type": "Boolean",
+          "flag": "--update",
+          "aliases": ["-u"],
+          "required": false
+        },
+        {
+          "name": "intent-to-add",
+          "description": "Record only that the path will be added later",
+          "type": "Boolean",
+          "flag": "--intent-to-add",
+          "aliases": ["-N"],
+          "required": false
+        },
+        {
+          "name": "refresh",
+          "description": "Don't add files, only refresh stat() information in the index",
+          "type": "Boolean",
+          "flag": "--refresh",
+          "required": false
+        },
+        {
+          "name": "ignore-errors",
+          "description": "Continue adding other files if some cannot be added due to errors",
+          "type": "Boolean",
+          "flag": "--ignore-errors",
+          "required": false
+        },
+        {
+          "name": "sparse",
+          "description": "Allow updating index entries outside of the sparse-checkout cone",
+          "type": "Boolean",
+          "flag": "--sparse",
+          "required": false
+        },
+        {
+          "name": "chmod",
+          "description": "Override the executable bit of the added files",
+          "type": "Enum",
+          "flag": "--chmod",
+          "required": false,
+          "enum_values": ["+x", "-x"]
+        }
+      ]
+    },
+    {
+      "name": "commit",
+      "description": "Record changes to the repository",
+      "tokens": [
+        {
+          "name": "message",
+          "description": "Use the given string as the commit message",
+          "type": "String",
+          "flag": "--message",
+          "aliases": ["-m"],
+          "required": false
+        },
+        {
+          "name": "all",
+          "description": "Automatically stage modified and deleted files before committing",
+          "type": "Boolean",
+          "flag": "--all",
+          "aliases": ["-a"],
+          "required": false
+        },
+        {
+          "name": "amend",
+          "description": "Replace the tip of the current branch by creating a new commit",
+          "type": "Boolean",
+          "flag": "--amend",
+          "required": false
+        },
+        {
+          "name": "no-edit",
+          "description": "Use the selected commit message without launching an editor",
+          "type": "Boolean",
+          "flag": "--no-edit",
+          "required": false
+        },
+        {
+          "name": "signoff",
+          "description": "Add a Signed-off-by trailer by the committer",
+          "type": "Boolean",
+          "flag": "--signoff",
+          "aliases": ["-s"],
+          "required": false
+        },
+        {
+          "name": "author",
+          "description": "Override the commit author",
+          "type": "String",
+          "flag": "--author",
+          "required": false
+        },
+        {
+          "name": "date",
+          "description": "Override the author date used in the commit",
+          "type": "String",
+          "flag": "--date",
+          "required": false
+        },
+        {
+          "name": "file",
+          "description": "Take the commit message from the given file",
+          "type": "File",
+          "flag": "--file",
+          "aliases": ["-F"],
+          "required": false
+        },
+        {
+          "name": "template",
+          "description": "Start the editor with the contents in the given file",
+          "type": "File",
+          "flag": "--template",
+          "aliases": ["-t"],
+          "required": false
+        },
+        {
+          "name": "reuse-message",
+          "description": "Take an existing commit object and reuse the log message and authorship",
+          "type": "String",
+          "flag": "--reuse-message",
+          "aliases": ["-C"],
+          "required": false
+        },
+        {
+          "name": "reedit-message",
+          "description": "Like -C, but with -c the editor is invoked for editing",
+          "type": "String",
+          "flag": "--reedit-message",
+          "aliases": ["-c"],
+          "required": false
+        },
+        {
+          "name": "fixup",
+          "description": "Construct a commit for use with rebase --autosquash",
+          "type": "String",
+          "flag": "--fixup",
+          "required": false
+        },
+        {
+          "name": "squash",
+          "description": "Construct a squash commit message for rebase --autosquash",
+          "type": "String",
+          "flag": "--squash",
+          "required": false
+        },
+        {
+          "name": "gpg-sign",
+          "description": "GPG-sign the commit",
+          "type": "Boolean",
+          "flag": "--gpg-sign",
+          "aliases": ["-S"],
+          "required": false
+        },
+        {
+          "name": "allow-empty",
+          "description": "Allow creating a commit with no changes",
+          "type": "Boolean",
+          "flag": "--allow-empty",
+          "required": false
+        },
+        {
+          "name": "allow-empty-message",
+          "description": "Allow creating a commit with an empty message",
+          "type": "Boolean",
+          "flag": "--allow-empty-message",
+          "required": false
+        },
+        {
+          "name": "verbose",
+          "description": "Show unified diff between HEAD commit and what would be committed",
+          "type": "Boolean",
+          "flag": "--verbose",
+          "aliases": ["-v"],
+          "required": false
+        },
+        {
+          "name": "quiet",
+          "description": "Suppress commit summary message",
+          "type": "Boolean",
+          "flag": "--quiet",
+          "aliases": ["-q"],
+          "required": false
+        },
+        {
+          "name": "dry-run",
+          "description": "Do not create a commit, just show status",
+          "type": "Boolean",
+          "flag": "--dry-run",
+          "required": false
+        },
+        {
+          "name": "reset-author",
+          "description": "Reset the author to the committer",
+          "type": "Boolean",
+          "flag": "--reset-author",
+          "required": false
+        },
+        {
+          "name": "trailer",
+          "description": "Add a (token, value) pair as a trailer",
+          "type": "String",
+          "flag": "--trailer",
+          "required": false
+        },
+        {
+          "name": "no-verify",
+          "description": "Bypass the pre-commit and commit-msg hooks",
+          "type": "Boolean",
+          "flag": "--no-verify",
+          "aliases": ["-n"],
+          "required": false
+        },
+        {
+          "name": "pathspec",
+          "description": "Commit only the specified files",
+          "type": "File",
+          "required": false,
+          "positional": true,
+          "data_source": {
+            "resolver": "git:status_files"
+          }
+        }
+      ]
+    },
+    {
+      "name": "push",
+      "description": "Update remote refs along with associated objects",
+      "tokens": [
+        {
+          "name": "repository",
+          "description": "The remote repository destination",
+          "type": "String",
+          "required": false,
+          "positional": true,
+          "data_source": {
+            "resolver": "git:remotes"
+          }
+        },
+        {
+          "name": "refspec",
+          "description": "Specify what destination ref to update with what source object",
+          "type": "String",
+          "required": false,
+          "positional": true,
+          "data_source": {
+            "resolver": "git:branches"
+          }
+        },
+        {
+          "name": "all",
+          "description": "Push all branches",
+          "type": "Boolean",
+          "flag": "--all",
+          "required": false
+        },
+        {
+          "name": "tags",
+          "description": "Push all refs under refs/tags",
+          "type": "Boolean",
+          "flag": "--tags",
+          "required": false
+        },
+        {
+          "name": "force",
+          "description": "Force updates (can cause remote to lose commits)",
+          "type": "Boolean",
+          "flag": "--force",
+          "aliases": ["-f"],
+          "required": false
+        },
+        {
+          "name": "force-with-lease",
+          "description": "Force push only if remote ref matches expected value",
+          "type": "Boolean",
+          "flag": "--force-with-lease",
+          "required": false
+        },
+        {
+          "name": "force-if-includes",
+          "description": "Refuse to force push if remote tip is not in local reflog",
+          "type": "Boolean",
+          "flag": "--force-if-includes",
+          "required": false
+        },
+        {
+          "name": "delete",
+          "description": "Delete the specified remote branches",
+          "type": "Boolean",
+          "flag": "--delete",
+          "aliases": ["-d"],
+          "required": false
+        },
+        {
+          "name": "prune",
+          "description": "Remove remote branches that don't have a local counterpart",
+          "type": "Boolean",
+          "flag": "--prune",
+          "required": false
+        },
+        {
+          "name": "mirror",
+          "description": "Push all refs under refs/",
+          "type": "Boolean",
+          "flag": "--mirror",
+          "required": false
+        },
+        {
+          "name": "dry-run",
+          "description": "Do everything except actually send the updates",
+          "type": "Boolean",
+          "flag": "--dry-run",
+          "aliases": ["-n"],
+          "required": false
+        },
+        {
+          "name": "porcelain",
+          "description": "Produce machine-readable output",
+          "type": "Boolean",
+          "flag": "--porcelain",
+          "required": false
+        },
+        {
+          "name": "set-upstream",
+          "description": "Set upstream for every branch that is push'd successfully",
+          "type": "Boolean",
+          "flag": "--set-upstream",
+          "aliases": ["-u"],
+          "required": false
+        },
+        {
+          "name": "quiet",
+          "description": "Suppress all output",
+          "type": "Boolean",
+          "flag": "--quiet",
+          "aliases": ["-q"],
+          "required": false
+        },
+        {
+          "name": "verbose",
+          "description": "Run verbosely",
+          "type": "Boolean",
+          "flag": "--verbose",
+          "aliases": ["-v"],
+          "required": false
+        },
+        {
+          "name": "no-verify",
+          "description": "Bypass the pre-push hook",
+          "type": "Boolean",
+          "flag": "--no-verify",
+          "required": false
+        },
+        {
+          "name": "follow-tags",
+          "description": "Push annotated tags reachable from pushed commits",
+          "type": "Boolean",
+          "flag": "--follow-tags",
+          "required": false
+        },
+        {
+          "name": "atomic",
+          "description": "Use an atomic transaction on the remote side",
+          "type": "Boolean",
+          "flag": "--atomic",
+          "required": false
+        },
+        {
+          "name": "signed",
+          "description": "GPG sign the push",
+          "type": "Enum",
+          "flag": "--signed",
+          "required": false,
+          "enum_values": ["true", "false", "if-asked"]
+        },
+        {
+          "name": "recurse-submodules",
+          "description": "Control recursive pushing of submodules",
+          "type": "Enum",
+          "flag": "--recurse-submodules",
+          "required": false,
+          "enum_values": ["check", "on-demand", "only", "no"]
+        }
+      ]
+    },
+    {
+      "name": "pull",
+      "description": "Fetch from and integrate with another repository or a local branch",
+      "tokens": [
+        {
+          "name": "repository",
+          "description": "The remote repository to pull from",
+          "type": "String",
+          "required": false,
+          "positional": true,
+          "data_source": {
+            "resolver": "git:remotes"
+          }
+        },
+        {
+          "name": "refspec",
+          "description": "Remote branch to pull",
+          "type": "String",
+          "required": false,
+          "positional": true,
+          "data_source": {
+            "resolver": "git:branches"
+          }
+        },
+        {
+          "name": "rebase",
+          "description": "Rebase the current branch on top of the upstream branch after fetching",
+          "type": "Enum",
+          "flag": "--rebase",
+          "aliases": ["-r"],
+          "required": false,
+          "enum_values": ["true", "false", "merges", "interactive"]
+        },
+        {
+          "name": "no-rebase",
+          "description": "Do not rebase (merge instead)",
+          "type": "Boolean",
+          "flag": "--no-rebase",
+          "required": false
+        },
+        {
+          "name": "ff-only",
+          "description": "Only update if fast-forward is possible",
+          "type": "Boolean",
+          "flag": "--ff-only",
+          "required": false
+        },
+        {
+          "name": "ff",
+          "description": "Allow fast-forward merge when possible",
+          "type": "Boolean",
+          "flag": "--ff",
+          "required": false
+        },
+        {
+          "name": "no-ff",
+          "description": "Create a merge commit even if fast-forward is possible",
+          "type": "Boolean",
+          "flag": "--no-ff",
+          "required": false
+        },
+        {
+          "name": "commit",
+          "description": "Perform the merge and commit the result",
+          "type": "Boolean",
+          "flag": "--commit",
+          "required": false
+        },
+        {
+          "name": "no-commit",
+          "description": "Perform the merge but stop before creating a merge commit",
+          "type": "Boolean",
+          "flag": "--no-commit",
+          "required": false
+        },
+        {
+          "name": "squash",
+          "description": "Squash the fetched commits into a single commit",
+          "type": "Boolean",
+          "flag": "--squash",
+          "required": false
+        },
+        {
+          "name": "autostash",
+          "description": "Automatically create a temporary stash before and apply after",
+          "type": "Boolean",
+          "flag": "--autostash",
+          "required": false
+        },
+        {
+          "name": "quiet",
+          "description": "Suppress output during fetching and merging",
+          "type": "Boolean",
+          "flag": "--quiet",
+          "aliases": ["-q"],
+          "required": false
+        },
+        {
+          "name": "verbose",
+          "description": "Pass --verbose to git-fetch and git-merge",
+          "type": "Boolean",
+          "flag": "--verbose",
+          "aliases": ["-v"],
+          "required": false
+        },
+        {
+          "name": "depth",
+          "description": "Limit fetching to the specified number of commits",
+          "type": "Number",
+          "flag": "--depth",
+          "required": false
+        },
+        {
+          "name": "strategy",
+          "description": "Use the given merge strategy",
+          "type": "Enum",
+          "flag": "--strategy",
+          "aliases": ["-s"],
+          "required": false,
+          "enum_values": ["ort", "octopus", "ours", "subtree"]
+        },
+        {
+          "name": "strategy-option",
+          "description": "Pass strategy-specific option to the merge strategy",
+          "type": "String",
+          "flag": "--strategy-option",
+          "aliases": ["-X"],
+          "required": false
+        },
+        {
+          "name": "gpg-sign",
+          "description": "GPG-sign the resulting merge commit",
+          "type": "Boolean",
+          "flag": "--gpg-sign",
+          "aliases": ["-S"],
+          "required": false
+        },
+        {
+          "name": "recurse-submodules",
+          "description": "Control if submodule commits should be fetched",
+          "type": "Enum",
+          "flag": "--recurse-submodules",
+          "required": false,
+          "enum_values": ["yes", "on-demand", "no"]
+        }
+      ]
+    },
+    {
+      "name": "fetch",
+      "description": "Download objects and refs from another repository",
+      "tokens": [
+        {
+          "name": "repository",
+          "description": "The remote repository to fetch from",
+          "type": "String",
+          "required": false,
+          "positional": true,
+          "data_source": {
+            "resolver": "git:remotes"
+          }
+        },
+        {
+          "name": "refspec",
+          "description": "Refs to fetch",
+          "type": "String",
+          "required": false,
+          "positional": true
+        },
+        {
+          "name": "all",
+          "description": "Fetch all remotes",
+          "type": "Boolean",
+          "flag": "--all",
+          "required": false
+        },
+        {
+          "name": "prune",
+          "description": "Remove any remote-tracking references that no longer exist on the remote",
+          "type": "Boolean",
+          "flag": "--prune",
+          "aliases": ["-p"],
+          "required": false
+        },
+        {
+          "name": "prune-tags",
+          "description": "Remove any local tags that no longer exist on the remote",
+          "type": "Boolean",
+          "flag": "--prune-tags",
+          "aliases": ["-P"],
+          "required": false
+        },
+        {
+          "name": "tags",
+          "description": "Fetch all tags from the remote",
+          "type": "Boolean",
+          "flag": "--tags",
+          "aliases": ["-t"],
+          "required": false
+        },
+        {
+          "name": "no-tags",
+          "description": "Do not automatically fetch tags",
+          "type": "Boolean",
+          "flag": "--no-tags",
+          "aliases": ["-n"],
+          "required": false
+        },
+        {
+          "name": "depth",
+          "description": "Limit fetching to the specified number of commits from the tip",
+          "type": "Number",
+          "flag": "--depth",
+          "required": false
+        },
+        {
+          "name": "deepen",
+          "description": "Deepen the history by the specified number of commits",
+          "type": "Number",
+          "flag": "--deepen",
+          "required": false
+        },
+        {
+          "name": "unshallow",
+          "description": "Convert a shallow repository to a complete one",
+          "type": "Boolean",
+          "flag": "--unshallow",
+          "required": false
+        },
+        {
+          "name": "force",
+          "description": "Force update of local refs",
+          "type": "Boolean",
+          "flag": "--force",
+          "aliases": ["-f"],
+          "required": false
+        },
+        {
+          "name": "dry-run",
+          "description": "Show what would be done without making changes",
+          "type": "Boolean",
+          "flag": "--dry-run",
+          "required": false
+        },
+        {
+          "name": "quiet",
+          "description": "Silence output",
+          "type": "Boolean",
+          "flag": "--quiet",
+          "aliases": ["-q"],
+          "required": false
+        },
+        {
+          "name": "verbose",
+          "description": "Be verbose",
+          "type": "Boolean",
+          "flag": "--verbose",
+          "aliases": ["-v"],
+          "required": false
+        },
+        {
+          "name": "jobs",
+          "description": "Number of parallel children for fetching submodules",
+          "type": "Number",
+          "flag": "--jobs",
+          "aliases": ["-j"],
+          "required": false
+        },
+        {
+          "name": "multiple",
+          "description": "Allow several repository and group arguments",
+          "type": "Boolean",
+          "flag": "--multiple",
+          "required": false
+        },
+        {
+          "name": "recurse-submodules",
+          "description": "Control recursive fetching of submodules",
+          "type": "Enum",
+          "flag": "--recurse-submodules",
+          "required": false,
+          "enum_values": ["yes", "on-demand", "no"]
+        },
+        {
+          "name": "shallow-since",
+          "description": "Deepen or shorten history to include commits after the given date",
+          "type": "String",
+          "flag": "--shallow-since",
+          "required": false
+        },
+        {
+          "name": "shallow-exclude",
+          "description": "Exclude commits reachable from a specified remote branch or tag",
+          "type": "String",
+          "flag": "--shallow-exclude",
+          "required": false
+        },
+        {
+          "name": "porcelain",
+          "description": "Print output in an easy-to-parse format",
+          "type": "Boolean",
+          "flag": "--porcelain",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "checkout",
+      "description": "Switch branches or restore working tree files",
+      "tokens": [
+        {
+          "name": "branch",
+          "description": "Branch to switch to, or paths to restore",
+          "type": "String",
+          "required": false,
+          "positional": true,
+          "data_source": {
+            "resolver": "git:branches"
+          }
+        },
+        {
+          "name": "new-branch",
+          "description": "Create a new branch and switch to it",
+          "type": "String",
+          "flag": "-b",
+          "required": false
+        },
+        {
+          "name": "new-branch-force",
+          "description": "Create or reset a branch and switch to it",
+          "type": "String",
+          "flag": "-B",
+          "required": false
+        },
+        {
+          "name": "detach",
+          "description": "Detach HEAD at the named commit",
+          "type": "Boolean",
+          "flag": "--detach",
+          "aliases": ["-d"],
+          "required": false
+        },
+        {
+          "name": "force",
+          "description": "Proceed even if the index or working tree differs from HEAD",
+          "type": "Boolean",
+          "flag": "--force",
+          "aliases": ["-f"],
+          "required": false
+        },
+        {
+          "name": "track",
+          "description": "Set up upstream tracking configuration",
+          "type": "Enum",
+          "flag": "--track",
+          "aliases": ["-t"],
+          "required": false,
+          "enum_values": ["direct", "inherit"]
+        },
+        {
+          "name": "no-track",
+          "description": "Do not set up upstream configuration",
+          "type": "Boolean",
+          "flag": "--no-track",
+          "required": false
+        },
+        {
+          "name": "orphan",
+          "description": "Create a new unborn branch",
+          "type": "String",
+          "flag": "--orphan",
+          "required": false
+        },
+        {
+          "name": "ours",
+          "description": "Check out stage #2 (ours) for unmerged paths",
+          "type": "Boolean",
+          "flag": "--ours",
+          "required": false
+        },
+        {
+          "name": "theirs",
+          "description": "Check out stage #3 (theirs) for unmerged paths",
+          "type": "Boolean",
+          "flag": "--theirs",
+          "required": false
+        },
+        {
+          "name": "merge",
+          "description": "Perform a three-way merge with local modifications",
+          "type": "Boolean",
+          "flag": "--merge",
+          "aliases": ["-m"],
+          "required": false
+        },
+        {
+          "name": "patch",
+          "description": "Interactively select hunks to check out",
+          "type": "Boolean",
+          "flag": "--patch",
+          "aliases": ["-p"],
+          "required": false
+        },
+        {
+          "name": "quiet",
+          "description": "Suppress feedback messages",
+          "type": "Boolean",
+          "flag": "--quiet",
+          "aliases": ["-q"],
+          "required": false
+        },
+        {
+          "name": "guess",
+          "description": "If branch not found, try to match a remote tracking branch",
+          "type": "Boolean",
+          "flag": "--guess",
+          "required": false
+        },
+        {
+          "name": "no-guess",
+          "description": "Do not try to match remote tracking branches",
+          "type": "Boolean",
+          "flag": "--no-guess",
+          "required": false
+        },
+        {
+          "name": "conflict",
+          "description": "Conflict style for unmerged entries",
+          "type": "Enum",
+          "flag": "--conflict",
+          "required": false,
+          "enum_values": ["merge", "diff3", "zdiff3"]
+        }
+      ]
+    },
+    {
+      "name": "switch",
+      "description": "Switch branches",
+      "tokens": [
+        {
+          "name": "branch",
+          "description": "Branch to switch to",
+          "type": "String",
+          "required": false,
+          "positional": true,
+          "data_source": {
+            "resolver": "git:branches"
+          }
+        },
+        {
+          "name": "create",
+          "description": "Create a new branch and switch to it",
+          "type": "String",
+          "flag": "--create",
+          "aliases": ["-c"],
+          "required": false
+        },
+        {
+          "name": "force-create",
+          "description": "Create or reset a branch and switch to it",
+          "type": "String",
+          "flag": "--force-create",
+          "aliases": ["-C"],
+          "required": false
+        },
+        {
+          "name": "detach",
+          "description": "Switch to a commit for inspection and discardable experiments",
+          "type": "Boolean",
+          "flag": "--detach",
+          "aliases": ["-d"],
+          "required": false
+        },
+        {
+          "name": "force",
+          "description": "Alias for --discard-changes",
+          "type": "Boolean",
+          "flag": "--force",
+          "aliases": ["-f"],
+          "required": false
+        },
+        {
+          "name": "discard-changes",
+          "description": "Proceed even if the index or working tree differs from HEAD",
+          "type": "Boolean",
+          "flag": "--discard-changes",
+          "required": false
+        },
+        {
+          "name": "merge",
+          "description": "Three-way merge between current branch, working tree, and new branch",
+          "type": "Boolean",
+          "flag": "--merge",
+          "aliases": ["-m"],
+          "required": false
+        },
+        {
+          "name": "track",
+          "description": "Set up upstream tracking configuration",
+          "type": "Enum",
+          "flag": "--track",
+          "aliases": ["-t"],
+          "required": false,
+          "enum_values": ["direct", "inherit"]
+        },
+        {
+          "name": "no-track",
+          "description": "Do not set up upstream configuration",
+          "type": "Boolean",
+          "flag": "--no-track",
+          "required": false
+        },
+        {
+          "name": "guess",
+          "description": "Try to match a remote tracking branch if not found",
+          "type": "Boolean",
+          "flag": "--guess",
+          "required": false
+        },
+        {
+          "name": "no-guess",
+          "description": "Do not try to match remote tracking branches",
+          "type": "Boolean",
+          "flag": "--no-guess",
+          "required": false
+        },
+        {
+          "name": "quiet",
+          "description": "Suppress feedback messages",
+          "type": "Boolean",
+          "flag": "--quiet",
+          "aliases": ["-q"],
+          "required": false
+        },
+        {
+          "name": "conflict",
+          "description": "Conflict style for unmerged entries",
+          "type": "Enum",
+          "flag": "--conflict",
+          "required": false,
+          "enum_values": ["merge", "diff3", "zdiff3"]
+        },
+        {
+          "name": "orphan",
+          "description": "Create a new unborn branch",
+          "type": "String",
+          "flag": "--orphan",
+          "required": false
+        },
+        {
+          "name": "recurse-submodules",
+          "description": "Update the content of submodules",
+          "type": "Boolean",
+          "flag": "--recurse-submodules",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "branch",
+      "description": "List, create, or delete branches",
+      "tokens": [
+        {
+          "name": "branch-name",
+          "description": "Branch name to create, delete, or rename",
+          "type": "String",
+          "required": false,
+          "positional": true,
+          "data_source": {
+            "resolver": "git:branches"
+          }
+        },
+        {
+          "name": "delete",
+          "description": "Delete a branch (must be fully merged)",
+          "type": "Boolean",
+          "flag": "--delete",
+          "aliases": ["-d"],
+          "required": false
+        },
+        {
+          "name": "force-delete",
+          "description": "Force delete a branch (shortcut for --delete --force)",
+          "type": "Boolean",
+          "flag": "-D",
+          "required": false
+        },
+        {
+          "name": "move",
+          "description": "Move/rename a branch",
+          "type": "Boolean",
+          "flag": "--move",
+          "aliases": ["-m"],
+          "required": false
+        },
+        {
+          "name": "force-move",
+          "description": "Force move/rename a branch",
+          "type": "Boolean",
+          "flag": "-M",
+          "required": false
+        },
+        {
+          "name": "copy",
+          "description": "Copy a branch and its config and reflog",
+          "type": "Boolean",
+          "flag": "--copy",
+          "aliases": ["-c"],
+          "required": false
+        },
+        {
+          "name": "force-copy",
+          "description": "Force copy a branch",
+          "type": "Boolean",
+          "flag": "-C",
+          "required": false
+        },
+        {
+          "name": "list",
+          "description": "List branches",
+          "type": "Boolean",
+          "flag": "--list",
+          "aliases": ["-l"],
+          "required": false
+        },
+        {
+          "name": "all",
+          "description": "List both remote-tracking and local branches",
+          "type": "Boolean",
+          "flag": "--all",
+          "aliases": ["-a"],
+          "required": false
+        },
+        {
+          "name": "remotes",
+          "description": "List or delete remote-tracking branches",
+          "type": "Boolean",
+          "flag": "--remotes",
+          "aliases": ["-r"],
+          "required": false
+        },
+        {
+          "name": "force",
+          "description": "Force creation, move, or deletion",
+          "type": "Boolean",
+          "flag": "--force",
+          "aliases": ["-f"],
+          "required": false
+        },
+        {
+          "name": "verbose",
+          "description": "Show sha1 and commit subject line for each head",
+          "type": "Boolean",
+          "flag": "--verbose",
+          "aliases": ["-v"],
+          "required": false
+        },
+        {
+          "name": "quiet",
+          "description": "Be more quiet when creating or deleting a branch",
+          "type": "Boolean",
+          "flag": "--quiet",
+          "aliases": ["-q"],
+          "required": false
+        },
+        {
+          "name": "track",
+          "description": "Set up upstream tracking configuration when creating a branch",
+          "type": "Enum",
+          "flag": "--track",
+          "aliases": ["-t"],
+          "required": false,
+          "enum_values": ["direct", "inherit"]
+        },
+        {
+          "name": "no-track",
+          "description": "Do not set up upstream configuration",
+          "type": "Boolean",
+          "flag": "--no-track",
+          "required": false
+        },
+        {
+          "name": "set-upstream-to",
+          "description": "Set up branch tracking information",
+          "type": "String",
+          "flag": "--set-upstream-to",
+          "aliases": ["-u"],
+          "required": false,
+          "data_source": {
+            "resolver": "git:branches"
+          }
+        },
+        {
+          "name": "unset-upstream",
+          "description": "Remove the upstream information for the branch",
+          "type": "Boolean",
+          "flag": "--unset-upstream",
+          "required": false
+        },
+        {
+          "name": "sort",
+          "description": "Sort branches by the given key",
+          "type": "String",
+          "flag": "--sort",
+          "required": false
+        },
+        {
+          "name": "format",
+          "description": "Format string for branch output",
+          "type": "String",
+          "flag": "--format",
+          "required": false
+        },
+        {
+          "name": "show-current",
+          "description": "Print the name of the current branch",
+          "type": "Boolean",
+          "flag": "--show-current",
+          "required": false
+        },
+        {
+          "name": "contains",
+          "description": "Only list branches which contain the specified commit",
+          "type": "String",
+          "flag": "--contains",
+          "required": false
+        },
+        {
+          "name": "no-contains",
+          "description": "Only list branches which don't contain the specified commit",
+          "type": "String",
+          "flag": "--no-contains",
+          "required": false
+        },
+        {
+          "name": "merged",
+          "description": "Only list branches whose tips are reachable from the specified commit",
+          "type": "String",
+          "flag": "--merged",
+          "required": false
+        },
+        {
+          "name": "no-merged",
+          "description": "Only list branches whose tips are not reachable from the specified commit",
+          "type": "String",
+          "flag": "--no-merged",
+          "required": false
+        },
+        {
+          "name": "abbrev",
+          "description": "Show the shortest prefix that uniquely refers to the object",
+          "type": "Number",
+          "flag": "--abbrev",
+          "required": false
+        },
+        {
+          "name": "color",
+          "description": "Color branches to highlight current, local, and remote",
+          "type": "Enum",
+          "flag": "--color",
+          "required": false,
+          "enum_values": ["always", "never", "auto"]
+        },
+        {
+          "name": "ignore-case",
+          "description": "Sorting and filtering are case insensitive",
+          "type": "Boolean",
+          "flag": "--ignore-case",
+          "aliases": ["-i"],
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "merge",
+      "description": "Join two or more development histories together",
+      "tokens": [
+        {
+          "name": "branch",
+          "description": "Branch to merge into the current branch",
+          "type": "String",
+          "required": false,
+          "positional": true,
+          "data_source": {
+            "resolver": "git:branches"
+          }
+        },
+        {
+          "name": "commit",
+          "description": "Perform the merge and commit the result",
+          "type": "Boolean",
+          "flag": "--commit",
+          "required": false
+        },
+        {
+          "name": "no-commit",
+          "description": "Perform merge but stop before creating a merge commit",
+          "type": "Boolean",
+          "flag": "--no-commit",
+          "required": false
+        },
+        {
+          "name": "ff",
+          "description": "Allow fast-forward merges",
+          "type": "Boolean",
+          "flag": "--ff",
+          "required": false
+        },
+        {
+          "name": "no-ff",
+          "description": "Create a merge commit in all cases",
+          "type": "Boolean",
+          "flag": "--no-ff",
+          "required": false
+        },
+        {
+          "name": "ff-only",
+          "description": "Only allow fast-forward merges",
+          "type": "Boolean",
+          "flag": "--ff-only",
+          "required": false
+        },
+        {
+          "name": "squash",
+          "description": "Produce the working tree state as if a merge happened but don't commit",
+          "type": "Boolean",
+          "flag": "--squash",
+          "required": false
+        },
+        {
+          "name": "strategy",
+          "description": "Use the given merge strategy",
+          "type": "Enum",
+          "flag": "--strategy",
+          "aliases": ["-s"],
+          "required": false,
+          "enum_values": ["ort", "octopus", "ours", "subtree"]
+        },
+        {
+          "name": "strategy-option",
+          "description": "Pass merge strategy specific option",
+          "type": "String",
+          "flag": "--strategy-option",
+          "aliases": ["-X"],
+          "required": false
+        },
+        {
+          "name": "message",
+          "description": "Set the commit message for the merge",
+          "type": "String",
+          "flag": "--message",
+          "aliases": ["-m"],
+          "required": false
+        },
+        {
+          "name": "signoff",
+          "description": "Add a Signed-off-by trailer",
+          "type": "Boolean",
+          "flag": "--signoff",
+          "required": false
+        },
+        {
+          "name": "gpg-sign",
+          "description": "GPG-sign the resulting merge commit",
+          "type": "Boolean",
+          "flag": "--gpg-sign",
+          "aliases": ["-S"],
+          "required": false
+        },
+        {
+          "name": "stat",
+          "description": "Show a diffstat at the end of the merge",
+          "type": "Boolean",
+          "flag": "--stat",
+          "required": false
+        },
+        {
+          "name": "no-stat",
+          "description": "Do not show a diffstat at the end of the merge",
+          "type": "Boolean",
+          "flag": "--no-stat",
+          "aliases": ["-n"],
+          "required": false
+        },
+        {
+          "name": "edit",
+          "description": "Invoke an editor before committing",
+          "type": "Boolean",
+          "flag": "--edit",
+          "aliases": ["-e"],
+          "required": false
+        },
+        {
+          "name": "no-edit",
+          "description": "Accept the auto-generated merge message",
+          "type": "Boolean",
+          "flag": "--no-edit",
+          "required": false
+        },
+        {
+          "name": "abort",
+          "description": "Abort the current merge and restore the pre-merge state",
+          "type": "Boolean",
+          "flag": "--abort",
+          "required": false
+        },
+        {
+          "name": "continue",
+          "description": "Continue a merge after resolving conflicts",
+          "type": "Boolean",
+          "flag": "--continue",
+          "required": false
+        },
+        {
+          "name": "quit",
+          "description": "Forget about the merge in progress",
+          "type": "Boolean",
+          "flag": "--quit",
+          "required": false
+        },
+        {
+          "name": "quiet",
+          "description": "Operate quietly",
+          "type": "Boolean",
+          "flag": "--quiet",
+          "aliases": ["-q"],
+          "required": false
+        },
+        {
+          "name": "verbose",
+          "description": "Be verbose",
+          "type": "Boolean",
+          "flag": "--verbose",
+          "aliases": ["-v"],
+          "required": false
+        },
+        {
+          "name": "autostash",
+          "description": "Automatically stash/unstash before and after merge",
+          "type": "Boolean",
+          "flag": "--autostash",
+          "required": false
+        },
+        {
+          "name": "verify-signatures",
+          "description": "Verify that the tip commit is signed with a valid key",
+          "type": "Boolean",
+          "flag": "--verify-signatures",
+          "required": false
+        },
+        {
+          "name": "log",
+          "description": "Populate log message with one-line descriptions from merged commits",
+          "type": "Number",
+          "flag": "--log",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "rebase",
+      "description": "Reapply commits on top of another base tip",
+      "tokens": [
+        {
+          "name": "upstream",
+          "description": "Upstream branch to compare against",
+          "type": "String",
+          "required": false,
+          "positional": true,
+          "data_source": {
+            "resolver": "git:branches"
+          }
+        },
+        {
+          "name": "branch",
+          "description": "Working branch; defaults to HEAD",
+          "type": "String",
+          "required": false,
+          "positional": true,
+          "data_source": {
+            "resolver": "git:branches"
+          }
+        },
+        {
+          "name": "onto",
+          "description": "Starting point at which to create the new commits",
+          "type": "String",
+          "flag": "--onto",
+          "required": false,
+          "data_source": {
+            "resolver": "git:branches"
+          }
+        },
+        {
+          "name": "keep-base",
+          "description": "Set the starting point at the merge base of upstream and branch",
+          "type": "Boolean",
+          "flag": "--keep-base",
+          "required": false
+        },
+        {
+          "name": "interactive",
+          "description": "Make a list of commits to be rebased, let user edit before rebasing",
+          "type": "Boolean",
+          "flag": "--interactive",
+          "aliases": ["-i"],
+          "required": false
+        },
+        {
+          "name": "continue",
+          "description": "Restart the rebasing process after resolving a merge conflict",
+          "type": "Boolean",
+          "flag": "--continue",
+          "required": false
+        },
+        {
+          "name": "skip",
+          "description": "Restart the rebasing process by skipping the current patch",
+          "type": "Boolean",
+          "flag": "--skip",
+          "required": false
+        },
+        {
+          "name": "abort",
+          "description": "Abort the rebase and reset HEAD to the original branch",
+          "type": "Boolean",
+          "flag": "--abort",
+          "required": false
+        },
+        {
+          "name": "quit",
+          "description": "Abort the rebase but don't reset HEAD",
+          "type": "Boolean",
+          "flag": "--quit",
+          "required": false
+        },
+        {
+          "name": "edit-todo",
+          "description": "Edit the todo list during an interactive rebase",
+          "type": "Boolean",
+          "flag": "--edit-todo",
+          "required": false
+        },
+        {
+          "name": "show-current-patch",
+          "description": "Show the current patch during a stopped rebase",
+          "type": "Boolean",
+          "flag": "--show-current-patch",
+          "required": false
+        },
+        {
+          "name": "autosquash",
+          "description": "Automatically reorder and apply fixup/squash commits",
+          "type": "Boolean",
+          "flag": "--autosquash",
+          "required": false
+        },
+        {
+          "name": "no-autosquash",
+          "description": "Do not automatically reorder fixup/squash commits",
+          "type": "Boolean",
+          "flag": "--no-autosquash",
+          "required": false
+        },
+        {
+          "name": "autostash",
+          "description": "Automatically create a temporary stash before and apply after",
+          "type": "Boolean",
+          "flag": "--autostash",
+          "required": false
+        },
+        {
+          "name": "force-rebase",
+          "description": "Force the rebase even if the current branch is up to date",
+          "type": "Boolean",
+          "flag": "--force-rebase",
+          "aliases": ["-f", "--no-ff"],
+          "required": false
+        },
+        {
+          "name": "fork-point",
+          "description": "Use reflog to find a better common ancestor",
+          "type": "Boolean",
+          "flag": "--fork-point",
+          "required": false
+        },
+        {
+          "name": "no-fork-point",
+          "description": "Do not use reflog to find common ancestor",
+          "type": "Boolean",
+          "flag": "--no-fork-point",
+          "required": false
+        },
+        {
+          "name": "root",
+          "description": "Rebase all reachable commits up to root(s)",
+          "type": "Boolean",
+          "flag": "--root",
+          "required": false
+        },
+        {
+          "name": "strategy",
+          "description": "Use the given merge strategy",
+          "type": "Enum",
+          "flag": "--strategy",
+          "aliases": ["-s"],
+          "required": false,
+          "enum_values": ["ort", "octopus", "ours", "subtree"]
+        },
+        {
+          "name": "strategy-option",
+          "description": "Pass a strategy-specific option",
+          "type": "String",
+          "flag": "--strategy-option",
+          "aliases": ["-X"],
+          "required": false
+        },
+        {
+          "name": "gpg-sign",
+          "description": "GPG-sign commits",
+          "type": "Boolean",
+          "flag": "--gpg-sign",
+          "aliases": ["-S"],
+          "required": false
+        },
+        {
+          "name": "stat",
+          "description": "Show a diffstat of what changed since last rebase",
+          "type": "Boolean",
+          "flag": "--stat",
+          "required": false
+        },
+        {
+          "name": "no-stat",
+          "description": "Do not show a diffstat",
+          "type": "Boolean",
+          "flag": "--no-stat",
+          "aliases": ["-n"],
+          "required": false
+        },
+        {
+          "name": "no-verify",
+          "description": "Bypass the pre-rebase hook",
+          "type": "Boolean",
+          "flag": "--no-verify",
+          "required": false
+        },
+        {
+          "name": "quiet",
+          "description": "Be quiet",
+          "type": "Boolean",
+          "flag": "--quiet",
+          "aliases": ["-q"],
+          "required": false
+        },
+        {
+          "name": "verbose",
+          "description": "Be verbose",
+          "type": "Boolean",
+          "flag": "--verbose",
+          "aliases": ["-v"],
+          "required": false
+        },
+        {
+          "name": "ignore-whitespace",
+          "description": "Ignore whitespace differences during merge",
+          "type": "Boolean",
+          "flag": "--ignore-whitespace",
+          "required": false
+        },
+        {
+          "name": "empty",
+          "description": "How to handle commits that become empty after rebasing",
+          "type": "Enum",
+          "flag": "--empty",
+          "required": false,
+          "enum_values": ["drop", "keep", "stop"]
+        },
+        {
+          "name": "reapply-cherry-picks",
+          "description": "Reapply cherry-picks instead of skipping them",
+          "type": "Boolean",
+          "flag": "--reapply-cherry-picks",
+          "required": false
+        },
+        {
+          "name": "apply",
+          "description": "Use the apply backend instead of merge",
+          "type": "Boolean",
+          "flag": "--apply",
+          "required": false
+        },
+        {
+          "name": "merge",
+          "description": "Use the merge backend",
+          "type": "Boolean",
+          "flag": "--merge",
+          "aliases": ["-m"],
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "log",
+      "description": "Show commit logs",
+      "tokens": [
+        {
+          "name": "revision-range",
+          "description": "Show only commits in the specified revision range",
+          "type": "String",
+          "required": false,
+          "positional": true
+        },
+        {
+          "name": "path",
+          "description": "Show only commits that affect the specified paths",
+          "type": "File",
+          "required": false,
+          "positional": true
+        },
+        {
+          "name": "max-count",
+          "description": "Limit the number of commits to output",
+          "type": "Number",
+          "flag": "--max-count",
+          "aliases": ["-n"],
+          "required": false
+        },
+        {
+          "name": "skip",
+          "description": "Skip a number of commits before starting to show output",
+          "type": "Number",
+          "flag": "--skip",
+          "required": false
+        },
+        {
+          "name": "since",
+          "description": "Show commits more recent than a specific date",
+          "type": "String",
+          "flag": "--since",
+          "aliases": ["--after"],
+          "required": false
+        },
+        {
+          "name": "until",
+          "description": "Show commits older than a specific date",
+          "type": "String",
+          "flag": "--until",
+          "aliases": ["--before"],
+          "required": false
+        },
+        {
+          "name": "author",
+          "description": "Limit commits to those by a given author pattern",
+          "type": "String",
+          "flag": "--author",
+          "required": false
+        },
+        {
+          "name": "committer",
+          "description": "Limit commits to those by a given committer pattern",
+          "type": "String",
+          "flag": "--committer",
+          "required": false
+        },
+        {
+          "name": "grep",
+          "description": "Limit to commits with log message matching the pattern",
+          "type": "String",
+          "flag": "--grep",
+          "required": false
+        },
+        {
+          "name": "all-match",
+          "description": "Limit to commits that match all given --grep patterns",
+          "type": "Boolean",
+          "flag": "--all-match",
+          "required": false
+        },
+        {
+          "name": "invert-grep",
+          "description": "Limit to commits whose log message does not match --grep",
+          "type": "Boolean",
+          "flag": "--invert-grep",
+          "required": false
+        },
+        {
+          "name": "oneline",
+          "description": "Shorthand for --pretty=oneline --abbrev-commit",
+          "type": "Boolean",
+          "flag": "--oneline",
+          "required": false
+        },
+        {
+          "name": "pretty",
+          "description": "Pretty-print the commits in the given format",
+          "type": "Enum",
+          "flag": "--pretty",
+          "aliases": ["--format"],
+          "required": false,
+          "enum_values": ["oneline", "short", "medium", "full", "fuller", "reference", "email", "raw"]
+        },
+        {
+          "name": "abbrev-commit",
+          "description": "Show abbreviated commit object names",
+          "type": "Boolean",
+          "flag": "--abbrev-commit",
+          "required": false
+        },
+        {
+          "name": "graph",
+          "description": "Draw a text-based graphical representation of the commit history",
+          "type": "Boolean",
+          "flag": "--graph",
+          "required": false
+        },
+        {
+          "name": "decorate",
+          "description": "Print ref names of any commits that are shown",
+          "type": "Enum",
+          "flag": "--decorate",
+          "required": false,
+          "enum_values": ["short", "full", "auto", "no"]
+        },
+        {
+          "name": "no-decorate",
+          "description": "Do not print ref names",
+          "type": "Boolean",
+          "flag": "--no-decorate",
+          "required": false
+        },
+        {
+          "name": "stat",
+          "description": "Show a diffstat for each commit",
+          "type": "Boolean",
+          "flag": "--stat",
+          "required": false
+        },
+        {
+          "name": "shortstat",
+          "description": "Show only the last line of --stat with total changes",
+          "type": "Boolean",
+          "flag": "--shortstat",
+          "required": false
+        },
+        {
+          "name": "name-only",
+          "description": "Show only names of changed files",
+          "type": "Boolean",
+          "flag": "--name-only",
+          "required": false
+        },
+        {
+          "name": "name-status",
+          "description": "Show only names and status of changed files",
+          "type": "Boolean",
+          "flag": "--name-status",
+          "required": false
+        },
+        {
+          "name": "patch",
+          "description": "Generate patch (show diff for each commit)",
+          "type": "Boolean",
+          "flag": "--patch",
+          "aliases": ["-p", "-u"],
+          "required": false
+        },
+        {
+          "name": "no-patch",
+          "description": "Suppress diff output",
+          "type": "Boolean",
+          "flag": "--no-patch",
+          "aliases": ["-s"],
+          "required": false
+        },
+        {
+          "name": "all",
+          "description": "Show all refs (branches, tags) as if they were listed on the command line",
+          "type": "Boolean",
+          "flag": "--all",
+          "required": false
+        },
+        {
+          "name": "branches",
+          "description": "Show all branches as if listed on the command line",
+          "type": "Boolean",
+          "flag": "--branches",
+          "required": false
+        },
+        {
+          "name": "tags",
+          "description": "Show all tags as if listed on the command line",
+          "type": "Boolean",
+          "flag": "--tags",
+          "required": false
+        },
+        {
+          "name": "remotes",
+          "description": "Show all remotes as if listed on the command line",
+          "type": "Boolean",
+          "flag": "--remotes",
+          "required": false
+        },
+        {
+          "name": "first-parent",
+          "description": "Follow only the first parent commit upon seeing a merge",
+          "type": "Boolean",
+          "flag": "--first-parent",
+          "required": false
+        },
+        {
+          "name": "merges",
+          "description": "Print only merge commits",
+          "type": "Boolean",
+          "flag": "--merges",
+          "required": false
+        },
+        {
+          "name": "no-merges",
+          "description": "Do not print merge commits",
+          "type": "Boolean",
+          "flag": "--no-merges",
+          "required": false
+        },
+        {
+          "name": "reverse",
+          "description": "Output commits in reverse order",
+          "type": "Boolean",
+          "flag": "--reverse",
+          "required": false
+        },
+        {
+          "name": "date",
+          "description": "Override the date format",
+          "type": "Enum",
+          "flag": "--date",
+          "required": false,
+          "enum_values": ["relative", "local", "iso", "iso-strict", "rfc", "short", "raw", "human", "unix", "default"]
+        },
+        {
+          "name": "diff-filter",
+          "description": "Select only files that are Added (A), Modified (M), etc.",
+          "type": "String",
+          "flag": "--diff-filter",
+          "required": false
+        },
+        {
+          "name": "follow",
+          "description": "Continue listing file history beyond renames",
+          "type": "Boolean",
+          "flag": "--follow",
+          "required": false
+        },
+        {
+          "name": "full-diff",
+          "description": "Show the full diff for commits that touch specified paths",
+          "type": "Boolean",
+          "flag": "--full-diff",
+          "required": false
+        },
+        {
+          "name": "simplify-by-decoration",
+          "description": "Show only commits referenced by some branch or tag",
+          "type": "Boolean",
+          "flag": "--simplify-by-decoration",
+          "required": false
+        },
+        {
+          "name": "walk-reflogs",
+          "description": "Walk reflogs instead of the commit ancestry chain",
+          "type": "Boolean",
+          "flag": "--walk-reflogs",
+          "aliases": ["-g"],
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "diff",
+      "description": "Show changes between commits, commit and working tree, etc",
+      "tokens": [
+        {
+          "name": "commit",
+          "description": "Commit(s) to compare",
+          "type": "String",
+          "required": false,
+          "positional": true
+        },
+        {
+          "name": "path",
+          "description": "Limit diff to specific paths",
+          "type": "File",
+          "required": false,
+          "positional": true,
+          "data_source": {
+            "resolver": "git:status_files"
+          }
+        },
+        {
+          "name": "cached",
+          "description": "View staged changes (diff between index and HEAD)",
+          "type": "Boolean",
+          "flag": "--cached",
+          "aliases": ["--staged"],
+          "required": false
+        },
+        {
+          "name": "patch",
+          "description": "Generate patch output (default)",
+          "type": "Boolean",
+          "flag": "--patch",
+          "aliases": ["-p", "-u"],
+          "required": false
+        },
+        {
+          "name": "no-patch",
+          "description": "Suppress diff output",
+          "type": "Boolean",
+          "flag": "--no-patch",
+          "aliases": ["-s"],
+          "required": false
+        },
+        {
+          "name": "stat",
+          "description": "Generate a diffstat",
+          "type": "Boolean",
+          "flag": "--stat",
+          "required": false
+        },
+        {
+          "name": "shortstat",
+          "description": "Show only the last line of --stat",
+          "type": "Boolean",
+          "flag": "--shortstat",
+          "required": false
+        },
+        {
+          "name": "numstat",
+          "description": "Show number of added/deleted lines in decimal notation",
+          "type": "Boolean",
+          "flag": "--numstat",
+          "required": false
+        },
+        {
+          "name": "name-only",
+          "description": "Show only names of changed files",
+          "type": "Boolean",
+          "flag": "--name-only",
+          "required": false
+        },
+        {
+          "name": "name-status",
+          "description": "Show names and status of changed files",
+          "type": "Boolean",
+          "flag": "--name-status",
+          "required": false
+        },
+        {
+          "name": "unified",
+          "description": "Generate diffs with N lines of context",
+          "type": "Number",
+          "flag": "--unified",
+          "aliases": ["-U"],
+          "required": false
+        },
+        {
+          "name": "output",
+          "description": "Output to a specific file",
+          "type": "File",
+          "flag": "--output",
+          "required": false
+        },
+        {
+          "name": "raw",
+          "description": "Generate the diff in raw format",
+          "type": "Boolean",
+          "flag": "--raw",
+          "required": false
+        },
+        {
+          "name": "diff-algorithm",
+          "description": "Choose a diff algorithm",
+          "type": "Enum",
+          "flag": "--diff-algorithm",
+          "required": false,
+          "enum_values": ["patience", "minimal", "histogram", "myers", "default"]
+        },
+        {
+          "name": "patience",
+          "description": "Generate diff using patience algorithm",
+          "type": "Boolean",
+          "flag": "--patience",
+          "required": false
+        },
+        {
+          "name": "histogram",
+          "description": "Generate diff using histogram algorithm",
+          "type": "Boolean",
+          "flag": "--histogram",
+          "required": false
+        },
+        {
+          "name": "minimal",
+          "description": "Spend extra time producing the smallest diff possible",
+          "type": "Boolean",
+          "flag": "--minimal",
+          "required": false
+        },
+        {
+          "name": "word-diff",
+          "description": "Show word-level differences",
+          "type": "Enum",
+          "flag": "--word-diff",
+          "required": false,
+          "enum_values": ["color", "plain", "porcelain", "none"]
+        },
+        {
+          "name": "color",
+          "description": "Show colored diff",
+          "type": "Enum",
+          "flag": "--color",
+          "required": false,
+          "enum_values": ["always", "never", "auto"]
+        },
+        {
+          "name": "no-color",
+          "description": "Turn off colored diff",
+          "type": "Boolean",
+          "flag": "--no-color",
+          "required": false
+        },
+        {
+          "name": "color-words",
+          "description": "Show word-level color diff",
+          "type": "Boolean",
+          "flag": "--color-words",
+          "required": false
+        },
+        {
+          "name": "ignore-all-space",
+          "description": "Ignore whitespace when comparing lines",
+          "type": "Boolean",
+          "flag": "--ignore-all-space",
+          "aliases": ["-w"],
+          "required": false
+        },
+        {
+          "name": "ignore-space-change",
+          "description": "Ignore changes in amount of whitespace",
+          "type": "Boolean",
+          "flag": "--ignore-space-change",
+          "aliases": ["-b"],
+          "required": false
+        },
+        {
+          "name": "ignore-blank-lines",
+          "description": "Ignore changes whose lines are all blank",
+          "type": "Boolean",
+          "flag": "--ignore-blank-lines",
+          "required": false
+        },
+        {
+          "name": "check",
+          "description": "Warn if changes introduce conflict markers or whitespace errors",
+          "type": "Boolean",
+          "flag": "--check",
+          "required": false
+        },
+        {
+          "name": "no-index",
+          "description": "Compare two given paths on the filesystem",
+          "type": "Boolean",
+          "flag": "--no-index",
+          "required": false
+        },
+        {
+          "name": "merge-base",
+          "description": "Use the merge base of the two commits for the before side",
+          "type": "Boolean",
+          "flag": "--merge-base",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "status",
+      "description": "Show the working tree status",
+      "tokens": [
+        {
+          "name": "pathspec",
+          "description": "Paths to show status for",
+          "type": "File",
+          "required": false,
+          "positional": true
+        },
+        {
+          "name": "short",
+          "description": "Give the output in short format",
+          "type": "Boolean",
+          "flag": "--short",
+          "aliases": ["-s"],
+          "required": false
+        },
+        {
+          "name": "branch",
+          "description": "Show branch and tracking info even in short format",
+          "type": "Boolean",
+          "flag": "--branch",
+          "aliases": ["-b"],
+          "required": false
+        },
+        {
+          "name": "long",
+          "description": "Give the output in the long format (default)",
+          "type": "Boolean",
+          "flag": "--long",
+          "required": false
+        },
+        {
+          "name": "porcelain",
+          "description": "Give the output in an easy-to-parse format",
+          "type": "Enum",
+          "flag": "--porcelain",
+          "required": false,
+          "enum_values": ["v1", "v2"]
+        },
+        {
+          "name": "verbose",
+          "description": "Also show the textual changes that are staged",
+          "type": "Boolean",
+          "flag": "--verbose",
+          "aliases": ["-v"],
+          "required": false
+        },
+        {
+          "name": "untracked-files",
+          "description": "Show untracked files",
+          "type": "Enum",
+          "flag": "--untracked-files",
+          "aliases": ["-u"],
+          "required": false,
+          "enum_values": ["no", "normal", "all"]
+        },
+        {
+          "name": "ignored",
+          "description": "Show ignored files",
+          "type": "Enum",
+          "flag": "--ignored",
+          "required": false,
+          "enum_values": ["traditional", "no", "matching"]
+        },
+        {
+          "name": "ignore-submodules",
+          "description": "Ignore changes to submodules when looking for changes",
+          "type": "Enum",
+          "flag": "--ignore-submodules",
+          "required": false,
+          "enum_values": ["none", "untracked", "dirty", "all"]
+        },
+        {
+          "name": "show-stash",
+          "description": "Show the number of entries currently stashed",
+          "type": "Boolean",
+          "flag": "--show-stash",
+          "required": false
+        },
+        {
+          "name": "ahead-behind",
+          "description": "Display detailed ahead/behind counts relative to upstream",
+          "type": "Boolean",
+          "flag": "--ahead-behind",
+          "required": false
+        },
+        {
+          "name": "no-ahead-behind",
+          "description": "Do not display ahead/behind counts",
+          "type": "Boolean",
+          "flag": "--no-ahead-behind",
+          "required": false
+        },
+        {
+          "name": "renames",
+          "description": "Turn on rename detection",
+          "type": "Boolean",
+          "flag": "--renames",
+          "required": false
+        },
+        {
+          "name": "no-renames",
+          "description": "Turn off rename detection",
+          "type": "Boolean",
+          "flag": "--no-renames",
+          "required": false
+        },
+        {
+          "name": "find-renames",
+          "description": "Turn on rename detection with similarity threshold",
+          "type": "Number",
+          "flag": "--find-renames",
+          "aliases": ["-M"],
+          "required": false
+        },
+        {
+          "name": "null",
+          "description": "Terminate entries with NUL",
+          "type": "Boolean",
+          "flag": "-z",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "stash",
+      "description": "Stash the changes in a dirty working directory away",
+      "tokens": [
+        {
+          "name": "subcommand",
+          "description": "Stash subcommand to run",
+          "type": "Enum",
+          "required": false,
+          "positional": true,
+          "enum_values": ["push", "pop", "apply", "list", "show", "drop", "clear", "branch", "create", "store"]
+        },
+        {
+          "name": "message",
+          "description": "Description of the stash",
+          "type": "String",
+          "flag": "--message",
+          "aliases": ["-m"],
+          "required": false
+        },
+        {
+          "name": "patch",
+          "description": "Interactively select hunks to stash",
+          "type": "Boolean",
+          "flag": "--patch",
+          "aliases": ["-p"],
+          "required": false
+        },
+        {
+          "name": "staged",
+          "description": "Stash only the staged changes",
+          "type": "Boolean",
+          "flag": "--staged",
+          "aliases": ["-S"],
+          "required": false
+        },
+        {
+          "name": "keep-index",
+          "description": "Keep all changes already added to the index intact",
+          "type": "Boolean",
+          "flag": "--keep-index",
+          "aliases": ["-k"],
+          "required": false
+        },
+        {
+          "name": "no-keep-index",
+          "description": "Also unstage changes added to the index",
+          "type": "Boolean",
+          "flag": "--no-keep-index",
+          "required": false
+        },
+        {
+          "name": "include-untracked",
+          "description": "Also stash untracked files",
+          "type": "Boolean",
+          "flag": "--include-untracked",
+          "aliases": ["-u"],
+          "required": false
+        },
+        {
+          "name": "all",
+          "description": "Stash all files including ignored files",
+          "type": "Boolean",
+          "flag": "--all",
+          "aliases": ["-a"],
+          "required": false
+        },
+        {
+          "name": "quiet",
+          "description": "Suppress output",
+          "type": "Boolean",
+          "flag": "--quiet",
+          "aliases": ["-q"],
+          "required": false
+        },
+        {
+          "name": "index",
+          "description": "Try to reinstate the index changes as well (for pop/apply)",
+          "type": "Boolean",
+          "flag": "--index",
+          "required": false
+        },
+        {
+          "name": "pathspec",
+          "description": "Paths to stash (for push only)",
+          "type": "File",
+          "required": false,
+          "positional": true,
+          "data_source": {
+            "resolver": "git:status_files"
+          }
+        }
+      ]
+    },
+    {
+      "name": "tag",
+      "description": "Create, list, delete or verify a tag object signed with GPG",
+      "tokens": [
+        {
+          "name": "tagname",
+          "description": "Name of the tag to create, delete, or verify",
+          "type": "String",
+          "required": false,
+          "positional": true,
+          "data_source": {
+            "resolver": "git:tags"
+          }
+        },
+        {
+          "name": "commit",
+          "description": "Object to tag (defaults to HEAD)",
+          "type": "String",
+          "required": false,
+          "positional": true
+        },
+        {
+          "name": "annotate",
+          "description": "Make an unsigned annotated tag object",
+          "type": "Boolean",
+          "flag": "--annotate",
+          "aliases": ["-a"],
+          "required": false
+        },
+        {
+          "name": "sign",
+          "description": "Make a GPG-signed tag",
+          "type": "Boolean",
+          "flag": "--sign",
+          "aliases": ["-s"],
+          "required": false
+        },
+        {
+          "name": "no-sign",
+          "description": "Override tag.gpgSign to not sign tags",
+          "type": "Boolean",
+          "flag": "--no-sign",
+          "required": false
+        },
+        {
+          "name": "local-user",
+          "description": "Make a GPG-signed tag using the given key",
+          "type": "String",
+          "flag": "--local-user",
+          "aliases": ["-u"],
+          "required": false
+        },
+        {
+          "name": "force",
+          "description": "Replace an existing tag with the given name",
+          "type": "Boolean",
+          "flag": "--force",
+          "aliases": ["-f"],
+          "required": false
+        },
+        {
+          "name": "delete",
+          "description": "Delete existing tags",
+          "type": "Boolean",
+          "flag": "--delete",
+          "aliases": ["-d"],
+          "required": false
+        },
+        {
+          "name": "verify",
+          "description": "Verify the GPG signature of the given tag names",
+          "type": "Boolean",
+          "flag": "--verify",
+          "aliases": ["-v"],
+          "required": false
+        },
+        {
+          "name": "list",
+          "description": "List tags matching a pattern",
+          "type": "Boolean",
+          "flag": "--list",
+          "aliases": ["-l"],
+          "required": false
+        },
+        {
+          "name": "message",
+          "description": "Use the given tag message",
+          "type": "String",
+          "flag": "--message",
+          "aliases": ["-m"],
+          "required": false
+        },
+        {
+          "name": "file",
+          "description": "Take the tag message from the given file",
+          "type": "File",
+          "flag": "--file",
+          "aliases": ["-F"],
+          "required": false
+        },
+        {
+          "name": "sort",
+          "description": "Sort based on the key given",
+          "type": "String",
+          "flag": "--sort",
+          "required": false
+        },
+        {
+          "name": "contains",
+          "description": "Only list tags which contain the specified commit",
+          "type": "String",
+          "flag": "--contains",
+          "required": false
+        },
+        {
+          "name": "no-contains",
+          "description": "Only list tags which don't contain the specified commit",
+          "type": "String",
+          "flag": "--no-contains",
+          "required": false
+        },
+        {
+          "name": "merged",
+          "description": "Only list tags whose commits are reachable from the specified commit",
+          "type": "String",
+          "flag": "--merged",
+          "required": false
+        },
+        {
+          "name": "no-merged",
+          "description": "Only list tags whose commits are not reachable from the specified commit",
+          "type": "String",
+          "flag": "--no-merged",
+          "required": false
+        },
+        {
+          "name": "points-at",
+          "description": "Only list tags of the given object",
+          "type": "String",
+          "flag": "--points-at",
+          "required": false
+        },
+        {
+          "name": "format",
+          "description": "Format string for tag output",
+          "type": "String",
+          "flag": "--format",
+          "required": false
+        },
+        {
+          "name": "color",
+          "description": "Respect colors in the --format option",
+          "type": "Enum",
+          "flag": "--color",
+          "required": false,
+          "enum_values": ["always", "never", "auto"]
+        },
+        {
+          "name": "ignore-case",
+          "description": "Sorting and filtering are case insensitive",
+          "type": "Boolean",
+          "flag": "--ignore-case",
+          "aliases": ["-i"],
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "remote",
+      "description": "Manage set of tracked repositories",
+      "tokens": [
+        {
+          "name": "subcommand",
+          "description": "Remote subcommand to run",
+          "type": "Enum",
+          "required": false,
+          "positional": true,
+          "enum_values": ["add", "rename", "remove", "rm", "set-head", "set-branches", "get-url", "set-url", "show", "prune", "update"]
+        },
+        {
+          "name": "name",
+          "description": "Name of the remote",
+          "type": "String",
+          "required": false,
+          "positional": true,
+          "data_source": {
+            "resolver": "git:remotes"
+          }
+        },
+        {
+          "name": "url",
+          "description": "URL of the remote",
+          "type": "String",
+          "required": false,
+          "positional": true
+        },
+        {
+          "name": "verbose",
+          "description": "Be verbose and show remote url after name",
+          "type": "Boolean",
+          "flag": "--verbose",
+          "aliases": ["-v"],
+          "required": false
+        },
+        {
+          "name": "push",
+          "description": "Query push URLs rather than fetch URLs (for get-url/set-url)",
+          "type": "Boolean",
+          "flag": "--push",
+          "required": false
+        },
+        {
+          "name": "add-url",
+          "description": "Add new URL instead of changing existing (for set-url)",
+          "type": "Boolean",
+          "flag": "--add",
+          "required": false
+        },
+        {
+          "name": "delete-url",
+          "description": "Delete all URLs matching regex (for set-url)",
+          "type": "Boolean",
+          "flag": "--delete",
+          "required": false
+        },
+        {
+          "name": "fetch",
+          "description": "Run git fetch after adding the remote (for add)",
+          "type": "Boolean",
+          "flag": "-f",
+          "required": false
+        },
+        {
+          "name": "tags",
+          "description": "Import tags from the remote (for add)",
+          "type": "Boolean",
+          "flag": "--tags",
+          "required": false
+        },
+        {
+          "name": "no-tags",
+          "description": "Don't import tags from the remote (for add)",
+          "type": "Boolean",
+          "flag": "--no-tags",
+          "required": false
+        },
+        {
+          "name": "mirror",
+          "description": "Set up as a mirror (for add)",
+          "type": "Enum",
+          "flag": "--mirror",
+          "required": false,
+          "enum_values": ["fetch", "push"]
+        },
+        {
+          "name": "prune",
+          "description": "Prune stale remote-tracking branches (for update)",
+          "type": "Boolean",
+          "flag": "--prune",
+          "required": false
+        },
+        {
+          "name": "dry-run",
+          "description": "Report what would be pruned without actually pruning (for prune)",
+          "type": "Boolean",
+          "flag": "--dry-run",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "reset",
+      "description": "Reset current HEAD to the specified state",
+      "tokens": [
+        {
+          "name": "commit",
+          "description": "Commit to reset to (defaults to HEAD)",
+          "type": "String",
+          "required": false,
+          "positional": true
+        },
+        {
+          "name": "pathspec",
+          "description": "Paths to reset in the index",
+          "type": "File",
+          "required": false,
+          "positional": true,
+          "data_source": {
+            "resolver": "git:status_files"
+          }
+        },
+        {
+          "name": "soft",
+          "description": "Reset HEAD only, leave index and working tree unchanged",
+          "type": "Boolean",
+          "flag": "--soft",
+          "required": false
+        },
+        {
+          "name": "mixed",
+          "description": "Reset HEAD and index, leave working tree unchanged (default)",
+          "type": "Boolean",
+          "flag": "--mixed",
+          "required": false
+        },
+        {
+          "name": "hard",
+          "description": "Reset HEAD, index, and working tree",
+          "type": "Boolean",
+          "flag": "--hard",
+          "required": false
+        },
+        {
+          "name": "merge",
+          "description": "Reset HEAD and index, update working tree files that differ",
+          "type": "Boolean",
+          "flag": "--merge",
+          "required": false
+        },
+        {
+          "name": "keep",
+          "description": "Reset HEAD, update working tree files that differ between commit and HEAD",
+          "type": "Boolean",
+          "flag": "--keep",
+          "required": false
+        },
+        {
+          "name": "patch",
+          "description": "Interactively select hunks to reset",
+          "type": "Boolean",
+          "flag": "--patch",
+          "aliases": ["-p"],
+          "required": false
+        },
+        {
+          "name": "quiet",
+          "description": "Be quiet, only report errors",
+          "type": "Boolean",
+          "flag": "--quiet",
+          "aliases": ["-q"],
+          "required": false
+        },
+        {
+          "name": "recurse-submodules",
+          "description": "Recursively reset submodule working trees",
+          "type": "Boolean",
+          "flag": "--recurse-submodules",
+          "required": false
+        },
+        {
+          "name": "pathspec-from-file",
+          "description": "Read pathspec from file instead of command line",
+          "type": "File",
+          "flag": "--pathspec-from-file",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "revert",
+      "description": "Revert some existing commits",
+      "tokens": [
+        {
+          "name": "commit",
+          "description": "Commits to revert",
+          "type": "String",
+          "required": true,
+          "positional": true
+        },
+        {
+          "name": "edit",
+          "description": "Edit the commit message before committing the revert",
+          "type": "Boolean",
+          "flag": "--edit",
+          "aliases": ["-e"],
+          "required": false
+        },
+        {
+          "name": "no-edit",
+          "description": "Do not start the commit message editor",
+          "type": "Boolean",
+          "flag": "--no-edit",
+          "required": false
+        },
+        {
+          "name": "mainline",
+          "description": "Specify the parent number for reverting a merge commit",
+          "type": "Number",
+          "flag": "--mainline",
+          "aliases": ["-m"],
+          "required": false
+        },
+        {
+          "name": "no-commit",
+          "description": "Apply changes to working tree and index without committing",
+          "type": "Boolean",
+          "flag": "--no-commit",
+          "aliases": ["-n"],
+          "required": false
+        },
+        {
+          "name": "signoff",
+          "description": "Add a Signed-off-by trailer",
+          "type": "Boolean",
+          "flag": "--signoff",
+          "aliases": ["-s"],
+          "required": false
+        },
+        {
+          "name": "gpg-sign",
+          "description": "GPG-sign commits",
+          "type": "Boolean",
+          "flag": "--gpg-sign",
+          "aliases": ["-S"],
+          "required": false
+        },
+        {
+          "name": "strategy",
+          "description": "Use the given merge strategy",
+          "type": "Enum",
+          "flag": "--strategy",
+          "required": false,
+          "enum_values": ["ort", "octopus", "ours", "subtree"]
+        },
+        {
+          "name": "strategy-option",
+          "description": "Pass strategy-specific option through to the merge strategy",
+          "type": "String",
+          "flag": "--strategy-option",
+          "aliases": ["-X"],
+          "required": false
+        },
+        {
+          "name": "cleanup",
+          "description": "How to clean up the commit message",
+          "type": "Enum",
+          "flag": "--cleanup",
+          "required": false,
+          "enum_values": ["strip", "whitespace", "verbatim", "scissors", "default"]
+        },
+        {
+          "name": "continue",
+          "description": "Continue the revert after resolving conflicts",
+          "type": "Boolean",
+          "flag": "--continue",
+          "required": false
+        },
+        {
+          "name": "skip",
+          "description": "Skip the current commit and continue",
+          "type": "Boolean",
+          "flag": "--skip",
+          "required": false
+        },
+        {
+          "name": "abort",
+          "description": "Cancel the revert and return to pre-revert state",
+          "type": "Boolean",
+          "flag": "--abort",
+          "required": false
+        },
+        {
+          "name": "quit",
+          "description": "Forget about the revert in progress",
+          "type": "Boolean",
+          "flag": "--quit",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "cherry-pick",
+      "description": "Apply the changes introduced by some existing commits",
+      "tokens": [
+        {
+          "name": "commit",
+          "description": "Commits to cherry-pick",
+          "type": "String",
+          "required": true,
+          "positional": true
+        },
+        {
+          "name": "edit",
+          "description": "Edit the commit message before committing",
+          "type": "Boolean",
+          "flag": "--edit",
+          "aliases": ["-e"],
+          "required": false
+        },
+        {
+          "name": "no-commit",
+          "description": "Apply changes without making any commit",
+          "type": "Boolean",
+          "flag": "--no-commit",
+          "aliases": ["-n"],
+          "required": false
+        },
+        {
+          "name": "mainline",
+          "description": "Specify the parent number for cherry-picking a merge commit",
+          "type": "Number",
+          "flag": "--mainline",
+          "aliases": ["-m"],
+          "required": false
+        },
+        {
+          "name": "signoff",
+          "description": "Add a Signed-off-by trailer",
+          "type": "Boolean",
+          "flag": "--signoff",
+          "aliases": ["-s"],
+          "required": false
+        },
+        {
+          "name": "gpg-sign",
+          "description": "GPG-sign commits",
+          "type": "Boolean",
+          "flag": "--gpg-sign",
+          "aliases": ["-S"],
+          "required": false
+        },
+        {
+          "name": "x",
+          "description": "Append 'cherry picked from commit ...' to the commit message",
+          "type": "Boolean",
+          "flag": "-x",
+          "required": false
+        },
+        {
+          "name": "ff",
+          "description": "If current HEAD is the same as the parent, fast-forward instead",
+          "type": "Boolean",
+          "flag": "--ff",
+          "required": false
+        },
+        {
+          "name": "strategy",
+          "description": "Use the given merge strategy",
+          "type": "Enum",
+          "flag": "--strategy",
+          "required": false,
+          "enum_values": ["ort", "octopus", "ours", "subtree"]
+        },
+        {
+          "name": "strategy-option",
+          "description": "Pass strategy-specific option to the merge strategy",
+          "type": "String",
+          "flag": "--strategy-option",
+          "aliases": ["-X"],
+          "required": false
+        },
+        {
+          "name": "cleanup",
+          "description": "How to clean up the commit message",
+          "type": "Enum",
+          "flag": "--cleanup",
+          "required": false,
+          "enum_values": ["strip", "whitespace", "verbatim", "scissors", "default"]
+        },
+        {
+          "name": "allow-empty",
+          "description": "Allow cherry-picking an empty commit",
+          "type": "Boolean",
+          "flag": "--allow-empty",
+          "required": false
+        },
+        {
+          "name": "allow-empty-message",
+          "description": "Allow cherry-picking with an empty commit message",
+          "type": "Boolean",
+          "flag": "--allow-empty-message",
+          "required": false
+        },
+        {
+          "name": "continue",
+          "description": "Continue the cherry-pick after resolving conflicts",
+          "type": "Boolean",
+          "flag": "--continue",
+          "required": false
+        },
+        {
+          "name": "skip",
+          "description": "Skip the current commit and continue",
+          "type": "Boolean",
+          "flag": "--skip",
+          "required": false
+        },
+        {
+          "name": "abort",
+          "description": "Cancel the cherry-pick and return to pre-operation state",
+          "type": "Boolean",
+          "flag": "--abort",
+          "required": false
+        },
+        {
+          "name": "quit",
+          "description": "Forget about the cherry-pick in progress",
+          "type": "Boolean",
+          "flag": "--quit",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "show",
+      "description": "Show various types of objects",
+      "tokens": [
+        {
+          "name": "object",
+          "description": "Object to show (defaults to HEAD)",
+          "type": "String",
+          "required": false,
+          "positional": true
+        },
+        {
+          "name": "pretty",
+          "description": "Pretty-print the commit logs in a given format",
+          "type": "Enum",
+          "flag": "--pretty",
+          "aliases": ["--format"],
+          "required": false,
+          "enum_values": ["oneline", "short", "medium", "full", "fuller", "reference", "email", "raw"]
+        },
+        {
+          "name": "oneline",
+          "description": "Shorthand for --pretty=oneline --abbrev-commit",
+          "type": "Boolean",
+          "flag": "--oneline",
+          "required": false
+        },
+        {
+          "name": "abbrev-commit",
+          "description": "Show abbreviated commit object name",
+          "type": "Boolean",
+          "flag": "--abbrev-commit",
+          "required": false
+        },
+        {
+          "name": "no-abbrev-commit",
+          "description": "Show the full commit object name",
+          "type": "Boolean",
+          "flag": "--no-abbrev-commit",
+          "required": false
+        },
+        {
+          "name": "patch",
+          "description": "Generate patch output",
+          "type": "Boolean",
+          "flag": "--patch",
+          "aliases": ["-p"],
+          "required": false
+        },
+        {
+          "name": "no-patch",
+          "description": "Suppress diff output",
+          "type": "Boolean",
+          "flag": "--no-patch",
+          "aliases": ["-s"],
+          "required": false
+        },
+        {
+          "name": "stat",
+          "description": "Generate a diffstat",
+          "type": "Boolean",
+          "flag": "--stat",
+          "required": false
+        },
+        {
+          "name": "shortstat",
+          "description": "Show only the last line of --stat",
+          "type": "Boolean",
+          "flag": "--shortstat",
+          "required": false
+        },
+        {
+          "name": "name-only",
+          "description": "Show only names of changed files",
+          "type": "Boolean",
+          "flag": "--name-only",
+          "required": false
+        },
+        {
+          "name": "name-status",
+          "description": "Show names and status of changed files",
+          "type": "Boolean",
+          "flag": "--name-status",
+          "required": false
+        },
+        {
+          "name": "encoding",
+          "description": "Re-code commit log message in the given encoding",
+          "type": "String",
+          "flag": "--encoding",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "description": "Show notes that annotate the commit",
+          "type": "Boolean",
+          "flag": "--notes",
+          "required": false
+        },
+        {
+          "name": "no-notes",
+          "description": "Do not show notes",
+          "type": "Boolean",
+          "flag": "--no-notes",
+          "required": false
+        },
+        {
+          "name": "diff-algorithm",
+          "description": "Choose a diff algorithm",
+          "type": "Enum",
+          "flag": "--diff-algorithm",
+          "required": false,
+          "enum_values": ["patience", "minimal", "histogram", "myers", "default"]
+        },
+        {
+          "name": "color",
+          "description": "Show colored diff",
+          "type": "Enum",
+          "flag": "--color",
+          "required": false,
+          "enum_values": ["always", "never", "auto"]
+        },
+        {
+          "name": "no-color",
+          "description": "Turn off colored diff",
+          "type": "Boolean",
+          "flag": "--no-color",
+          "required": false
+        },
+        {
+          "name": "expand-tabs",
+          "description": "Perform tab expansion in the log message",
+          "type": "Number",
+          "flag": "--expand-tabs",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

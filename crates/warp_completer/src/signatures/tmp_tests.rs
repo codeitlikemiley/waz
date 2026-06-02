@@ -16,6 +16,7 @@ fn test_build_assembled_command() {
             token_type: TokenType::Enum,
             default: None,
             values: Some(vec!["main".to_string(), "dev".to_string()]),
+            aliases: vec![],
             data_source: None,
         }],
         verified: false,
@@ -43,6 +44,7 @@ fn test_extract_token_values() {
             token_type: TokenType::Enum,
             default: None,
             values: None,
+            aliases: vec![],
             data_source: None,
         }
     ];
@@ -111,6 +113,7 @@ fn test_build_assembled_command_no_placeholders() {
                 token_type: TokenType::Enum,
                 default: None,
                 values: Some(vec!["main".to_string(), "dev".to_string()]),
+                aliases: vec![],
                 data_source: None,
             },
             TokenDef {
@@ -121,6 +124,7 @@ fn test_build_assembled_command_no_placeholders() {
                 token_type: TokenType::Boolean,
                 default: Some("false".to_string()),
                 values: None,
+                aliases: vec![],
                 data_source: None,
             },
         ],
@@ -152,6 +156,7 @@ fn test_extract_token_values_no_placeholders() {
             token_type: TokenType::Enum,
             default: None,
             values: Some(vec!["main".to_string(), "dev".to_string()]),
+            aliases: vec![],
             data_source: None,
         },
         TokenDef {
@@ -162,6 +167,7 @@ fn test_extract_token_values_no_placeholders() {
             token_type: TokenType::Boolean,
             default: Some("false".to_string()),
             values: None,
+            aliases: vec![],
             data_source: None,
         },
     ];
@@ -190,10 +196,12 @@ fn test_resolve_command_data_source() {
             token_type: TokenType::Enum,
             default: None,
             values: None,
+            aliases: vec![],
             data_source: Some(DataSource {
                 command: Some("echo \"first\nsecond\"".to_string()),
                 resolver: None,
                 parse: "lines".to_string(),
+                fallback: None,
             }),
         }],
         verified: false,
@@ -226,10 +234,12 @@ fn test_resolve_command_data_source_words() {
             token_type: TokenType::Enum,
             default: None,
             values: None,
+            aliases: vec![],
             data_source: Some(DataSource {
                 command: Some("echo \"one two\"".to_string()),
                 resolver: None,
                 parse: "words".to_string(),
+                fallback: None,
             }),
         }],
         verified: false,

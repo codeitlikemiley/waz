@@ -7017,6 +7017,7 @@ fn test_tmp_path_completions() {
                     default: None,
                     values: None,
                     flag: None,
+                    aliases: vec![],
                     data_source: None,
                 }
             ],
@@ -7133,6 +7134,7 @@ fn test_tmp_form_panel_confirm_and_shift_tab() {
                     default: None,
                     values: None,
                     flag: None,
+                    aliases: vec![],
                     data_source: None,
                 }
             ],

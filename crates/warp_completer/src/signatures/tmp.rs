@@ -12,9 +12,13 @@ pub struct SchemaFile {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SchemaMeta {
     #[serde(default)]
+    pub schema_version: u32,
+    #[serde(default)]
     pub tool: String,
     #[serde(default)]
     pub version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     #[serde(default = "default_generated_by")]
     pub generated_by: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -25,6 +29,10 @@ pub struct SchemaMeta {
     pub verified_at: Option<String>,
     #[serde(default = "default_coverage")]
     pub coverage: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub discovery_method: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub discovery_log: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub waz_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -63,6 +71,8 @@ pub struct TokenDef {
     pub values: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flag: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data_source: Option<DataSource>,
 }
@@ -75,6 +85,8 @@ pub struct DataSource {
     pub resolver: Option<String>,
     #[serde(default = "default_parse_mode")]
     pub parse: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback: Option<Box<DataSource>>,
 }
 
 fn default_parse_mode() -> String { "lines".to_string() }
@@ -155,13 +167,7 @@ fn binary_exists(binary: &str) -> bool {
 pub fn resolve_data_sources(entry: &mut CommandEntry, cwd: &str) {
     for token in &mut entry.tokens {
         if let Some(ref ds) = token.data_source {
-            let values = if let Some(ref resolver) = ds.resolver {
-                resolve_builtin(resolver, cwd)
-            } else if let Some(ref cmd) = ds.command {
-                run_data_source_command(cmd, &ds.parse, cwd)
-            } else {
-                None
-            };
+            let values = resolve_single_data_source(ds, cwd);
 
             if let Some(values) = values {
                 if !values.is_empty() {
@@ -170,6 +176,25 @@ pub fn resolve_data_sources(entry: &mut CommandEntry, cwd: &str) {
                 }
             }
         }
+    }
+}
+
+fn resolve_single_data_source(ds: &DataSource, cwd: &str) -> Option<Vec<String>> {
+    let values = if let Some(ref resolver) = ds.resolver {
+        resolve_builtin(resolver, cwd)
+    } else if let Some(ref cmd) = ds.command {
+        run_data_source_command(cmd, &ds.parse, cwd)
+    } else {
+        None
+    };
+
+    // If primary resolution returned results, use them; otherwise try fallback
+    if values.as_ref().is_some_and(|v| !v.is_empty()) {
+        values
+    } else if let Some(ref fallback) = ds.fallback {
+        resolve_single_data_source(fallback, cwd)
+    } else {
+        values
     }
 }
 
@@ -206,6 +231,7 @@ fn resolve_builtin(resolver: &str, cwd: &str) -> Option<Vec<String>> {
         (Some("git"), Some("branches")) => git_resolve_branches(cwd),
         (Some("git"), Some("remotes")) => git_resolve_remotes(cwd),
         (Some("git"), Some("status_files")) => git_resolve_status_files(cwd),
+        (Some("git"), Some("tags")) => git_resolve_tags(cwd),
         (Some("npm"), Some("scripts")) => npm_resolve_scripts(cwd),
         _ => None,
     }
@@ -525,6 +551,26 @@ fn git_resolve_status_files(cwd: &str) -> Option<Vec<String>> {
 
 #[cfg(target_family = "wasm")]
 fn git_resolve_status_files(_cwd: &str) -> Option<Vec<String>> {
+    None
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn git_resolve_tags(cwd: &str) -> Option<Vec<String>> {
+    let output = command::blocking::Command::new("git")
+        .arg("tag")
+        .current_dir(cwd)
+        .output()
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let tags: Vec<String> = stdout.lines()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if tags.is_empty() { None } else { Some(tags) }
+}
+
+#[cfg(target_family = "wasm")]
+fn git_resolve_tags(_cwd: &str) -> Option<Vec<String>> {
     None
 }
 
