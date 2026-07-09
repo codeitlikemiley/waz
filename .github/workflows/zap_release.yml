@@ -52,7 +52,7 @@ jobs:
     steps:
       # fetch-depth: 0 让 git-cliff 能看到完整 tag/commit 历史;
       # shallow clone 下 `git describe` 找不到上一个 tag,会退化成空 release notes。
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
@@ -161,7 +161,7 @@ jobs:
             dmg_name_suffix: intel
             runner: macos-26-intel # Pro standard Intel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
         with:
           ref: ${{ needs.prepare_metadata.outputs.release_branch }}
 
@@ -250,7 +250,7 @@ jobs:
     needs: prepare_metadata
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
         with:
           ref: ${{ needs.prepare_metadata.outputs.release_branch }}
 
@@ -292,7 +292,7 @@ jobs:
     # (Debian 11 / Ubuntu 20.04 + 等)。
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
         with:
           ref: ${{ needs.prepare_metadata.outputs.release_branch }}
 
