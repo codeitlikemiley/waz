@@ -5,19 +5,21 @@
 
 use crate::config::Config;
 use crate::context::RuntimeContext;
+use crate::jobs::{self, finish_job, GenerateJob};
 use crate::llm;
 use crate::plugin;
 use crate::tui::app::{CommandEntry, SchemaFile, SchemaMeta};
 #[cfg(test)]
 use crate::tui::app::{DataSource, TokenType};
 use crate::tui::cargo_schema::CargoContext;
-use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 const CURATED_SCHEMAS: &[(&str, &str)] = &[
     ("bun.json", include_str!("../schemas/curated/bun.json")),
@@ -160,9 +162,9 @@ pub fn load_all_schemas_with_context(
 
 /// Check if a schema should be loaded based on its requirements.
 fn should_load_schema(meta: &SchemaMeta, cwd: &str, context: Option<&RuntimeContext>) -> bool {
-    // Check requires_file (e.g. "Cargo.toml", "package.json")
+    // Check requires_file (e.g. "Cargo.toml", "package.json") at cwd or an ancestor.
     if let Some(ref file) = meta.requires_file {
-        if !std::path::Path::new(cwd).join(file).exists() {
+        if !file_exists_here_or_up(cwd, file) {
             return false;
         }
     }
@@ -184,6 +186,20 @@ fn should_load_schema(meta: &SchemaMeta, cwd: &str, context: Option<&RuntimeCont
     }
 
     true
+}
+
+fn file_exists_here_or_up(cwd: &str, file: &str) -> bool {
+    let mut dir = Path::new(cwd);
+    for _ in 0..16 {
+        if dir.join(file).is_file() {
+            return true;
+        }
+        match dir.parent() {
+            Some(parent) => dir = parent,
+            None => break,
+        }
+    }
+    false
 }
 
 fn which_exists(cmd: &str) -> bool {
@@ -227,14 +243,34 @@ fn binary_on_path(cmd: &str) -> bool {
 }
 
 /// Resolve any `data_source` fields in tokens (shell commands or built-in resolvers).
-fn resolve_data_sources(entry: &mut CommandEntry, cwd: &str, context: Option<&RuntimeContext>) {
+fn resolve_data_sources(
+    entry: &mut CommandEntry,
+    cwd: &str,
+    context: Option<&RuntimeContext>,
+    token_values: Option<&[String]>,
+) {
+    let current: Vec<(String, String)> = entry
+        .tokens
+        .iter()
+        .enumerate()
+        .map(|(i, t)| {
+            let live = token_values
+                .and_then(|vs| vs.get(i))
+                .filter(|s| !s.is_empty())
+                .cloned();
+            (
+                t.name.clone(),
+                live.or_else(|| t.default.clone()).unwrap_or_default(),
+            )
+        })
+        .collect();
+
     for token in &mut entry.tokens {
         if let Some(ref ds) = token.data_source {
             let values = if let Some(ref resolver) = ds.resolver {
-                // Built-in resolver
-                resolve_builtin(resolver, cwd, context)
+                let resolved = expand_resolver(resolver, ds.depends_on.as_deref(), &current);
+                resolve_builtin(&resolved, cwd, context)
             } else if let Some(ref cmd) = ds.command {
-                // Shell command
                 run_data_source_command(cmd, &ds.parse, cwd)
             } else {
                 None
@@ -250,9 +286,36 @@ fn resolve_data_sources(entry: &mut CommandEntry, cwd: &str, context: Option<&Ru
     }
 }
 
+fn expand_resolver(
+    resolver: &str,
+    depends_on: Option<&str>,
+    current: &[(String, String)],
+) -> String {
+    if resolver != "waz:models" {
+        return resolver.to_string();
+    }
+    let from_token = depends_on.and_then(|name| {
+        current
+            .iter()
+            .find(|(n, v)| n == name && !v.is_empty())
+            .map(|(_, v)| v.clone())
+    });
+    let provider = from_token.unwrap_or_else(default_model_provider);
+    format!("waz:models:{provider}")
+}
+
+fn default_model_provider() -> String {
+    let name = crate::config::Config::load().llm.default;
+    if name.is_empty() {
+        "gemini".into()
+    } else {
+        name
+    }
+}
+
 /// Public wrapper for verification TUI to test data sources.
 pub fn resolve_data_sources_pub(entry: &mut CommandEntry, cwd: &str) {
-    resolve_data_sources(entry, cwd, None);
+    resolve_data_sources(entry, cwd, None, None);
 }
 
 pub fn resolve_data_sources_pub_ctx(
@@ -260,17 +323,75 @@ pub fn resolve_data_sources_pub_ctx(
     cwd: &str,
     context: Option<&RuntimeContext>,
 ) {
-    resolve_data_sources(entry, cwd, context);
+    resolve_data_sources(entry, cwd, context, None);
 }
+
+pub fn resolve_data_sources_pub_ctx_values(
+    entry: &mut CommandEntry,
+    cwd: &str,
+    context: Option<&RuntimeContext>,
+    token_values: &[String],
+) {
+    resolve_data_sources(entry, cwd, context, Some(token_values));
+}
+
+const DATA_SOURCE_TIMEOUT: Duration = Duration::from_secs(3);
+const DATA_SOURCE_MAX_BYTES: usize = 64 * 1024;
 
 /// Run a shell command and parse its output into values.
 fn run_data_source_command(cmd: &str, parse: &str, cwd: &str) -> Option<Vec<String>> {
-    let output = Command::new("sh")
-        .args(["-c", cmd])
+    run_data_source_command_timeout(cmd, parse, cwd, DATA_SOURCE_TIMEOUT)
+}
+
+fn run_data_source_command_timeout(
+    cmd: &str,
+    parse: &str,
+    cwd: &str,
+    timeout: Duration,
+) -> Option<Vec<String>> {
+    let mut command = {
+        #[cfg(windows)]
+        {
+            let mut c = Command::new("cmd");
+            c.args(["/C", cmd]);
+            c
+        }
+        #[cfg(not(windows))]
+        {
+            let mut c = Command::new("sh");
+            c.args(["-c", cmd]);
+            c
+        }
+    };
+    command
         .current_dir(cwd)
-        .output()
-        .ok()?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    let mut child = command.spawn().ok()?;
+    let start = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if start.elapsed() >= timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    eprintln!("Warning: data_source command timed out");
+                    return None;
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Err(_) => return None,
+        }
+    }
+    let mut buf = Vec::new();
+    if let Some(mut out) = child.stdout.take() {
+        let _ = out.read_to_end(&mut buf);
+    }
+    if buf.len() > DATA_SOURCE_MAX_BYTES {
+        buf.truncate(DATA_SOURCE_MAX_BYTES);
+    }
+    let stdout = String::from_utf8_lossy(&buf);
     let values: Vec<String> = match parse {
         "words" => stdout.split_whitespace().map(|s| s.to_string()).collect(),
         _ => stdout
@@ -314,7 +435,7 @@ fn resolve_builtin(
         (Some("git"), Some("status_files"), filter) => git_resolve_status_files(cwd, filter),
         (Some("npm"), Some("scripts"), _) => npm_resolve_scripts(cwd),
         (Some("waz"), Some("models"), Some(provider)) => waz_resolve_models(provider),
-        (Some("waz"), Some("models"), None) => waz_resolve_models("gemini"),
+        (Some("waz"), Some("models"), None) => waz_resolve_models(&default_model_provider()),
         (Some("waz"), Some("context"), Some(field)) => resolve_waz_context(field, context),
         (Some("waz"), Some("context"), None) => resolve_waz_context("file_path", context),
         _ => {
@@ -881,72 +1002,7 @@ pub fn list_schemas() {
     eprintln!("\n📁 {}", dir.display());
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GenerateJob {
-    pub id: String,
-    pub tool: String,
-    pub status: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pid: Option<u32>,
-    pub started_at: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub finished_at: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub command_count: Option<usize>,
-    pub log_path: String,
-    pub schema_path: String,
-}
-
-pub fn jobs_dir() -> PathBuf {
-    let dir = dirs::data_dir()
-        .unwrap_or_else(|| {
-            dirs::home_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join(".local")
-                .join("share")
-        })
-        .join("waz")
-        .join("jobs");
-    let _ = std::fs::create_dir_all(&dir);
-    dir
-}
-
-fn job_path(id: &str) -> PathBuf {
-    jobs_dir().join(format!("{id}.json"))
-}
-
-fn write_job(job: &GenerateJob) {
-    if let Ok(body) = serde_json::to_vec_pretty(job) {
-        let _ = std::fs::write(job_path(&job.id), body);
-    }
-}
-
-fn read_job(id: &str) -> Option<GenerateJob> {
-    let raw = std::fs::read_to_string(job_path(id)).ok()?;
-    serde_json::from_str(&raw).ok()
-}
-
-pub fn list_jobs() -> Vec<GenerateJob> {
-    let mut jobs = Vec::new();
-    let Ok(entries) = std::fs::read_dir(jobs_dir()) else {
-        return jobs;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("json") {
-            continue;
-        }
-        if let Ok(raw) = std::fs::read_to_string(&path) {
-            if let Ok(job) = serde_json::from_str::<GenerateJob>(&raw) {
-                jobs.push(job);
-            }
-        }
-    }
-    jobs.sort_by(|a, b| b.started_at.cmp(&a.started_at));
-    jobs
-}
+pub use crate::jobs::list_jobs;
 
 /// Start schema generation. Default is a detached child so the shell is free.
 pub fn start_generate(
@@ -968,14 +1024,6 @@ pub fn start_generate(
     if wait {
         let config = Config::load();
         let commands = generate_schema(&config, tool, model, provider)?;
-        if let Ok(id) = std::env::var("WAZ_GENERATE_JOB") {
-            if let Some(mut job) = read_job(&id) {
-                job.status = "done".into();
-                job.finished_at = Some(chrono::Utc::now().to_rfc3339());
-                job.command_count = Some(commands.len());
-                write_job(&job);
-            }
-        }
         return Ok(json!({
             "status": "done",
             "tool": tool,
@@ -988,7 +1036,7 @@ pub fn start_generate(
         .chars()
         .take(8)
         .collect::<String>();
-    let log_path = jobs_dir().join(format!("{id}.log"));
+    let log_path = jobs::jobs_dir().join(format!("{id}.log"));
     let schema_path = schemas_dir().join(format!("{tool}.json"));
     let job = GenerateJob {
         id: id.clone(),
@@ -1002,7 +1050,7 @@ pub fn start_generate(
         log_path: log_path.display().to_string(),
         schema_path: schema_path.display().to_string(),
     };
-    write_job(&job);
+    jobs::write_job(&job);
 
     let exe = std::env::current_exe().map_err(|e| format!("current exe: {e}"))?;
     let log = std::fs::File::create(&log_path).map_err(|e| format!("job log: {e}"))?;
@@ -1034,39 +1082,28 @@ pub fn start_generate(
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x00000200 | 0x00000008);
     }
-    let child = cmd.spawn().map_err(|e| format!("spawn generate: {e}"))?;
+    let child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            let mut job = job;
+            job.status = "error".into();
+            job.error = Some(format!("spawn generate: {e}"));
+            job.finished_at = Some(chrono::Utc::now().to_rfc3339());
+            jobs::write_job(&job);
+            return Err(format!("spawn generate: {e}"));
+        }
+    };
     let mut job = job;
     job.status = "running".into();
     job.pid = Some(child.id());
-    write_job(&job);
+    jobs::write_job(&job);
     Ok(json!({
         "status": "running",
         "job_id": id,
         "tool": tool,
         "log": job.log_path,
-        "hint": "Shell is free. Check with `waz generate --jobs` or waz_generate_jobs.",
+        "hint": format!("Shell is free. Check with `waz generate --jobs {id}` or `waz generate --wait --job {id}`."),
     }))
-}
-
-fn finish_job(result: Result<usize, String>) {
-    let Ok(id) = std::env::var("WAZ_GENERATE_JOB") else {
-        return;
-    };
-    let Some(mut job) = read_job(&id) else {
-        return;
-    };
-    job.finished_at = Some(chrono::Utc::now().to_rfc3339());
-    match result {
-        Ok(n) => {
-            job.status = "done".into();
-            job.command_count = Some(n);
-        }
-        Err(e) => {
-            job.status = "error".into();
-            job.error = Some(e);
-        }
-    }
-    write_job(&job);
 }
 
 /// Generate a TMP schema for a CLI tool using AI.
@@ -1079,14 +1116,10 @@ pub fn generate_schema(
     model_override: Option<&str>,
     provider_override: Option<&str>,
 ) -> Result<Vec<CommandEntry>, String> {
-    let which = Command::new("which").arg(tool).output();
-    match which {
-        Ok(out) if out.status.success() => {}
-        _ => {
-            let err = format!("'{tool}' not found on PATH");
-            finish_job(Err(err.clone()));
-            return Err(err);
-        }
+    if !binary_on_path(tool) {
+        let err = format!("'{tool}' not found on PATH");
+        finish_job(Err(err.clone()));
+        return Err(err);
     }
 
     eprintln!("🔍 Harvesting {tool} help (nested subcommands)...");
@@ -1992,10 +2025,12 @@ Options:
                     command: None,
                     resolver: Some("nope:missing".to_string()),
                     parse: "lines".to_string(),
+                    depends_on: None,
                 }),
+                repeat: false,
             }],
         };
-        resolve_data_sources(&mut entry, "/tmp", None);
+        resolve_data_sources(&mut entry, "/tmp", None, None);
         assert_eq!(entry.command, "git add");
         assert_eq!(entry.tokens[0].token_type, TokenType::File);
         assert!(entry.tokens[0].values.is_none());
@@ -2038,5 +2073,44 @@ R  old.rs -> renamed.rs
     #[test]
     fn binary_on_path_finds_sh_or_self() {
         assert!(binary_on_path("sh") || binary_on_path("bash") || !cfg!(unix));
+    }
+
+    #[test]
+    fn requires_file_walks_parents() {
+        let root = std::env::temp_dir().join(format!("waz-req-{}", uuid::Uuid::new_v4()));
+        let nested = root.join("crates").join("foo");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(root.join("Cargo.toml"), "[package]\nname=\"x\"\n").unwrap();
+        let meta = SchemaMeta {
+            tool: "cargo".into(),
+            requires_file: Some("Cargo.toml".into()),
+            ..SchemaMeta::default()
+        };
+        assert!(should_load_schema(&meta, nested.to_str().unwrap(), None));
+        let elsewhere = std::env::temp_dir().join(format!("waz-noreq-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        assert!(!should_load_schema(
+            &meta,
+            elsewhere.to_str().unwrap(),
+            None
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&elsewhere);
+    }
+
+    #[test]
+    fn data_source_command_times_out() {
+        #[cfg(unix)]
+        {
+            let start = Instant::now();
+            let got = run_data_source_command_timeout(
+                "sleep 10",
+                "lines",
+                ".",
+                Duration::from_millis(200),
+            );
+            assert!(got.is_none());
+            assert!(start.elapsed() < Duration::from_secs(2));
+        }
     }
 }

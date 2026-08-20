@@ -64,15 +64,6 @@ pub fn ask_structured_on(
 }
 
 /// Ask the LLM a natural language question (legacy text format).
-pub fn ask(
-    config: &Config,
-    query: &str,
-    cwd: &str,
-    recent_commands: &[String],
-) -> Option<AskResult> {
-    ask_on(config, query, cwd, recent_commands, None)
-}
-
 pub fn ask_on(
     config: &Config,
     query: &str,

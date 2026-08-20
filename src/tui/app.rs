@@ -140,6 +140,9 @@ pub struct TokenDef {
     /// Dynamic data source: run a shell command or built-in resolver at load time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data_source: Option<DataSource>,
+    /// If true, whitespace-split the value and emit each piece (multi `git add` paths).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub repeat: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -153,6 +156,9 @@ pub struct DataSource {
     /// How to parse output: "lines" (split by newline) or "words" (split by whitespace)
     #[serde(default = "default_parse_mode")]
     pub parse: String,
+    /// Re-resolve this source when the named sibling token changes (e.g. `"provider"`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub depends_on: Option<String>,
 }
 
 fn default_parse_mode() -> String {
@@ -245,42 +251,19 @@ impl App {
         if query.is_empty() {
             self.filtered_commands = (0..self.command_list.len()).collect();
         } else {
-            // Score each command for relevance — higher is better
             let mut scored: Vec<(usize, u8)> = self
                 .command_list
                 .iter()
                 .enumerate()
                 .filter_map(|(i, cmd)| {
-                    let subcommand = cmd
-                        .command
-                        .strip_prefix(&format!("{} ", cmd.group))
-                        .unwrap_or(&cmd.command)
-                        .to_lowercase();
-                    let full_cmd = cmd.command.to_lowercase();
-
-                    // Scoring: prioritize subcommand name over description
-                    if subcommand == query {
-                        Some((i, 10)) // Exact subcommand match
-                    } else if subcommand.starts_with(&query) {
-                        Some((i, 5)) // Subcommand starts with query
-                    } else if subcommand.contains(&query) {
-                        Some((i, 3)) // Subcommand contains query
-                    } else if full_cmd.starts_with(&query) {
-                        Some((i, 4)) // Full command starts with query (e.g. "git commit")
-                    } else if full_cmd.contains(&query) {
-                        Some((i, 2)) // Full command contains query
-                    } else {
-                        None // Don't match on description alone — too noisy
-                    }
+                    score_command_query(&cmd.command, &cmd.group, &query).map(|s| (i, s))
                 })
                 .collect();
 
-            // Sort by score descending so best matches come first
             scored.sort_by(|a, b| b.1.cmp(&a.1));
             self.filtered_commands = scored.into_iter().map(|(i, _)| i).collect();
         }
 
-        // Always reset selection when filter changes
         self.selected_index = 0;
     }
 
@@ -374,6 +357,72 @@ impl App {
 
 /// Serialize a TMP command + filled tokens to a shell argv string.
 /// Flags first, then positionals — this order is part of tmp/1.
+/// Score a TMP command against a query. Higher is better. `None` = no match.
+/// Does not search descriptions.
+pub fn score_command_query(command: &str, group: &str, query: &str) -> Option<u8> {
+    if query.is_empty() {
+        return Some(0);
+    }
+    let query = query.to_lowercase();
+    let subcommand = command
+        .strip_prefix(&format!("{group} "))
+        .unwrap_or(command)
+        .to_lowercase();
+    let full_cmd = command.to_lowercase();
+
+    if subcommand == query {
+        Some(10)
+    } else if subcommand.starts_with(&query) {
+        Some(5)
+    } else if full_cmd.starts_with(&query) {
+        Some(4)
+    } else if subcommand.contains(&query) {
+        Some(3)
+    } else if full_cmd.contains(&query) {
+        Some(2)
+    } else if query.len() >= 3 && edit_distance_at_most_one(&subcommand, &query) {
+        Some(1)
+    } else {
+        None
+    }
+}
+
+fn edit_distance_at_most_one(a: &str, b: &str) -> bool {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let (short, long) = if a.len() <= b.len() {
+        (&a, &b)
+    } else {
+        (&b, &a)
+    };
+    if long.len() - short.len() > 1 {
+        return false;
+    }
+    if short.len() == long.len() {
+        return short
+            .iter()
+            .zip(long.iter())
+            .filter(|(x, y)| x != y)
+            .count()
+            == 1;
+    }
+    let mut i = 0;
+    let mut j = 0;
+    let mut skipped = false;
+    while i < short.len() && j < long.len() {
+        if short[i] == long[j] {
+            i += 1;
+            j += 1;
+        } else if !skipped {
+            skipped = true;
+            j += 1;
+        } else {
+            return false;
+        }
+    }
+    true
+}
+
 pub fn assemble_command(cmd: &CommandEntry, token_values: &[String]) -> String {
     let mut parts = vec![cmd.command.clone()];
     let mut positional_args: Vec<String> = Vec::new();
@@ -392,11 +441,18 @@ pub fn assemble_command(cmd: &CommandEntry, token_values: &[String]) -> String {
                 }
             }
             TokenType::Enum | TokenType::String | TokenType::File | TokenType::Number => {
-                if let Some(ref f) = token.flag {
-                    parts.push(f.clone());
-                    parts.push(value);
+                let pieces: Vec<&str> = if token.repeat {
+                    value.split_whitespace().filter(|s| !s.is_empty()).collect()
                 } else {
-                    positional_args.push(value);
+                    vec![value.as_str()]
+                };
+                for piece in pieces {
+                    if let Some(ref f) = token.flag {
+                        parts.push(f.clone());
+                        parts.push(piece.to_string());
+                    } else {
+                        positional_args.push(piece.to_string());
+                    }
                 }
             }
         }
@@ -426,6 +482,7 @@ mod tests {
             values: None,
             flag: flag.map(|s| s.to_string()),
             data_source: None,
+            repeat: false,
         }
     }
 
@@ -521,6 +578,64 @@ mod tests {
             app.build_command().as_deref(),
             Some("git add -f src/main.rs")
         );
+    }
+
+    #[test]
+    fn build_command_repeat_splits_positionals() {
+        let mut path = token("path", TokenType::File, None, None);
+        path.repeat = true;
+        let cmd = CommandEntry {
+            command: "git add".into(),
+            description: "Stage".into(),
+            group: "git".into(),
+            verified: true,
+            tokens: vec![path],
+        };
+        let app = app_with(cmd, vec!["src/a.rs src/b.rs"]);
+        assert_eq!(
+            app.build_command().as_deref(),
+            Some("git add src/a.rs src/b.rs")
+        );
+    }
+
+    #[test]
+    fn build_command_without_repeat_keeps_one_positional() {
+        let cmd = CommandEntry {
+            command: "echo".into(),
+            description: "Echo".into(),
+            group: "echo".into(),
+            verified: true,
+            tokens: vec![token("msg", TokenType::String, None, None)],
+        };
+        let app = app_with(cmd, vec!["foo bar"]);
+        assert_eq!(app.build_command().as_deref(), Some("echo foo bar"));
+    }
+
+    #[test]
+    fn build_command_repeat_repeats_flag() {
+        let mut feat = token("features", TokenType::Enum, Some("-F"), None);
+        feat.repeat = true;
+        let cmd = CommandEntry {
+            command: "cargo build".into(),
+            description: "Build".into(),
+            group: "cargo".into(),
+            verified: true,
+            tokens: vec![feat],
+        };
+        let app = app_with(cmd, vec!["json yaml"]);
+        assert_eq!(
+            app.build_command().as_deref(),
+            Some("cargo build -F json -F yaml")
+        );
+    }
+
+    #[test]
+    fn score_fuzzy_commit_typo() {
+        assert_eq!(score_command_query("git commit", "git", "comit"), Some(1));
+        assert_eq!(score_command_query("git commit", "git", "commit"), Some(10));
+        assert!(score_command_query("git commit", "git", "xyzzy").is_none());
+        // Queries shorter than 3 do not use fuzzy; "zz" is not a substring either.
+        assert!(score_command_query("git commit", "git", "zz").is_none());
     }
 
     #[test]

@@ -416,6 +416,7 @@ mod tests {
                 values: Some(vec!["backend".to_string(), "cli".to_string()]),
                 flag: Some("--package".to_string()),
                 data_source: None,
+                repeat: false,
             }],
         }];
 

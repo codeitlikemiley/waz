@@ -2,7 +2,7 @@
 
 use crate::context::RuntimeContext;
 use crate::generate;
-use crate::tui::app::{assemble_command, App, CommandEntry, TokenDef};
+use crate::tui::app::{assemble_command, score_command_query, App, CommandEntry, TokenDef};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -54,9 +54,7 @@ pub fn list(cwd: &str, query: Option<&str>) -> TmpList {
     let mut commands = load_commands(cwd);
     if let Some(q) = query.filter(|q| !q.is_empty()) {
         let q = q.to_lowercase();
-        commands.retain(|c| {
-            c.command.to_lowercase().contains(&q) || c.group.to_lowercase().contains(&q)
-        });
+        commands.retain(|c| score_command_query(&c.command, &c.group, &q).is_some());
     }
     let summaries: Vec<TmpCommandSummary> = commands
         .iter()
@@ -100,6 +98,7 @@ pub fn build(cwd: &str, command: &str, sets: &[String]) -> Result<TmpBuild, Stri
         }
     }
 
+    let mut set_count: HashMap<String, usize> = HashMap::new();
     for spec in sets {
         let (name, value) = spec
             .split_once('=')
@@ -109,8 +108,14 @@ pub fn build(cwd: &str, command: &str, sets: &[String]) -> Result<TmpBuild, Stri
             .iter()
             .position(|t| t.name == name)
             .ok_or_else(|| format!("unknown token '{name}' on {}", cmd.command))?;
-        values[idx] = value.to_string();
-        filled.insert(name.to_string(), value.to_string());
+        let n = set_count.entry(name.to_string()).or_insert(0);
+        if cmd.tokens[idx].repeat && *n > 0 && !values[idx].is_empty() {
+            values[idx] = format!("{} {value}", values[idx]);
+        } else {
+            values[idx] = value.to_string();
+        }
+        *n += 1;
+        filled.insert(name.to_string(), values[idx].clone());
     }
 
     for (i, token) in cmd.tokens.iter().enumerate() {
@@ -181,5 +186,45 @@ mod tests {
         let cwd = env!("CARGO_MANIFEST_DIR");
         let listed = list(cwd, Some("cargo run"));
         assert!(listed.commands.iter().any(|c| c.command == "cargo run"));
+    }
+
+    #[test]
+    fn list_fuzzy_matches_commit_typo() {
+        let cwd = env!("CARGO_MANIFEST_DIR");
+        let listed = list(cwd, Some("comit"));
+        assert!(
+            listed.commands.iter().any(|c| c.command == "git commit"),
+            "expected git commit for query comit, got {:?}",
+            listed
+                .commands
+                .iter()
+                .map(|c| c.command.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn build_git_add_repeat_appends() {
+        let dir = std::env::temp_dir().join(format!("waz-tmp-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("git.json"),
+            include_str!("../schemas/curated/git.json"),
+        )
+        .unwrap();
+        let old = std::env::var("WAZ_SCHEMAS_DIR").ok();
+        std::env::set_var("WAZ_SCHEMAS_DIR", dir.to_str().unwrap());
+        let result = build(".", "git add", &["path=a.rs".into(), "path=b.rs".into()]);
+        match old {
+            Some(v) => std::env::set_var("WAZ_SCHEMAS_DIR", v),
+            None => std::env::remove_var("WAZ_SCHEMAS_DIR"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        let result = result.unwrap();
+        assert_eq!(result.argv, "git add a.rs b.rs");
+        assert_eq!(
+            result.tokens_filled.get("path").map(String::as_str),
+            Some("a.rs b.rs")
+        );
     }
 }

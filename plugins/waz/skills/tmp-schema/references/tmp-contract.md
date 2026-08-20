@@ -37,7 +37,8 @@ You generate **only** the `commands` array.
 | default | string or null | `"false"` not `false` |
 | values | string[] or null | Enum choices |
 | flag | string or null | `--bin` / `-m` / null if positional |
-| data_source | object or null | `{ "resolver": "cargo:bins" }` or `{ "command": "…", "parse": "lines" }` |
+| repeat | bool | default false; whitespace-split value into multiple argv pieces |
+| data_source | object or null | `{ "resolver": "cargo:bins" }` or `{ "command": "…", "parse": "lines" }` (`depends_on` optional) |
 
 ## Built-in resolvers
 

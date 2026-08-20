@@ -1,8 +1,12 @@
-# waz audit — 2026-08-20
+# waz audit — 2026-08-20 (historical)
 
-Full pass over **waz 0.1.7** (`640167f`): code quality, cleanup, performance, and the Token Model Protocol. Goal: improve without breaking existing schemas, the TUI, `waz resolve`, or shell integrations.
+Snapshot of **waz 0.1.7** (`640167f`). Kept as the original findings list.
 
-This is a findings document. Implementation of the recommended stack (tests, P0 fixes, resolver cache, embed schemas, TUI tty fallback, predict `--fast` config skip, delete duplicated command graphs, `docs/tmp.md`) landed after 0.1.7. Additive token fields (`repeat`, `visible_if`, …) remain future work.
+**Status:** P0s from this document landed (WAL, embed schemas, `git:status_files`, TUI tty fallback, PATH walk, `--fast`, curated export, `docs/tmp.md`). Follow-up after 0.1.9: generate job lifecycle, additive `repeat` / `depends_on`, CI, retry-failed predict. `visible_if` / `exclusive_with` are still future.
+
+---
+
+Original text below. Sizes and test counts are as of 0.1.7.
 
 ---
 

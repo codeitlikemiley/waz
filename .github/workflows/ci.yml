@@ -1,0 +1,20 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Lockfile includes crates on edition 2024 (e.g. getrandom 0.4). rustc 1.70
+      # cannot parse those manifests even though Cargo.toml rust-version is 1.70.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D unused -D dead_code
+      - run: cargo test

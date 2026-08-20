@@ -199,8 +199,28 @@ fn run_event_loop<W: io::Write>(
                         }
                     }
                 }
-                KeyCode::Up => app.move_up(),
-                KeyCode::Down => app.move_down(),
+                KeyCode::Up => {
+                    if app.editing_tokens {
+                        if let Some(idx) = app.selected_command {
+                            let name = app.command_list[idx].tokens[app.active_token].name.clone();
+                            app.move_up();
+                            refresh_dependent_tokens(app, idx, &name);
+                        }
+                    } else {
+                        app.move_up();
+                    }
+                }
+                KeyCode::Down => {
+                    if app.editing_tokens {
+                        if let Some(idx) = app.selected_command {
+                            let name = app.command_list[idx].tokens[app.active_token].name.clone();
+                            app.move_down();
+                            refresh_dependent_tokens(app, idx, &name);
+                        }
+                    } else {
+                        app.move_down();
+                    }
+                }
                 KeyCode::PageUp => {
                     app.scroll_offset = app.scroll_offset.saturating_sub(5);
                 }
@@ -605,6 +625,34 @@ fn apply_ai_result(app: &mut App, result: AiResult) -> bool {
     }
 }
 
+fn refresh_dependent_tokens(app: &mut App, cmd_idx: usize, changed: &str) {
+    let has_dep = app.command_list[cmd_idx]
+        .tokens
+        .iter()
+        .any(|t| t.data_source.as_ref().and_then(|d| d.depends_on.as_deref()) == Some(changed));
+    if !has_dep {
+        return;
+    }
+    let cwd = app.cwd.clone();
+    let runtime_context = app.runtime_context.clone();
+    let values = app.token_values.clone();
+    crate::generate::resolve_data_sources_pub_ctx_values(
+        &mut app.command_list[cmd_idx],
+        &cwd,
+        runtime_context.as_ref(),
+        &values,
+    );
+    for (i, t) in app.command_list[cmd_idx].tokens.iter().enumerate() {
+        if t.data_source.as_ref().and_then(|d| d.depends_on.as_deref()) == Some(changed) {
+            if let Some(vals) = &t.values {
+                if !vals.is_empty() {
+                    app.token_values[i] = vals[0].clone();
+                }
+            }
+        }
+    }
+}
+
 fn handle_tab(app: &mut App) {
     if app.editing_tokens {
         // Cycle token value for Enum/Boolean types
@@ -629,40 +677,8 @@ fn handle_tab(app: &mut App) {
                     let idx = values.iter().position(|v| v == current).unwrap_or(0);
                     let next = (idx + 1) % values.len();
                     app.token_values[app.active_token] = values[next].clone();
-
-                    // If this is a "provider" token, re-resolve the "model" token
                     let token_name = token.name.clone();
-                    let new_value = values[next].clone();
-                    if token_name == "provider" {
-                        let runtime_context = app.runtime_context.clone();
-                        if let Some(model_idx) = app.command_list[cmd_idx]
-                            .tokens
-                            .iter()
-                            .position(|t| t.name == "model")
-                        {
-                            // Update the resolver to use the new provider
-                            if let Some(ref mut ds) =
-                                app.command_list[cmd_idx].tokens[model_idx].data_source
-                            {
-                                ds.resolver = Some(format!("waz:models:{}", new_value));
-                            }
-                            // Re-resolve: fetch models from the provider's API
-                            let cwd = app.cwd.clone();
-                            crate::generate::resolve_data_sources_pub_ctx(
-                                &mut app.command_list[cmd_idx],
-                                &cwd,
-                                runtime_context.as_ref(),
-                            );
-                            // Reset model value to first available option
-                            if let Some(ref vals) =
-                                app.command_list[cmd_idx].tokens[model_idx].values
-                            {
-                                if !vals.is_empty() {
-                                    app.token_values[model_idx] = vals[0].clone();
-                                }
-                            }
-                        }
-                    }
+                    refresh_dependent_tokens(app, cmd_idx, &token_name);
                 }
             }
             _ => {

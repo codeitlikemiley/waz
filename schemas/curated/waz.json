@@ -16,8 +16,8 @@
       "verified": true,
       "tokens": [
         { "name": "tool", "description": "CLI tool name", "token_type": "String", "required": true },
-        { "name": "provider", "description": "LLM provider", "token_type": "Enum", "flag": "--provider", "values": ["gemini", "glm", "qwen", "minimax", "openai", "ollama"] },
-        { "name": "model", "description": "AI model (auto-populated from provider)", "token_type": "Enum", "flag": "--model", "data_source": { "resolver": "waz:models:gemini" } },
+        { "name": "provider", "description": "LLM provider", "token_type": "Enum", "flag": "--provider", "values": ["grok", "anthropic", "chatgpt", "gemini", "openai", "ollama", "glm", "qwen", "minimax"] },
+        { "name": "model", "description": "AI model (auto-populated from provider)", "token_type": "Enum", "flag": "--model", "data_source": { "resolver": "waz:models", "depends_on": "provider" } },
         { "name": "force", "description": "Force regeneration", "token_type": "Boolean", "flag": "--force" },
         { "name": "verify", "description": "Launch verification TUI", "token_type": "Boolean", "flag": "--verify" },
         { "name": "init", "description": "Install curated schemas", "token_type": "Boolean", "flag": "--init" },

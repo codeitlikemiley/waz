@@ -5,6 +5,7 @@ mod db;
 pub mod generate;
 pub mod hint;
 mod import;
+mod jobs;
 mod llm;
 mod mcp;
 mod normalize;
@@ -197,7 +198,7 @@ enum Commands {
     /// Generate a TMP schema for a CLI tool using AI (background by default).
     Generate {
         /// Name of the CLI tool (e.g. brew, kubectl, docker).
-        #[arg(required_unless_present = "jobs")]
+        #[arg(required_unless_present_any = ["jobs", "cancel", "job"])]
         tool: Option<String>,
 
         /// Force regeneration even if schema exists.
@@ -236,9 +237,17 @@ enum Commands {
         #[arg(long)]
         wait: bool,
 
-        /// List background generate jobs.
-        #[arg(long)]
-        jobs: bool,
+        /// List background generate jobs. Pass an id to show one.
+        #[arg(long, value_name = "ID", num_args = 0..=1, default_missing_value = "")]
+        jobs: Option<String>,
+
+        /// Wait for an existing job (`waz generate --wait --job <id>`).
+        #[arg(long, value_name = "ID")]
+        job: Option<String>,
+
+        /// Cancel a background generate job.
+        #[arg(long, value_name = "ID")]
+        cancel: Option<String>,
     },
 
     /// Agent Plugins: list bundled/user plugins (skills + MCP).
@@ -713,13 +722,76 @@ fn main() {
             verify,
             wait,
             jobs,
+            job,
+            cancel,
         } => {
-            if jobs {
-                let jobs = generate::list_jobs();
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&jobs).unwrap_or_else(|_| "[]".into())
-                );
+            if let Some(id) = cancel {
+                match jobs::cancel_job(&id) {
+                    Ok(job) => {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&job).unwrap_or_else(|_| "{}".into())
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("❌ {e}");
+                        std::process::exit(1);
+                    }
+                }
+                return;
+            }
+
+            if let Some(id) = jobs {
+                if id.is_empty() {
+                    let jobs = jobs::list_jobs();
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&jobs).unwrap_or_else(|_| "[]".into())
+                    );
+                } else {
+                    match jobs::get_job(&id) {
+                        Ok(job) => println!(
+                            "{}",
+                            serde_json::to_string_pretty(&job).unwrap_or_else(|_| "{}".into())
+                        ),
+                        Err(e) => {
+                            eprintln!("❌ {e}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                return;
+            }
+
+            if let Some(id) = job {
+                if wait {
+                    match jobs::wait_job(&id, None) {
+                        Ok(job) => {
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&job).unwrap_or_else(|_| "{}".into())
+                            );
+                            if job.status != "done" {
+                                std::process::exit(1);
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("❌ {e}");
+                            std::process::exit(1);
+                        }
+                    }
+                } else {
+                    match jobs::get_job(&id) {
+                        Ok(job) => println!(
+                            "{}",
+                            serde_json::to_string_pretty(&job).unwrap_or_else(|_| "{}".into())
+                        ),
+                        Err(e) => {
+                            eprintln!("❌ {e}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
                 return;
             }
 
@@ -829,7 +901,7 @@ fn main() {
                     Ok(info) => {
                         println!("{}", serde_json::to_string_pretty(&info).unwrap());
                         eprintln!(
-                            "Started background generate for '{tool}'. Your shell is free — `waz generate --jobs` to check."
+                            "Started background generate for '{tool}'. Your shell is free — `waz generate --jobs` to list, `waz generate --wait --job <id>` to wait."
                         );
                     }
                     Err(e) => {

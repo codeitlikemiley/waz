@@ -165,6 +165,7 @@ impl VerifyApp {
                 values: None,
                 flag: None,
                 data_source: None,
+                repeat: false,
             });
             self.tok_idx = cmd.tokens.len() - 1;
             self.pane = Pane::Tokens;

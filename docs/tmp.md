@@ -10,6 +10,9 @@ User-facing generate and schema CLI is below. The file format follows.
 waz generate docker              # returns a job id; shell stays usable
 waz generate docker --wait       # block until the schema is written
 waz generate --jobs
+waz generate --jobs <id>         # one job (reaps a dead PID)
+waz generate --wait --job <id>   # poll until done/error/cancelled
+waz generate --cancel <id>
 waz generate kubectl --force     # version the old file, then regenerate
 waz generate brew --verify       # review TUI
 waz generate brew --history
@@ -69,7 +72,7 @@ Unknown JSON fields are ignored on load. New fields must be `#[serde(default)]` 
 |-------|---------|
 | `tool` | Schema identity (`cargo`, `git`, …) |
 | `version` | Per-tool document version (regeneration), not the protocol |
-| `requires_file` | Load only if `cwd/<file>` exists |
+| `requires_file` | Load only if `<file>` exists at cwd or an ancestor (max 16 levels) |
 | `requires_file_kind` | Load only if runtime context matches (`cargo_project`, `single_file_script`) |
 | `requires_binary` | Load only if the binary is on `PATH` |
 | `keywords` | Extra words that map NL queries onto this tool |
@@ -84,6 +87,9 @@ Unknown JSON fields are ignored on load. New fields must be `#[serde(default)]` 
    - **Boolean** `false`/empty → omit.
    - **String / Enum / File / Number** with `flag` → emit `flag`, then value.
    - Same types with `flag: null` → positional, appended **after** all flags.
+   - If `repeat` is true, whitespace-split the value and emit each piece (repeated flag+value, or N positionals). Default false — old JSON argv is unchanged.
+
+`waz tmp build --set path=a --set path=b` on a `repeat` token appends (`git add a b`); the first `--set` replaces the default.
 
 That flags-then-positionals order is part of tmp/1. Do not change it without a new protocol version.
 
@@ -91,8 +97,9 @@ That flags-then-positionals order is part of tmp/1. Do not change it without a n
 
 `data_source` is resolved when a command is **selected** in the TUI (or when `waz resolve` builds a prompt), not when the file is saved.
 
-- `resolver`: named builtin (`git:branches`, `git:status_files`, `cargo:bins`, `npm:scripts`, `waz:context:file_path`, `waz:models:<provider>`, …). Unknown names warn and skip; the command stays.
-- `command`: `sh -c` in the project cwd (`parse`: `lines` or `words`).
+- `resolver`: named builtin (`git:branches`, `git:status_files`, `cargo:bins`, `npm:scripts`, `waz:context:file_path`, `waz:models` / `waz:models:<provider>`, …). Unknown names warn and skip; the command stays.
+- `depends_on`: optional sibling token name. `waz:models` with `depends_on: "provider"` uses that token’s value, else the pinned `llm.default`.
+- `command`: `sh -c` (Unix) or `cmd /C` (Windows) in the project cwd (`parse`: `lines` or `words`). **3s timeout**, 64 KiB stdout cap; timeout skips values and keeps the command.
 - Resolved values overlay `token.values`. The declared `token_type` is **not** rewritten.
 
 `waz schema share` strips `values` when `data_source` is set so importers resolve locally.
@@ -106,7 +113,7 @@ That flags-then-positionals order is part of tmp/1. Do not change it without a n
 | `git:remotes` | `git remote` |
 | `git:status_files` | `git status --porcelain` (optional `:staged` / `:unstaged`) |
 | `npm:scripts` | `package.json` `scripts` |
-| `waz:models:<provider>` | provider model list |
+| `waz:models` / `waz:models:<provider>` | provider model list (`waz:models` uses `depends_on` or pinned default) |
 | `waz:context:<field>` | `RuntimeContext` from cargo-runner / local detect |
 
 ## Headless / agent API
@@ -126,6 +133,11 @@ waz resolve "run the backend" --cwd . --json
 
 Set `WAZ_SCHEMAS_DIR` to use an isolated schema directory (agents should do this so tests do not depend on a developer’s edited `~/.config/waz/schemas`).
 
-## Future additive fields (not in tmp/1 yet)
+## Additive fields in tmp/1
 
-`repeat`, `visible_if`, `exclusive_with`, `multi`, `placeholder`, `env` — all optional, defaulted, no argv change until implemented and tested.
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `repeat` | `false` | Split value on whitespace; emit each piece |
+| `data_source.depends_on` | omitted | Re-resolve this token when the named sibling changes |
+
+Still future: `visible_if`, `exclusive_with`, `multi` (comma-join), `placeholder`, `env`.

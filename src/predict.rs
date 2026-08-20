@@ -25,6 +25,8 @@ pub enum PredictionTier {
     Sequence,
     /// Tier 2: Deterministic follow-up from the last command (mkdir → cd, …)
     Workflow,
+    /// Retry the last failed command (empty prompt only)
+    Retry,
     /// Tier 3: Based on CWD-filtered history
     CwdHistory,
     /// Tier 4: LLM-based prediction (lowest confidence)
@@ -37,6 +39,7 @@ impl std::fmt::Display for PredictionTier {
             PredictionTier::OutputHint => write!(f, "output_hint"),
             PredictionTier::Sequence => write!(f, "sequence"),
             PredictionTier::Workflow => write!(f, "workflow"),
+            PredictionTier::Retry => write!(f, "retry"),
             PredictionTier::CwdHistory => write!(f, "cwd_history"),
             PredictionTier::Llm => write!(f, "llm"),
         }
@@ -102,6 +105,11 @@ impl<'a> PredictionEngine<'a> {
 
         // Tier 2: Deterministic workflow follow-up from the last command
         if let Some(pred) = self.predict_by_workflow(session_id, cwd, prefix) {
+            return Some(pred);
+        }
+
+        // Empty prompt: retry the command that just failed.
+        if let Some(pred) = self.predict_by_retry_failed(session_id, prefix) {
             return Some(pred);
         }
 
@@ -224,6 +232,26 @@ impl<'a> PredictionEngine<'a> {
             command: cmd,
             confidence: 0.8,
             tier: PredictionTier::Workflow,
+        })
+    }
+
+    fn predict_by_retry_failed(
+        &self,
+        session_id: &str,
+        prefix: Option<&str>,
+    ) -> Option<Prediction> {
+        let empty = prefix.map(|p| p.is_empty()).unwrap_or(true);
+        if !empty {
+            return None;
+        }
+        let (last_cmd, exit_code) = self.db.get_last_command(session_id).ok()??;
+        if exit_code == 0 || last_cmd.is_empty() {
+            return None;
+        }
+        Some(Prediction {
+            command: last_cmd,
+            confidence: 0.55,
+            tier: PredictionTier::Retry,
         })
     }
 
@@ -572,6 +600,28 @@ mod tests {
             .unwrap();
         assert_eq!(pred.command, "npm test");
         assert_eq!(pred.tier, PredictionTier::CwdHistory);
+    }
+
+    #[test]
+    fn empty_prompt_retries_last_failed_command() {
+        let db = HistoryDb::open_in_memory().unwrap();
+        db.insert_command("cargo build", "/proj", "s", 1).unwrap();
+
+        let pred = engine(&db).predict("s", "/proj", None, true).unwrap();
+        assert_eq!(pred.command, "cargo build");
+        assert_eq!(pred.tier, PredictionTier::Retry);
+    }
+
+    #[test]
+    fn successful_last_command_is_not_retry() {
+        let db = HistoryDb::open_in_memory().unwrap();
+        db.insert_command("cargo build", "/proj", "s", 0).unwrap();
+
+        let pred = engine(&db).predict("s", "/proj", None, true);
+        assert!(pred
+            .as_ref()
+            .map(|p| p.tier != PredictionTier::Retry)
+            .unwrap_or(true));
     }
 
     #[test]

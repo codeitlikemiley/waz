@@ -23,7 +23,7 @@
       "group": "git",
       "verified": true,
       "tokens": [
-        { "name": "path", "description": "Files to stage (. for all)", "required": true, "token_type": "Enum", "default": ".", "values": [], "flag": null, "data_source": { "resolver": "git:status_files" } }
+        { "name": "path", "description": "Files to stage (. for all)", "required": true, "token_type": "Enum", "default": ".", "values": [], "flag": null, "repeat": true, "data_source": { "resolver": "git:status_files" } }
       ]
     },
     {

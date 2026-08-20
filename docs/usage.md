@@ -24,7 +24,7 @@ waz clear                          # this directory
 waz clear --all
 ```
 
-`waz predict` `tier` may be `output_hint`, `sequence`, `workflow`, `cwd_history`, or `llm`.
+`waz predict` `tier` may be `output_hint`, `sequence`, `workflow`, `retry`, `cwd_history`, or `llm`. After a failed command, an empty prompt suggests retrying it.
 
 ## Command palette (TUI)
 
@@ -76,5 +76,7 @@ waz resolve "run the backend" --tool cargo
 waz session-id
 waz record -- "git push"
 ```
+
+`waz generate` is background by default (`--jobs`, `--jobs <id>`, `--wait --job <id>`, `--cancel <id>`). MCP `waz_generate` waits by default so agents do not race `tmp list`.
 
 TMP / schema commands: [tmp.md](tmp.md). LLM setup: [ai.md](ai.md). Agents: [plugins.md](plugins.md).
