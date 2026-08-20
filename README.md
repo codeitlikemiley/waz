@@ -12,12 +12,15 @@ Waz uses a **multi-tier prediction system** (same approach as Warp terminal):
 
 | Tier | Strategy | Confidence | Description |
 |------|----------|------------|-------------|
-| 0 | **Output Hint** | Highest | Parses command output for suggested follow-up commands (like Warp's ghost text from `npm install` → `npm start`). |
-| 1 | **Sequence** | High | Predicts based on command patterns. If you always run `git push` after `git commit`, it learns that. |
-| 2 | **CWD History** | Medium | Falls back to your most recently used commands in the current directory. |
-| 3 | **LLM** | Low | Uses an LLM to predict based on shell context. Supports multiple providers with key rotation. |
+| 0 | **Output Hint** | Highest | Parses command output for suggested follow-up commands (like Warp's ghost text from `npm install` → `npm start`). Feed output with `waz hint --output "…"`. |
+| 1 | **Sequence** | High | Predicts the next command from history. Arguments are stemmed so `git commit -m 'fix'` and `git commit -m 'typo'` count as the same pattern. Prefix picks among candidates (`cargo c` → `cargo clippy`). Falls back to sequences from other directories at slightly lower confidence. |
+| 2 | **Workflow** | High | Deterministic follow-ups that do not need learned history: `mkdir foo` → `cd foo`, `git clone …` → `cd repo`, `npm install` → `npm run dev` (from `package.json`), `git commit` → `git push` when a remote exists. |
+| 3 | **CWD History** | Medium | Most recently used command in this directory. On an empty prompt, skips the command you just ran. |
+| 4 | **LLM** | Low | Uses an LLM when local history and workflows cannot produce a prediction. Supports multiple providers with key rotation. |
 
-**Proactive prediction**: Ghost text appears even on an **empty prompt** — right after a command finishes, waz suggests what you'll probably run next.
+**Proactive prediction**: Ghost text appears even on an **empty prompt** — right after a command finishes, waz suggests what you'll probably run **next**, not the command you just ran.
+
+Failed commands skip sequence and workflow (no `git push` after a failed commit). One-off hub commands like `ls` are not treated as sequences until they repeat.
 
 ## Quick Start
 
@@ -93,7 +96,8 @@ Once installed, waz works automatically:
 
 ```bash
 waz predict --cwd .                        # Proactive prediction (no prefix)
-waz predict --prefix "git" --format json   # Prediction with prefix
+waz predict --prefix "git" --format json   # Prediction with prefix (`tier` may be output_hint, sequence, workflow, cwd_history, or llm)
+waz hint --output "Run 'npm start'"        # Store an output-based follow-up for the next prompt
 waz record -- "git push"                   # Manually record a command
 waz stats                                  # Show database statistics
 waz generate brew                          # Generate TMP schema for a CLI tool
@@ -549,7 +553,7 @@ waz clear --all      # Clear ALL history across all directories
 
 ## LLM Providers
 
-Tier 3 uses an LLM when local history can't produce a prediction. Waz supports **6 providers**:
+Tier 4 uses an LLM when local history and workflows can't produce a prediction. Waz supports **6 providers**:
 
 | Provider | Default Model | Base URL | Free Tier |
 |----------|---------------|----------|-----------|
@@ -732,7 +736,7 @@ model = "your-model-name"
 │       │            │              │                 │
 │  Cmd+I / Ctrl+T launches unified TUI                │
 │  Ghost-text autosuggestions via predictions          │
-│  Output capture → hint suggestions (Tier 0)         │
+│  Output hints via `waz hint` (Tier 0)               │
 └───────┼────────────┼───────────────┼────────────────┘
         └────────────┼───────────────┘
                      │
@@ -742,8 +746,9 @@ model = "your-model-name"
          │  ┌─ Prediction ───────┤
          │  │  Tier 0: Output   │
          │  │  Tier 1: Sequence  │
-         │  │  Tier 2: CWD      │
-         │  │  Tier 3: LLM      │
+         │  │  Tier 2: Workflow  │
+         │  │  Tier 3: CWD      │
+         │  │  Tier 4: LLM      │
          │  ├─ Unified TUI ─────┤
          │  │  / → TMP mode     │
          │  │  ! → Shell mode   │

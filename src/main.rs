@@ -6,6 +6,7 @@ pub mod generate;
 pub mod hint;
 mod import;
 mod llm;
+mod normalize;
 mod predict;
 mod run;
 mod runnables;
