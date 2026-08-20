@@ -10,7 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.70.0
+      # Lockfile includes crates on edition 2024 (e.g. getrandom 0.4). rustc 1.70
+      # cannot parse those manifests even though Cargo.toml rust-version is 1.70.
+      - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
       - run: cargo fmt --check
