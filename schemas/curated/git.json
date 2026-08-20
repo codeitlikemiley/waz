@@ -1,12 +1,12 @@
 {
   "meta": {
     "tool": "git",
-    "version": 1,
+    "version": 2,
     "generated_by": "human",
     "verified": true,
-    "verified_at": "2026-03-05",
+    "verified_at": "2026-08-20",
     "coverage": "full",
-    "waz_version": "0.1.2",
+    "waz_version": "0.1.10",
     "requires_binary": "git"
   },
   "commands": [
@@ -34,7 +34,7 @@
       "tokens": [
         { "name": "message", "description": "Commit message", "required": true, "token_type": "String", "default": null, "values": null, "flag": "-m" },
         { "name": "amend", "description": "Amend previous commit", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--amend" },
-        { "name": "no-edit", "description": "Skip editing message on amend", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--no-edit" }
+        { "name": "no-edit", "description": "Skip editing message on amend", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--no-edit", "visible_if": "amend=true" }
       ]
     },
     {

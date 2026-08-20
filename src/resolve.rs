@@ -6,36 +6,58 @@
 use crate::config::Config;
 use crate::context::RuntimeContext;
 use crate::generate::{load_all_schemas_with_context, resolve_data_sources_pub_ctx};
-use crate::tui::app::CommandEntry;
+use crate::tui::app::{assemble_command, App, CommandEntry};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-/// Detect the best TMP tool to use, checking in priority order:
-/// 1. Query keyword match (user explicitly mentions a tool name)
-/// 2. CWD project file match (e.g., Cargo.toml → cargo)
-#[allow(dead_code)]
-pub fn detect_best_tool(query: &str, cwd: &str) -> Option<String> {
-    detect_best_tool_with_context(query, cwd, None)
+/// How a tool was chosen for a natural-language query.
+///
+/// `Query` is a lock (the user named the tool). `Project` is only a ranking
+/// hint — cargo in a Rust repo must not hide git/brew.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolMatch {
+    Query(String),
+    Project(String),
 }
 
-pub fn detect_best_tool_with_context(
+impl ToolMatch {
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Query(s) | Self::Project(s) => s,
+        }
+    }
+
+    /// Pass to `resolve` as `tool_filter` only when the query named the tool.
+    pub fn filter_tool(&self) -> Option<&str> {
+        match self {
+            Self::Query(s) => Some(s.as_str()),
+            Self::Project(_) => None,
+        }
+    }
+
+    pub fn prefer_tool(&self) -> Option<&str> {
+        match self {
+            Self::Project(s) => Some(s.as_str()),
+            Self::Query(_) => None,
+        }
+    }
+}
+
+pub fn detect_tool_match(
     query: &str,
     cwd: &str,
     context: Option<&RuntimeContext>,
-) -> Option<String> {
-    // Priority 1: keyword match from query
-    if let Some(tool) = detect_tool_from_query(query) {
-        return Some(tool);
+) -> Option<ToolMatch> {
+    let available = list_available_schemas();
+    if let Some(tool) = detect_tool_from_query_with_available(query, &available) {
+        return Some(ToolMatch::Query(tool));
     }
-
-    // Priority 2: CWD-based project file detection
-    detect_project_tool(cwd, context)
+    detect_project_tool_with_available(cwd, context, &available).map(ToolMatch::Project)
 }
 
 /// Scan the query for mentions of available TMP schema tool names.
 /// Checks: 1) exact tool name, 2) custom keywords from schema meta, 3) hardcoded aliases.
-fn detect_tool_from_query(query: &str) -> Option<String> {
-    let available = list_available_schemas();
+fn detect_tool_from_query_with_available(query: &str, available: &[String]) -> Option<String> {
     if available.is_empty() {
         return None;
     }
@@ -44,14 +66,14 @@ fn detect_tool_from_query(query: &str) -> Option<String> {
     let words: Vec<&str> = query_lower.split_whitespace().collect();
 
     // Check exact tool name match first (highest confidence)
-    for tool in &available {
+    for tool in available {
         if words.contains(&tool.as_str()) {
             return Some(tool.clone());
         }
     }
 
     // Check custom keywords from schema meta
-    for tool in &available {
+    for tool in available {
         if let Some(keywords) = load_schema_keywords(tool) {
             for kw in &keywords {
                 let kw_lower = kw.to_lowercase();
@@ -73,6 +95,9 @@ fn detect_tool_from_query(query: &str) -> Option<String> {
         ("rust", "cargo"),
         ("rustc", "cargo"),
         ("homebrew", "brew"),
+        ("commit", "git"),
+        ("checkout", "git"),
+        ("clone", "git"),
         ("python", "pip"),
         ("python3", "pip"),
         ("pip3", "pip"),
@@ -82,8 +107,8 @@ fn detect_tool_from_query(query: &str) -> Option<String> {
     ];
 
     for (alias, target) in aliases {
-        if words.contains(alias) && available.contains(&target.to_string()) {
-            return Some(target.to_string());
+        if words.contains(alias) && available.iter().any(|t| t == target) {
+            return Some((*target).to_string());
         }
     }
 
@@ -117,13 +142,6 @@ fn list_available_schemas() -> Vec<String> {
         }
     }
     tools
-}
-
-/// Detect the most relevant tool based on project files in CWD.
-/// Returns None if no known project files are found.
-pub fn detect_project_tool(cwd: &str, context: Option<&RuntimeContext>) -> Option<String> {
-    let available = list_available_schemas();
-    detect_project_tool_with_available(cwd, context, &available)
 }
 
 fn detect_project_tool_with_available(
@@ -223,11 +241,15 @@ pub struct TokenFill {
 /// Result of resolving a natural language query against TMP schemas.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolveResult {
+    /// Schema command name (`cargo run`), not a baked argv.
     pub command: String,
     pub tool: String,
     pub explanation: String,
     pub confidence: String,
     pub tokens_filled: Vec<TokenFill>,
+    /// `assemble_command` output. Empty when confidence is `none`.
+    #[serde(default)]
+    pub argv: String,
 }
 
 /// Resolve a natural language query into a grounded command using TMP schemas.
@@ -242,7 +264,7 @@ pub fn resolve(
     cwd: &str,
     tool_filter: Option<&str>,
 ) -> Result<ResolveResult, String> {
-    resolve_with_context(config, query, cwd, tool_filter, None)
+    resolve_with_context(config, query, cwd, tool_filter, None, None)
 }
 
 pub fn resolve_with_context(
@@ -251,6 +273,7 @@ pub fn resolve_with_context(
     cwd: &str,
     tool_filter: Option<&str>,
     context: Option<&RuntimeContext>,
+    prefer_tool: Option<&str>,
 ) -> Result<ResolveResult, String> {
     // Step 1: Load and filter schemas
     let mut commands = load_all_schemas_with_context(cwd, context);
@@ -259,7 +282,7 @@ pub fn resolve_with_context(
         return Err("No TMP schemas available. Run `waz generate <tool>` first.".to_string());
     }
 
-    // Filter by tool if specified
+    // Filter by tool if specified (query named the tool — not a cwd hint)
     if let Some(tool) = tool_filter {
         commands.retain(|c| c.group.to_lowercase() == tool.to_lowercase());
         if commands.is_empty() {
@@ -270,24 +293,38 @@ pub fn resolve_with_context(
         }
     }
 
+    if let Some(prefer) = prefer_tool {
+        commands.sort_by(|a, b| {
+            let ap = a.group.eq_ignore_ascii_case(prefer);
+            let bp = b.group.eq_ignore_ascii_case(prefer);
+            bp.cmp(&ap)
+        });
+    }
+
     // Step 2: Resolve data sources for all commands
     for cmd in &mut commands {
         resolve_data_sources_pub_ctx(cmd, cwd, context);
     }
 
     // Step 3: Build schema-aware prompt
-    let prompt = build_resolve_prompt(query, cwd, &commands);
+    let prompt = build_resolve_prompt(query, cwd, &commands, prefer_tool);
 
     // Step 4: Call LLM
     let raw = call_resolve_llm(config, &prompt)
         .ok_or_else(|| "Failed to get LLM response. Check your API keys.".to_string())?;
 
-    // Step 5: Parse response
-    parse_resolve_response(&raw)
+    // Step 5: Parse and ground against schemas
+    let parsed = parse_resolve_response(&raw)?;
+    Ok(ground_resolve_result(parsed, &commands, context))
 }
 
 /// Build a prompt that includes TMP schemas with resolved data source values.
-fn build_resolve_prompt(query: &str, cwd: &str, commands: &[CommandEntry]) -> String {
+fn build_resolve_prompt(
+    query: &str,
+    cwd: &str,
+    commands: &[CommandEntry],
+    prefer_tool: Option<&str>,
+) -> String {
     let mut schema_text = String::new();
 
     for (i, cmd) in commands.iter().enumerate() {
@@ -328,11 +365,19 @@ fn build_resolve_prompt(query: &str, cwd: &str, commands: &[CommandEntry]) -> St
         }
     }
 
+    let prefer = prefer_tool
+        .map(|t| {
+            format!(
+                "\nIf the query is about running/building/testing this project, prefer `{t}` commands. If it names another tool (git, brew, npm, …), pick that tool.\n"
+            )
+        })
+        .unwrap_or_default();
+
     format!(
         r#"You are a CLI command resolver. Given TMP schemas with REAL resolved data source values, pick the BEST matching command and fill its tokens.
 
 Working directory: {}
-
+{}
 Available commands with their tokens:
 {}
 
@@ -340,6 +385,7 @@ User query: "{}"
 
 CRITICAL RULES:
 - Pick the SINGLE best matching command from the schemas above
+- `command` MUST be the schema command name only (e.g. `cargo run`, `git commit`) — never flags or argv
 - Fill tokens using ONLY the valid values shown (if values are listed)
 - For tokens without listed values, use reasonable values from the query
 - If a token is optional and the query doesn't mention it, omit it
@@ -347,7 +393,7 @@ CRITICAL RULES:
 
 Respond ONLY with valid JSON (no markdown, no backticks):
 {{
-  "command": "the full command with tokens filled",
+  "command": "cargo run",
   "tool": "the tool group name",
   "explanation": "brief explanation of what this command does",
   "confidence": "high" or "medium" or "low" or "none",
@@ -355,8 +401,51 @@ Respond ONLY with valid JSON (no markdown, no backticks):
     {{"name": "token_name", "value": "filled_value", "source": "how this value was determined"}}
   ]
 }}"#,
-        cwd, schema_text, query
+        cwd, prefer, schema_text, query
     )
+}
+
+fn find_schema_command<'a>(commands: &'a [CommandEntry], name: &str) -> Option<&'a CommandEntry> {
+    let name = name.trim();
+    if let Some(c) = commands.iter().find(|c| c.command == name) {
+        return Some(c);
+    }
+    let mut best: Option<&CommandEntry> = None;
+    for c in commands {
+        if name == c.command || name.starts_with(&format!("{} ", c.command)) {
+            if best
+                .map(|b| c.command.len() > b.command.len())
+                .unwrap_or(true)
+            {
+                best = Some(c);
+            }
+        }
+    }
+    best
+}
+
+fn ground_resolve_result(
+    mut parsed: ResolveResult,
+    commands: &[CommandEntry],
+    context: Option<&RuntimeContext>,
+) -> ResolveResult {
+    let Some(cmd) = find_schema_command(commands, &parsed.command) else {
+        parsed.confidence = "none".into();
+        parsed.argv.clear();
+        return parsed;
+    };
+    parsed.command = cmd.command.clone();
+    if parsed.tool.is_empty() {
+        parsed.tool = cmd.group.clone();
+    }
+    let mut values = App::default_token_values(cmd, context);
+    for fill in &parsed.tokens_filled {
+        if let Some(i) = cmd.tokens.iter().position(|t| t.name == fill.name) {
+            values[i] = fill.value.clone();
+        }
+    }
+    parsed.argv = assemble_command(cmd, &values);
+    parsed
 }
 
 /// Parse the LLM response into a ResolveResult.
@@ -417,10 +506,11 @@ mod tests {
                 flag: Some("--package".to_string()),
                 data_source: None,
                 repeat: false,
+                visible_if: None,
             }],
         }];
 
-        let prompt = build_resolve_prompt("run backend", "/test", &commands);
+        let prompt = build_resolve_prompt("run backend", "/test", &commands, None);
         assert!(prompt.contains("cargo run"));
         assert!(prompt.contains("backend"));
         assert!(prompt.contains("cli"));
@@ -443,6 +533,92 @@ mod tests {
         let json = "```json\n{\"command\": \"git checkout dev\", \"tool\": \"git\", \"explanation\": \"Switch\", \"confidence\": \"high\", \"tokens_filled\": []}\n```";
         let result = parse_resolve_response(json).unwrap();
         assert_eq!(result.command, "git checkout dev");
+    }
+
+    #[test]
+    fn ground_resolve_uses_schema_name_and_assemble() {
+        let commands = vec![CommandEntry {
+            command: "cargo run".into(),
+            description: "Run".into(),
+            group: "cargo".into(),
+            verified: false,
+            tokens: vec![TokenDef {
+                name: "bin".into(),
+                description: "bin".into(),
+                required: false,
+                token_type: TokenType::Enum,
+                default: None,
+                values: Some(vec!["waz".into(), "cli".into()]),
+                flag: Some("--bin".into()),
+                data_source: None,
+                repeat: false,
+                visible_if: None,
+            }],
+        }];
+        let parsed = ResolveResult {
+            command: "cargo run --bin waz".into(),
+            tool: "cargo".into(),
+            explanation: "run".into(),
+            confidence: "high".into(),
+            tokens_filled: vec![TokenFill {
+                name: "bin".into(),
+                value: "waz".into(),
+                source: "context".into(),
+            }],
+            argv: String::new(),
+        };
+        let grounded = ground_resolve_result(parsed, &commands, None);
+        assert_eq!(grounded.command, "cargo run");
+        assert_eq!(grounded.argv, "cargo run --bin waz");
+        assert_eq!(grounded.confidence, "high");
+    }
+
+    #[test]
+    fn ground_resolve_unknown_command_is_none() {
+        let parsed = ResolveResult {
+            command: "rm -rf /".into(),
+            tool: "rm".into(),
+            explanation: "nope".into(),
+            confidence: "high".into(),
+            tokens_filled: vec![],
+            argv: "rm -rf /".into(),
+        };
+        let grounded = ground_resolve_result(parsed, &[], None);
+        assert_eq!(grounded.confidence, "none");
+        assert!(grounded.argv.is_empty());
+    }
+
+    #[test]
+    fn project_hint_does_not_filter_tool() {
+        let m = ToolMatch::Project("cargo".into());
+        assert_eq!(m.filter_tool(), None);
+        assert_eq!(m.prefer_tool(), Some("cargo"));
+        let q = ToolMatch::Query("git".into());
+        assert_eq!(q.filter_tool(), Some("git"));
+        assert_eq!(q.prefer_tool(), None);
+    }
+
+    #[test]
+    fn query_names_git_is_lock_not_project_hint() {
+        let available = vec!["cargo".into(), "git".into(), "brew".into()];
+        assert_eq!(
+            detect_tool_from_query_with_available("git commit", &available).as_deref(),
+            Some("git")
+        );
+        assert_eq!(
+            detect_tool_from_query_with_available("commit my changes", &available).as_deref(),
+            Some("git")
+        );
+        assert!(
+            detect_tool_from_query_with_available("install wget", &available).is_none(),
+            "install wget must not lock to cargo"
+        );
+        let ctx = RuntimeContext {
+            file_kind: "cargo_project".into(),
+            ..RuntimeContext::default()
+        };
+        let project = detect_project_tool_with_available("/proj", Some(&ctx), &available);
+        assert_eq!(project.as_deref(), Some("cargo"));
     }
 
     #[test]

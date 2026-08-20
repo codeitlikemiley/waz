@@ -38,7 +38,8 @@ You generate **only** the `commands` array.
 | values | string[] or null | Enum choices |
 | flag | string or null | `--bin` / `-m` / null if positional |
 | repeat | bool | default false; whitespace-split value into multiple argv pieces |
-| data_source | object or null | `{ "resolver": "cargo:bins" }` or `{ "command": "…", "parse": "lines" }` (`depends_on` optional) |
+| data_source | object or null | `{ "resolver": "cargo:bins" }` or `{ "command": "brew list -1", "parse": "lines" }` (`depends_on` optional). Do not use unbounded catalogs (`brew formulae`). |
+| visible_if | string or omit | e.g. `amend=true` — hide/omit unless that token matches |
 
 ## Built-in resolvers
 

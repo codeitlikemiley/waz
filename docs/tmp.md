@@ -1,6 +1,6 @@
 # TMP schemas
 
-The `/` palette and `waz resolve` use **Token Model Protocol** schemas (implicit **tmp/1**). Curated JSON ships in `schemas/curated/*.json` and is copied to the user schemas dir on first load (never overwritten).
+The `/` palette and `waz resolve` use **Token Model Protocol** schemas (implicit **tmp/1**). Curated JSON ships in `schemas/curated/*.json` and is copied to the user schemas dir on first load (**missing files only**). `waz schema upgrade` replaces installed curated files with the copies bundled in this waz (after a version backup).
 
 User-facing generate and schema CLI is below. The file format follows.
 
@@ -30,6 +30,8 @@ If generation fails after `--force`, the previous version is restored.
 
 ```bash
 waz schema list
+waz schema upgrade              # all bundled (git, cargo, waz, npm, …)
+waz schema upgrade git cargo waz
 waz schema share cargo
 waz schema import ./brew-schema.json
 waz schema import https://example.com/schema.json
@@ -43,10 +45,12 @@ Headless (agents / CI):
 ```bash
 waz tmp list --cwd . --query cargo
 waz tmp show "cargo run" --cwd .
+waz tmp show "cargo run" --cwd . --file src/main.rs
+waz tmp build "cargo run" --cwd . --file src/main.rs
 waz tmp build "cargo run" --cwd . --set bin=waz --set release=true
 ```
 
-Same argv serializer as the TUI (flags, then positionals). Missing required tokens exit 1 with `{"error":…}` on stderr.
+Same argv serializer as the TUI (flags, then positionals). Missing required tokens exit 1 with `{"error":…}` on stderr. `--file` prefills cargo `bin`/`example` from project context.
 
 ## Token Model Protocol (tmp/1)
 
@@ -124,6 +128,8 @@ The TUI is not scriptable. Agents and CI should use JSON commands instead:
 waz doctor --cwd .
 waz tmp list --cwd . --query cargo
 waz tmp show "cargo run" --cwd .
+waz tmp show "cargo run" --cwd . --file src/main.rs
+waz tmp build "cargo run" --cwd . --file src/main.rs
 waz tmp build "cargo run" --cwd . --set bin=waz --set release=true
 waz predict --cwd . --prefix git --format json --fast
 waz resolve "run the backend" --cwd . --json
@@ -139,5 +145,6 @@ Set `WAZ_SCHEMAS_DIR` to use an isolated schema directory (agents should do this
 |-------|---------|---------|
 | `repeat` | `false` | Split value on whitespace; emit each piece |
 | `data_source.depends_on` | omitted | Re-resolve this token when the named sibling changes |
+| `visible_if` | omitted | Hide/omit unless another token matches (`amend=true`) |
 
-Still future: `visible_if`, `exclusive_with`, `multi` (comma-join), `placeholder`, `env`.
+Still future: `exclusive_with`, `multi` (comma-join), `placeholder`, `env`.

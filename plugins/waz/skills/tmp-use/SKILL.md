@@ -15,8 +15,8 @@ Waz stores **verified command shapes** (binary + tokens + live values) in TMP sc
 
 1. `waz_tmp_list` with the user's cwd and a short query (`cargo`, `git`, `docker`).
 2. Pick the exact `command` string from the list (e.g. `cargo run`, `git commit`).
-3. `waz_tmp_show` for that command to see tokens and resolved values.
-4. `waz_tmp_build` with `--set name=value` pairs (or `waz_resolve` for natural language).
+3. `waz_tmp_show` for that command to see tokens and resolved values. Pass `file` (and `line`) when the user has a focused file so cargo bin/example can prefill.
+4. `waz_tmp_build` with `--set name=value` pairs (or `waz_resolve` for natural language). Same `file`/`line`.
 5. Return the `argv` string. Do not invent flags that were not in the schema.
 
 If the tool is missing from the list, call `waz_generate` and **wait until it finishes** (`wait` defaults to true). Then retry list/show. Do not call `waz_tmp_list` immediately after a background generate (`wait=false`) — poll `waz_generate_status` with `wait=true` (or `waz generate --wait --job <id>`) until `done` or `error`. Do not hand-write a schema.

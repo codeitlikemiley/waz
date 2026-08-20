@@ -1123,7 +1123,8 @@ pub fn generate_schema(
     }
 
     eprintln!("🔍 Harvesting {tool} help (nested subcommands)...");
-    let pages = harvest_help(tool);
+    let harvest = harvest_help(tool);
+    let pages = &harvest.pages;
     if pages.is_empty() {
         let err = format!("'{tool}' --help produced no output");
         finish_job(Err(err.clone()));
@@ -1143,7 +1144,7 @@ pub fn generate_schema(
     });
     eprintln!("🤖 Generating schema with AI (model: {model_name}) via tmp-schema skill...");
 
-    let batches = chunk_help(&pages, 9000);
+    let batches = chunk_help(pages, 9000);
     let mut commands: Vec<CommandEntry> = Vec::new();
     for (i, batch) in batches.iter().enumerate() {
         eprintln!("   LLM batch {}/{}", i + 1, batches.len());
@@ -1201,11 +1202,7 @@ pub fn generate_schema(
             generated_with: Some(model_name),
             verified: false,
             verified_at: None,
-            coverage: if commands.len() + 1 >= pages.len() {
-                "full".into()
-            } else {
-                "partial".into()
-            },
+            coverage: harvest_coverage(&commands, &harvest),
             waz_version: Some(env!("CARGO_PKG_VERSION").to_string()),
             requires_file: None,
             requires_file_kind: None,
@@ -1244,32 +1241,71 @@ pub fn generate_schema(
     Ok(commands)
 }
 
-fn harvest_help(tool: &str) -> Vec<(String, String)> {
+struct Harvest {
+    pages: Vec<(String, String)>,
+    truncated: bool,
+    nested_incomplete: bool,
+    sub_titles: Vec<String>,
+}
+
+fn harvest_coverage(commands: &[CommandEntry], h: &Harvest) -> String {
+    if h.truncated || h.nested_incomplete {
+        return "partial".into();
+    }
+    for title in &h.sub_titles {
+        if !commands
+            .iter()
+            .any(|c| c.command == *title || c.command.starts_with(&format!("{title} ")))
+        {
+            return "partial".into();
+        }
+    }
+    "full".into()
+}
+
+fn harvest_help(tool: &str) -> Harvest {
     let mut pages = Vec::new();
+    let mut nested_incomplete = false;
     let main = run_help(tool, &[]);
     if main.trim().is_empty() {
-        return pages;
+        return Harvest {
+            pages,
+            truncated: false,
+            nested_incomplete: false,
+            sub_titles: vec![],
+        };
     }
     eprintln!("   {tool} --help");
     pages.push((tool.to_string(), main.clone()));
-    let subs: Vec<String> = extract_subcommands(&main, tool)
-        .into_iter()
-        .filter(|s| s != tool)
-        .take(60)
-        .collect();
+    let mut subs = extract_subcommands(&main, tool);
+    if let Some(index) = run_command_index(tool) {
+        for s in extract_index_subcommands(&index, tool) {
+            if !subs.iter().any(|x| x == &s) {
+                subs.push(s);
+            }
+        }
+    }
+    subs.retain(|s| s != tool);
+    const MAX_TOP: usize = 60;
     const MAX_PAGES: usize = 80;
     const MAX_NEST: usize = 8;
+    let truncated = subs.len() > MAX_TOP;
+    subs.truncate(MAX_TOP);
+    let mut sub_titles = Vec::new();
     for sub in &subs {
         if pages.len() >= MAX_PAGES {
+            nested_incomplete = true;
             break;
         }
         let text = run_help(tool, &[sub.as_str()]);
         if text.trim().is_empty() {
+            nested_incomplete = true;
             continue;
         }
         let title = format!("{tool} {sub}");
         eprintln!("   {title} --help");
-        pages.push((title, text.clone()));
+        pages.push((title.clone(), text.clone()));
+        sub_titles.push(title);
         let nested: Vec<String> = extract_subcommands(&text, tool)
             .into_iter()
             .filter(|n| n != tool && n != sub)
@@ -1277,18 +1313,63 @@ fn harvest_help(tool: &str) -> Vec<(String, String)> {
             .collect();
         for nest in nested {
             if pages.len() >= MAX_PAGES {
+                nested_incomplete = true;
                 break;
             }
             let ntext = run_help(tool, &[sub.as_str(), nest.as_str()]);
             if ntext.trim().is_empty() {
+                nested_incomplete = true;
                 continue;
             }
             let ntitle = format!("{tool} {sub} {nest}");
             eprintln!("   {ntitle} --help");
-            pages.push((ntitle, ntext));
+            pages.push((ntitle.clone(), ntext));
+            sub_titles.push(ntitle);
         }
     }
-    pages
+    Harvest {
+        pages,
+        truncated,
+        nested_incomplete,
+        sub_titles,
+    }
+}
+
+fn run_command_index(tool: &str) -> Option<String> {
+    let args: &[&str] = match tool {
+        "brew" => &["commands"],
+        "git" => &["help", "-a"],
+        "cargo" => &["--list"],
+        _ => return None,
+    };
+    let mut cmd = Command::new(tool);
+    cmd.args(args);
+    let out = cmd.output().ok()?;
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    if text.trim().is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
+
+fn extract_index_subcommands(output: &str, tool: &str) -> Vec<String> {
+    let mut subs = Vec::new();
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.ends_with(':') {
+            continue;
+        }
+        let word = trimmed.split_whitespace().next().unwrap_or("");
+        if is_subcommand_word(word, tool) && !subs.iter().any(|s| s == word) {
+            subs.push(word.to_string());
+        }
+    }
+    subs
 }
 
 fn chunk_help(pages: &[(String, String)], max: usize) -> Vec<String> {
@@ -1343,57 +1424,73 @@ fn run_help_flag(tool: &str, args: &[&str], flag: &str) -> String {
     }
 }
 
+fn is_subcommand_word(word: &str, tool: &str) -> bool {
+    !word.is_empty()
+        && word != tool
+        && word != "help"
+        && word != "version"
+        && !word.starts_with('-')
+        && !word.starts_with('[')
+        && !word.starts_with('<')
+        && word
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+}
+
+fn is_command_index_header(trimmed: &str) -> bool {
+    let t = trimmed.to_lowercase();
+    t.contains("commands:")
+        || t.contains("subcommands:")
+        || t == "commands"
+        || t.starts_with("example usage")
+        || t == "synopsis"
+        || t == "synopsis:"
+}
+
 /// Extract subcommand names from help text.
-/// Handles formats like `gemini mcp` (tool-prefixed) and `mcp` (bare subcommand).
+/// Handles `Commands:` lists, brew-style `Example usage:`, and `tool sub …` lines.
 fn extract_subcommands(help: &str, tool: &str) -> Vec<String> {
     let mut subs = Vec::new();
     let mut in_commands = false;
 
     for line in help.lines() {
         let trimmed = line.trim();
+        let lower = trimmed.to_lowercase();
 
-        // Detect command section headers
-        if trimmed.to_lowercase().contains("commands:")
-            || trimmed.to_lowercase().contains("subcommands:")
-            || trimmed.to_lowercase() == "commands"
-        {
+        if is_command_index_header(trimmed) {
             in_commands = true;
             continue;
         }
 
-        // End of command section (blank line or new section)
         if in_commands {
             if trimmed.is_empty() {
-                // Could be end of section, but allow one blank line
                 continue;
             }
-            if !trimmed.starts_with(' ') && !trimmed.starts_with('\t') && trimmed.ends_with(':') {
+            if !trimmed.starts_with(' ')
+                && !trimmed.starts_with('\t')
+                && trimmed.ends_with(':')
+                && !is_command_index_header(trimmed)
+            {
                 in_commands = false;
                 continue;
             }
 
-            // Extract subcommand name, handling tool-prefixed formats
-            // e.g. "gemini mcp  — Manage MCP" → words are ["gemini", "mcp", ...]
             let words: Vec<&str> = trimmed.split_whitespace().collect();
-            // If first word is the tool name, take the second word as subcommand
             let sub_word = if words.first() == Some(&tool) && words.len() > 1 {
                 words[1]
             } else {
                 words.first().copied().unwrap_or("")
             };
-            // Skip help, version, meta entries, flags, and bracketed positional args
-            if !sub_word.is_empty()
-                && sub_word != tool
-                && sub_word != "help"
-                && sub_word != "version"
-                && !sub_word.starts_with('-')
-                && !sub_word.starts_with('[')
-                && !sub_word.starts_with('<')
-                && sub_word
-                    .chars()
-                    .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-            {
+            if is_subcommand_word(sub_word, tool) && !subs.iter().any(|s| s == sub_word) {
                 subs.push(sub_word.to_string());
+            }
+        } else if lower.starts_with(&format!("{tool} ")) {
+            let words: Vec<&str> = trimmed.split_whitespace().collect();
+            if words.len() > 1
+                && is_subcommand_word(words[1], tool)
+                && !subs.iter().any(|s| s == words[1])
+            {
+                subs.push(words[1].to_string());
             }
         }
     }
@@ -1811,20 +1908,98 @@ pub fn show_schema_diff(tool: &str, version: u32) {
 /// Install a curated schema into the user schemas dir (overwrites that tool's file).
 pub fn export_builtin_schema(tool: &str, _cwd: &str) -> Result<PathBuf, String> {
     let filename = format!("{}.json", tool);
-    let body = curated_schema(&filename).ok_or_else(|| {
-        let names: Vec<_> = CURATED_SCHEMAS
-            .iter()
-            .map(|(name, _)| name.trim_end_matches(".json"))
-            .collect();
-        format!(
-            "'{}' is not a built-in schema. Built-in schemas: {}",
-            tool,
-            names.join(", ")
-        )
-    })?;
+    let body = curated_schema(&filename).ok_or_else(|| unknown_curated(tool))?;
     let schema_path = schemas_dir().join(&filename);
     std::fs::write(&schema_path, body).map_err(|e| format!("Failed to write: {}", e))?;
     Ok(schema_path)
+}
+
+fn unknown_curated(tool: &str) -> String {
+    let names: Vec<_> = CURATED_SCHEMAS
+        .iter()
+        .map(|(name, _)| name.trim_end_matches(".json"))
+        .collect();
+    format!(
+        "'{}' is not a bundled schema. Bundled: {}. Use `waz generate {} --force` for an AI schema.",
+        tool,
+        names.join(", "),
+        tool
+    )
+}
+
+fn curated_tool_names() -> Vec<&'static str> {
+    CURATED_SCHEMAS
+        .iter()
+        .map(|(name, _)| name.trim_end_matches(".json"))
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UpgradeReport {
+    pub tool: String,
+    pub status: String,
+    pub backup: Option<u32>,
+}
+
+fn json_same(a: &str, b: &str) -> bool {
+    let va: Result<Value, _> = serde_json::from_str(a);
+    let vb: Result<Value, _> = serde_json::from_str(b);
+    match (va, vb) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => a == b,
+    }
+}
+
+/// Replace installed curated schemas with the copies bundled in this binary.
+/// Existing files are version-saved first. Unknown names error before any write.
+pub fn upgrade_schemas(tools: &[String]) -> Result<Vec<UpgradeReport>, String> {
+    let wanted: Vec<String> = if tools.is_empty() {
+        curated_tool_names()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect()
+    } else {
+        tools.to_vec()
+    };
+    for tool in &wanted {
+        if curated_schema(&format!("{tool}.json")).is_none() {
+            return Err(unknown_curated(tool));
+        }
+    }
+    let mut reports = Vec::new();
+    for tool in wanted {
+        reports.push(upgrade_one(&tool)?);
+    }
+    Ok(reports)
+}
+
+fn upgrade_one(tool: &str) -> Result<UpgradeReport, String> {
+    let filename = format!("{tool}.json");
+    let body = curated_schema(&filename).ok_or_else(|| unknown_curated(tool))?;
+    let path = schemas_dir().join(&filename);
+    if !path.exists() {
+        std::fs::write(&path, body).map_err(|e| format!("Failed to write {tool}: {e}"))?;
+        return Ok(UpgradeReport {
+            tool: tool.to_string(),
+            status: "installed".into(),
+            backup: None,
+        });
+    }
+    let current = std::fs::read_to_string(&path).unwrap_or_default();
+    if json_same(&current, body) {
+        return Ok(UpgradeReport {
+            tool: tool.to_string(),
+            status: "unchanged".into(),
+            backup: None,
+        });
+    }
+    let backup = version_save(&tool).ok();
+    std::fs::write(&path, body).map_err(|e| format!("Failed to write {tool}: {e}"))?;
+    Ok(UpgradeReport {
+        tool: tool.to_string(),
+        status: "replaced".into(),
+        backup,
+    })
 }
 
 #[cfg(test)]
@@ -1859,6 +2034,70 @@ Options:
         assert!(subs.contains(&"search".to_string()));
         assert!(subs.contains(&"upgrade".to_string()));
         assert!(!subs.contains(&"help".to_string()));
+    }
+
+    #[test]
+    fn extract_subcommands_from_brew_example_usage() {
+        let help = r#"Example usage:
+  brew search TEXT|/REGEX/
+  brew info [FORMULA|CASK...]
+  brew install FORMULA|CASK...
+  brew update
+  brew upgrade [FORMULA|CASK...]
+  brew uninstall FORMULA|CASK...
+  brew list [FORMULA|CASK...]
+
+Troubleshooting:
+  brew config
+  brew doctor
+"#;
+        let subs = extract_subcommands(help, "brew");
+        for name in [
+            "search",
+            "info",
+            "install",
+            "update",
+            "upgrade",
+            "uninstall",
+            "list",
+        ] {
+            assert!(
+                subs.contains(&name.to_string()),
+                "missing {name} in {subs:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn harvest_coverage_not_full_from_command_count_alone() {
+        let h = Harvest {
+            pages: vec![("brew".into(), "help".into())],
+            truncated: false,
+            nested_incomplete: true,
+            sub_titles: vec!["brew search".into(), "brew install".into()],
+        };
+        let commands = vec![CommandEntry {
+            command: "brew search".into(),
+            description: "s".into(),
+            group: "brew".into(),
+            verified: false,
+            tokens: vec![],
+        }];
+        assert_eq!(harvest_coverage(&commands, &h), "partial");
+        let complete = Harvest {
+            pages: h.pages.clone(),
+            truncated: false,
+            nested_incomplete: false,
+            sub_titles: vec!["brew search".into()],
+        };
+        assert_eq!(harvest_coverage(&commands, &complete), "full");
+        let missing = Harvest {
+            pages: complete.pages,
+            truncated: false,
+            nested_incomplete: false,
+            sub_titles: vec!["brew search".into(), "brew install".into()],
+        };
+        assert_eq!(harvest_coverage(&commands, &missing), "partial");
     }
 
     #[test]
@@ -2028,6 +2267,7 @@ Options:
                     depends_on: None,
                 }),
                 repeat: false,
+                visible_if: None,
             }],
         };
         resolve_data_sources(&mut entry, "/tmp", None, None);
@@ -2096,6 +2336,33 @@ R  old.rs -> renamed.rs
         ));
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_dir_all(&elsewhere);
+    }
+
+    #[test]
+    fn upgrade_replaces_stale_curated_and_skips_identical() {
+        let _lock = SCHEMA_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("waz-up-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let old = std::env::var("WAZ_SCHEMAS_DIR").ok();
+        std::env::set_var("WAZ_SCHEMAS_DIR", dir.to_str().unwrap());
+        std::fs::write(
+            dir.join("git.json"),
+            r#"{"meta":{"tool":"git"},"commands":[]}"#,
+        )
+        .unwrap();
+        let reports = upgrade_schemas(&["git".into()]).unwrap();
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].status, "replaced");
+        assert!(reports[0].backup.is_some());
+        let again = upgrade_schemas(&["git".into()]).unwrap();
+        assert_eq!(again[0].status, "unchanged");
+        let missing = upgrade_schemas(&["nope".into()]).unwrap_err();
+        assert!(missing.contains("not a bundled schema"), "{missing}");
+        match old {
+            Some(v) => std::env::set_var("WAZ_SCHEMAS_DIR", v),
+            None => std::env::remove_var("WAZ_SCHEMAS_DIR"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -74,7 +74,9 @@ fn tools() -> Value {
                 "type": "object",
                 "properties": {
                     "cwd": { "type": "string" },
-                    "command": { "type": "string", "description": "Exact schema command, e.g. cargo run" }
+                    "command": { "type": "string", "description": "Exact schema command, e.g. cargo run" },
+                    "file": { "type": "string", "description": "Focused file (grounds cargo bin/example)" },
+                    "line": { "type": "integer" }
                 },
                 "required": ["cwd", "command"]
             }
@@ -91,7 +93,9 @@ fn tools() -> Value {
                         "type": "array",
                         "items": { "type": "string" },
                         "description": "Token assignments NAME=VALUE"
-                    }
+                    },
+                    "file": { "type": "string" },
+                    "line": { "type": "integer" }
                 },
                 "required": ["cwd", "command"]
             }
@@ -104,7 +108,9 @@ fn tools() -> Value {
                 "properties": {
                     "cwd": { "type": "string" },
                     "query": { "type": "string" },
-                    "tool": { "type": "string", "description": "Optional tool to pin, e.g. cargo" }
+                    "tool": { "type": "string", "description": "Optional tool lock (only if the user named it)" },
+                    "file": { "type": "string" },
+                    "line": { "type": "integer" }
                 },
                 "required": ["cwd", "query"]
             }
@@ -170,7 +176,9 @@ fn call_tool(params: &Value) -> Value {
         "waz_tmp_show" => {
             let cwd = str_arg(&args, "cwd").unwrap_or_else(|| ".".into());
             let command = str_arg(&args, "command").unwrap_or_default();
-            match crate::tmp::show(&cwd, &command) {
+            let file = str_arg(&args, "file");
+            let line = int_arg(&args, "line");
+            match crate::tmp::show(&cwd, &command, file.as_deref(), line) {
                 Ok(v) => serde_json::to_value(v).unwrap_or(json!({})),
                 Err(e) => return tool_error(&e),
             }
@@ -187,7 +195,9 @@ fn call_tool(params: &Value) -> Value {
                         .collect()
                 })
                 .unwrap_or_default();
-            match crate::tmp::build(&cwd, &command, &set) {
+            let file = str_arg(&args, "file");
+            let line = int_arg(&args, "line");
+            match crate::tmp::build(&cwd, &command, &set, file.as_deref(), line) {
                 Ok(v) => serde_json::to_value(v).unwrap_or(json!({})),
                 Err(e) => return tool_error(&e),
             }
@@ -195,9 +205,26 @@ fn call_tool(params: &Value) -> Value {
         "waz_resolve" => {
             let cwd = str_arg(&args, "cwd").unwrap_or_else(|| ".".into());
             let query = str_arg(&args, "query").unwrap_or_default();
-            let tool = args.get("tool").and_then(|v| v.as_str());
+            let file = str_arg(&args, "file");
+            let line = int_arg(&args, "line");
+            let ctx = crate::context::RuntimeContext::detect(&cwd, file.as_deref(), line);
+            let named = args.get("tool").and_then(|v| v.as_str());
+            let matched = crate::resolve::detect_tool_match(&query, &cwd, Some(&ctx));
+            let filter = named.or_else(|| matched.as_ref().and_then(|m| m.filter_tool()));
+            let prefer = if named.is_some() {
+                None
+            } else {
+                matched.as_ref().and_then(|m| m.prefer_tool())
+            };
             let config = crate::config::Config::load();
-            match crate::resolve::resolve(&config, &query, &cwd, tool) {
+            match crate::resolve::resolve_with_context(
+                &config,
+                &query,
+                &cwd,
+                filter,
+                Some(&ctx),
+                prefer,
+            ) {
                 Ok(v) => serde_json::to_value(v).unwrap_or(json!({})),
                 Err(e) => return tool_error(&e),
             }
@@ -266,6 +293,14 @@ fn str_arg(args: &Value, key: &str) -> Option<String> {
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
+}
+
+fn int_arg(args: &Value, key: &str) -> Option<usize> {
+    args.get(key).and_then(|v| {
+        v.as_u64()
+            .map(|n| n as usize)
+            .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+    })
 }
 
 fn generate_wait_arg(args: &Value) -> bool {

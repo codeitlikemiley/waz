@@ -64,7 +64,9 @@ waz runnables
 
 `waz run` / `waz runnables` prefer `cargo runner` when installed, otherwise local Cargo / script heuristics.
 
-AI mode uses TMP schemas when it can (tool name, keywords, or project files) and tags those results `[TMP]`. Placeholders like `<db_name>` open an inline form.
+AI mode resolves against TMP first. A high/medium hit opens the **same token form as `/`** (not a guessed string). Low confidence still falls back to free-form `ask`; if that suggestion matches a schema command, the token form opens too. Placeholders remain only when no schema matches.
+
+Natural language does **not** lock to cargo just because you are in a Rust repo. `"git commit"` / `"brew install"` use those schemas; cargo is preferred only when the query is about this project.
 
 ## CLI cheat sheet
 

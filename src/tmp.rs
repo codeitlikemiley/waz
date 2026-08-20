@@ -72,9 +72,14 @@ pub fn list(cwd: &str, query: Option<&str>) -> TmpList {
     }
 }
 
-pub fn show(cwd: &str, command: &str) -> Result<TmpShow, String> {
+pub fn show(
+    cwd: &str,
+    command: &str,
+    file: Option<&str>,
+    line: Option<usize>,
+) -> Result<TmpShow, String> {
     let mut cmd = find_command(cwd, command)?;
-    let ctx = RuntimeContext::detect(cwd, None, None);
+    let ctx = RuntimeContext::detect(cwd, file, line);
     generate::resolve_data_sources_pub_ctx(&mut cmd, cwd, Some(&ctx));
     Ok(TmpShow {
         cwd: cwd.to_string(),
@@ -85,12 +90,18 @@ pub fn show(cwd: &str, command: &str) -> Result<TmpShow, String> {
     })
 }
 
-pub fn build(cwd: &str, command: &str, sets: &[String]) -> Result<TmpBuild, String> {
+pub fn build(
+    cwd: &str,
+    command: &str,
+    sets: &[String],
+    file: Option<&str>,
+    line: Option<usize>,
+) -> Result<TmpBuild, String> {
     let mut cmd = find_command(cwd, command)?;
-    let ctx = RuntimeContext::detect(cwd, None, None);
+    let ctx = RuntimeContext::detect(cwd, file, line);
     generate::resolve_data_sources_pub_ctx(&mut cmd, cwd, Some(&ctx));
 
-    let mut values = App::default_token_values(&cmd);
+    let mut values = App::default_token_values(&cmd, Some(&ctx));
     let mut filled = HashMap::new();
     for (i, token) in cmd.tokens.iter().enumerate() {
         if !values[i].is_empty() {
@@ -169,7 +180,7 @@ mod tests {
     #[test]
     fn build_cargo_run_sets_bin() {
         let cwd = env!("CARGO_MANIFEST_DIR");
-        let result = build(cwd, "cargo run", &["bin=waz".into()]).unwrap();
+        let result = build(cwd, "cargo run", &["bin=waz".into()], None, None).unwrap();
         assert!(
             result.argv.contains("--bin waz"),
             "argv should include --bin waz, got {}",
@@ -178,6 +189,20 @@ mod tests {
         assert_eq!(
             result.tokens_filled.get("bin").map(String::as_str),
             Some("waz")
+        );
+    }
+
+    #[test]
+    fn build_cargo_run_prefills_bin_from_file() {
+        let cwd = env!("CARGO_MANIFEST_DIR");
+        let file = format!("{cwd}/src/main.rs");
+        let result = build(cwd, "cargo run", &[], Some(&file), None).unwrap();
+        assert!(
+            result.argv.contains("--bin waz")
+                || result.tokens_filled.get("bin").map(String::as_str) == Some("waz"),
+            "expected --bin waz from src/main.rs context, got argv={} filled={:?}",
+            result.argv,
+            result.tokens_filled
         );
     }
 
@@ -214,7 +239,13 @@ mod tests {
         .unwrap();
         let old = std::env::var("WAZ_SCHEMAS_DIR").ok();
         std::env::set_var("WAZ_SCHEMAS_DIR", dir.to_str().unwrap());
-        let result = build(".", "git add", &["path=a.rs".into(), "path=b.rs".into()]);
+        let result = build(
+            ".",
+            "git add",
+            &["path=a.rs".into(), "path=b.rs".into()],
+            None,
+            None,
+        );
         match old {
             Some(v) => std::env::set_var("WAZ_SCHEMAS_DIR", v),
             None => std::env::remove_var("WAZ_SCHEMAS_DIR"),
