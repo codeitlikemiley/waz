@@ -86,9 +86,7 @@ fn detect_local(cwd: &str, file: Option<&str>, line: Option<usize>) -> RuntimeCo
         .and_then(find_cargo_root)
         .or_else(|| find_cargo_root(cwd_path));
     let cargo_ctx = project_root.as_ref().map(|root| CargoContext::detect(root));
-    let script_engine = file_path
-        .as_deref()
-        .and_then(detect_script_engine);
+    let script_engine = file_path.as_deref().and_then(detect_script_engine);
     let package_name = project_root
         .as_ref()
         .and_then(|root| read_package_name(root))
@@ -129,12 +127,18 @@ fn detect_local(cwd: &str, file: Option<&str>, line: Option<usize>) -> RuntimeCo
         file_kind,
         runnable_kind,
         package_name,
-        bins: cargo_ctx.as_ref().map(|ctx| ctx.bins.clone()).unwrap_or_default(),
+        bins: cargo_ctx
+            .as_ref()
+            .map(|ctx| ctx.bins.clone())
+            .unwrap_or_default(),
         examples: cargo_ctx
             .as_ref()
             .map(|ctx| ctx.examples.clone())
             .unwrap_or_default(),
-        tests: cargo_ctx.as_ref().map(|ctx| ctx.tests.clone()).unwrap_or_default(),
+        tests: cargo_ctx
+            .as_ref()
+            .map(|ctx| ctx.tests.clone())
+            .unwrap_or_default(),
         benches: cargo_ctx
             .as_ref()
             .map(|ctx| ctx.benches.clone())
@@ -427,7 +431,10 @@ edition = "2021"
         let ctx: RuntimeContext = serde_json::from_str(json).unwrap();
         assert_eq!(ctx.file_kind, "single_file_script");
         assert_eq!(ctx.script_engine.as_deref(), Some("rust-script"));
-        assert_eq!(ctx.recommended_target.as_deref(), Some("/tmp/work/power.rs"));
+        assert_eq!(
+            ctx.recommended_target.as_deref(),
+            Some("/tmp/work/power.rs")
+        );
     }
 
     #[test]

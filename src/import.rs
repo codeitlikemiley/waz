@@ -23,7 +23,8 @@ impl std::fmt::Display for ImportResult {
 
 /// Import shell history into the database.
 pub fn import_history(db: &HistoryDb, shell: Option<&str>) -> io::Result<ImportResult> {
-    let home = dirs::home_dir().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME not found"))?;
+    let home = dirs::home_dir()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME not found"))?;
 
     match shell {
         Some("zsh") => import_zsh_history(db, &home),
@@ -82,7 +83,9 @@ fn import_zsh_history(db: &HistoryDb, home: &PathBuf) -> io::Result<ImportResult
     // 4. ~/.zsh_history (default)
     let candidates: Vec<PathBuf> = vec![
         std::env::var("HISTFILE").ok().map(PathBuf::from),
-        std::env::var("ZDOTDIR").ok().map(|d| PathBuf::from(d).join(".zsh_history")),
+        std::env::var("ZDOTDIR")
+            .ok()
+            .map(|d| PathBuf::from(d).join(".zsh_history")),
         Some(home.join(".config").join("zsh").join(".zsh_history")),
         Some(home.join(".zsh_history")),
     ]
@@ -96,10 +99,7 @@ fn import_zsh_history(db: &HistoryDb, home: &PathBuf) -> io::Result<ImportResult
         .ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::NotFound,
-                format!(
-                    "No zsh history file found. Searched: {:?}",
-                    candidates
-                ),
+                format!("No zsh history file found. Searched: {:?}", candidates),
             )
         })?
         .clone();
@@ -178,12 +178,7 @@ fn import_powershell_history(db: &HistoryDb, home: &PathBuf) -> io::Result<Impor
     })?;
 
     eprintln!("  Reading powershell history from: {}", hist_path.display());
-    import_plain_history_file(
-        db,
-        &hist_path,
-        "import_powershell",
-        &home.to_string_lossy(),
-    )
+    import_plain_history_file(db, &hist_path, "import_powershell", &home.to_string_lossy())
 }
 
 fn powershell_history_path(home: &PathBuf) -> Option<PathBuf> {

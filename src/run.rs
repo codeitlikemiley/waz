@@ -84,7 +84,11 @@ fn resolve_locally(filepath_arg: Option<&str>) -> Result<ResolvedRun, String> {
         .map_err(|e| format!("failed to determine current directory: {}", e))?;
     let (filepath, line) = split_filepath_and_line(filepath_arg);
 
-    if filepath.as_deref().map(|path| path.contains("::")).unwrap_or(false) {
+    if filepath
+        .as_deref()
+        .map(|path| path.contains("::"))
+        .unwrap_or(false)
+    {
         return Err("module-path run requires cargo runner to be installed".to_string());
     }
 
@@ -93,14 +97,15 @@ fn resolve_locally(filepath_arg: Option<&str>) -> Result<ResolvedRun, String> {
         .and_then(|path| resolve_existing_path(&cwd, path));
 
     if filepath.is_some() && resolved_file.is_none() {
-        return Err(format!(
-            "file not found: {}",
-            filepath.unwrap_or_default()
-        ));
+        return Err(format!("file not found: {}", filepath.unwrap_or_default()));
     }
 
     let cwd_str = cwd.to_string_lossy().to_string();
-    let context = RuntimeContext::detect(&cwd_str, resolved_file.as_deref().and_then(|p| p.to_str()), line);
+    let context = RuntimeContext::detect(
+        &cwd_str,
+        resolved_file.as_deref().and_then(|p| p.to_str()),
+        line,
+    );
     let mut commands = local_runnables(&context, resolved_file.as_deref())?;
     let command = commands
         .drain(..)
@@ -160,9 +165,8 @@ fn parse_dry_run_output(stdout: &str) -> Result<ResolvedRunCommand, String> {
         }
     }
 
-    let command = command.ok_or_else(|| {
-        "cargo runner dry-run output did not include a command".to_string()
-    })?;
+    let command = command
+        .ok_or_else(|| "cargo runner dry-run output did not include a command".to_string())?;
 
     Ok(ResolvedRunCommand {
         command,
@@ -224,8 +228,8 @@ pub(crate) fn local_runnables(
     resolved_file: Option<&Path>,
 ) -> Result<Vec<String>, String> {
     if context.file_kind == "single_file_script" {
-        let file = resolved_file
-            .ok_or_else(|| "single-file scripts require a file path".to_string())?;
+        let file =
+            resolved_file.ok_or_else(|| "single-file scripts require a file path".to_string())?;
         let engine = context.script_engine.as_deref().unwrap_or("rust-script");
         let file = shell_quote(file.to_string_lossy().as_ref());
         return Ok(vec![if engine == "rust-script" {
@@ -236,8 +240,8 @@ pub(crate) fn local_runnables(
     }
 
     if context.file_kind == "standalone" {
-        let file = resolved_file
-            .ok_or_else(|| "standalone Rust files require a file path".to_string())?;
+        let file =
+            resolved_file.ok_or_else(|| "standalone Rust files require a file path".to_string())?;
         let stem = file
             .file_stem()
             .and_then(|s| s.to_str())
@@ -253,10 +257,7 @@ pub(crate) fn local_runnables(
     };
 
     let normalized = file.to_string_lossy().replace('\\', "/");
-    let stem = file
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("main");
+    let stem = file.file_stem().and_then(|s| s.to_str()).unwrap_or("main");
     let package = context.package_name.as_deref();
     let mut commands = Vec::new();
 
@@ -416,14 +417,22 @@ pub(crate) fn local_runnables(
 }
 
 fn workspace_default_runnables(context: &RuntimeContext) -> Vec<String> {
-    let mut commands = vec!["cargo run".to_string(), "cargo test".to_string(), "cargo check".to_string()];
+    let mut commands = vec![
+        "cargo run".to_string(),
+        "cargo test".to_string(),
+        "cargo check".to_string(),
+    ];
     if !context.benches.is_empty() {
         commands.push("cargo bench".to_string());
     }
     commands
 }
 
-fn render_preview(command: &str, working_dir: Option<&PathBuf>, env: &[(String, String)]) -> String {
+fn render_preview(
+    command: &str,
+    working_dir: Option<&PathBuf>,
+    env: &[(String, String)],
+) -> String {
     let mut output = String::new();
     output.push_str(command);
     output.push('\n');
@@ -498,7 +507,10 @@ mod tests {
         let output = "bazel test //app:app\nWorking directory: /tmp/work\nEnvironment variables:\n  A=B\n  C=D\n";
         let parsed = parse_dry_run_output(output).unwrap();
         assert_eq!(parsed.command, "bazel test //app:app");
-        assert_eq!(parsed.env, vec![("A".into(), "B".into()), ("C".into(), "D".into())]);
+        assert_eq!(
+            parsed.env,
+            vec![("A".into(), "B".into()), ("C".into(), "D".into())]
+        );
     }
 
     #[test]

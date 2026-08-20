@@ -3,46 +3,67 @@
 //! Runs `<tool> --help` recursively, sends output to an LLM, and
 //! saves the resulting schema as JSON to `~/.config/waz/schemas/`.
 
-use crate::config::{Config, ProviderDefaults};
+use crate::config::Config;
 use crate::context::RuntimeContext;
 use crate::llm;
-use crate::tui::app::{CommandEntry, SchemaFile, SchemaMeta, TokenType};
-use serde_json::json;
-use std::path::PathBuf;
+use crate::tui::app::{CommandEntry, SchemaFile, SchemaMeta};
+#[cfg(test)]
+use crate::tui::app::{DataSource, TokenType};
+use crate::tui::cargo_schema::CargoContext;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::env;
+use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Duration;
 
-/// Directory where user schemas are stored.
-pub fn schemas_dir() -> PathBuf {
-    let dir = dirs::config_dir()
-        .unwrap_or_else(|| dirs::home_dir().unwrap().join(".config"))
-        .join("waz")
-        .join("schemas");
-    std::fs::create_dir_all(&dir).ok();
-    dir
+const CURATED_SCHEMAS: &[(&str, &str)] = &[
+    ("bun.json", include_str!("../schemas/curated/bun.json")),
+    ("bunx.json", include_str!("../schemas/curated/bunx.json")),
+    (
+        "cargo-script.json",
+        include_str!("../schemas/curated/cargo-script.json"),
+    ),
+    ("cargo.json", include_str!("../schemas/curated/cargo.json")),
+    ("git.json", include_str!("../schemas/curated/git.json")),
+    ("npm.json", include_str!("../schemas/curated/npm.json")),
+    ("npx.json", include_str!("../schemas/curated/npx.json")),
+    (
+        "rust-script.json",
+        include_str!("../schemas/curated/rust-script.json"),
+    ),
+    ("waz.json", include_str!("../schemas/curated/waz.json")),
+];
+
+/// Embedded curated schema JSON keyed by filename (`cargo.json`, …).
+pub fn curated_schema(filename: &str) -> Option<&'static str> {
+    CURATED_SCHEMAS
+        .iter()
+        .find(|(name, _)| *name == filename)
+        .map(|(_, body)| *body)
 }
 
-/// Directory where curated schemas are shipped with the binary.
-fn curated_schemas_dir() -> PathBuf {
-    // Check if we're running from the repo (development) or installed
-    let exe_dir = std::env::current_exe().ok()
-        .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+pub fn curated_schema_count() -> usize {
+    CURATED_SCHEMAS.len()
+}
 
-    // Try repo-relative path first (for development)
-    let repo_schemas = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("schemas").join("curated");
-    if repo_schemas.exists() {
-        return repo_schemas;
-    }
+thread_local! {
+    static CARGO_CTX_CACHE: RefCell<Option<(String, CargoContext)>> = const { RefCell::new(None) };
+    static WHICH_CACHE: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
+}
 
-    // Fallback: next to the binary
-    if let Some(dir) = exe_dir {
-        let bin_schemas = dir.join("schemas").join("curated");
-        if bin_schemas.exists() {
-            return bin_schemas;
-        }
-    }
-
-    repo_schemas // Return repo path even if it doesn't exist
+/// Directory where user schemas are stored.
+/// Override with `WAZ_SCHEMAS_DIR` so agents can test against a clean copy of curated JSON.
+pub fn schemas_dir() -> PathBuf {
+    let dir = if let Ok(override_dir) = std::env::var("WAZ_SCHEMAS_DIR") {
+        PathBuf::from(override_dir)
+    } else {
+        dirs::config_dir()
+            .unwrap_or_else(|| dirs::home_dir().unwrap().join(".config"))
+            .join("waz")
+            .join("schemas")
+    };
+    std::fs::create_dir_all(&dir).ok();
+    dir
 }
 
 /// Check if a schema already exists for the given tool.
@@ -50,34 +71,24 @@ pub fn schema_exists(tool: &str) -> bool {
     schemas_dir().join(format!("{}.json", tool)).exists()
 }
 
-/// Initialize curated schemas — copy from repo/binary to user's config dir.
+/// Initialize curated schemas — copy embedded JSON to the user's config dir.
 /// Only copies schemas that don't already exist (won't overwrite user modifications).
 pub fn init_schemas() -> Result<Vec<String>, String> {
-    let curated_dir = curated_schemas_dir();
     let target_dir = schemas_dir();
     let mut installed = Vec::new();
 
-    let entries = std::fs::read_dir(&curated_dir)
-        .map_err(|e| format!("No curated schemas found at {}: {}", curated_dir.display(), e))?;
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+    for (filename, body) in CURATED_SCHEMAS {
+        let target = target_dir.join(filename);
+        if target.exists() {
             continue;
         }
-
-        let filename = path.file_name().unwrap().to_string_lossy().to_string();
-        let target = target_dir.join(&filename);
-
-        if !target.exists() {
-            match std::fs::copy(&path, &target) {
-                Ok(_) => {
-                    let tool = filename.trim_end_matches(".json");
-                    installed.push(tool.to_string());
-                }
-                Err(e) => {
-                    eprintln!("  ⚠️  Failed to copy {}: {}", filename, e);
-                }
+        match std::fs::write(&target, body) {
+            Ok(_) => {
+                let tool = filename.trim_end_matches(".json");
+                installed.push(tool.to_string());
+            }
+            Err(e) => {
+                eprintln!("  ⚠️  Failed to install {}: {}", filename, e);
             }
         }
     }
@@ -98,7 +109,7 @@ pub fn load_all_schemas_with_context(
 ) -> Vec<CommandEntry> {
     // Auto-init curated schemas on first load
     if let Ok(installed) = init_schemas() {
-        if !installed.is_empty() {
+        if !installed.is_empty() && std::io::IsTerminal::is_terminal(&std::io::stderr()) {
             eprintln!("📦 Initialized curated schemas: {}", installed.join(", "));
         }
     }
@@ -173,17 +184,47 @@ fn should_load_schema(meta: &SchemaMeta, cwd: &str, context: Option<&RuntimeCont
 }
 
 fn which_exists(cmd: &str) -> bool {
-    Command::new("which").arg(cmd).output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    WHICH_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(hit) = cache.get(cmd) {
+            return *hit;
+        }
+        let found = binary_on_path(cmd);
+        cache.insert(cmd.to_string(), found);
+        found
+    })
+}
+
+fn binary_on_path(cmd: &str) -> bool {
+    if cmd.is_empty() {
+        return false;
+    }
+    let path = Path::new(cmd);
+    if path.components().count() > 1 {
+        return path.is_file();
+    }
+    let Some(paths) = env::var_os("PATH") else {
+        return false;
+    };
+    for dir in env::split_paths(&paths) {
+        let candidate = dir.join(cmd);
+        if candidate.is_file() {
+            return true;
+        }
+        #[cfg(windows)]
+        {
+            for ext in ["exe", "cmd", "bat", "com"] {
+                if dir.join(format!("{cmd}.{ext}")).is_file() {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 /// Resolve any `data_source` fields in tokens (shell commands or built-in resolvers).
-fn resolve_data_sources(
-    entry: &mut CommandEntry,
-    cwd: &str,
-    context: Option<&RuntimeContext>,
-) {
+fn resolve_data_sources(entry: &mut CommandEntry, cwd: &str, context: Option<&RuntimeContext>) {
     for token in &mut entry.tokens {
         if let Some(ref ds) = token.data_source {
             let values = if let Some(ref resolver) = ds.resolver {
@@ -198,8 +239,8 @@ fn resolve_data_sources(
 
             if let Some(vals) = values {
                 if !vals.is_empty() {
+                    // Overlay completions; keep the declared token_type.
                     token.values = Some(vals);
-                    token.token_type = TokenType::Enum;
                 }
             }
         }
@@ -229,9 +270,17 @@ fn run_data_source_command(cmd: &str, parse: &str, cwd: &str) -> Option<Vec<Stri
     let stdout = String::from_utf8_lossy(&output.stdout);
     let values: Vec<String> = match parse {
         "words" => stdout.split_whitespace().map(|s| s.to_string()).collect(),
-        _ => stdout.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+        _ => stdout
+            .lines()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
     };
-    if values.is_empty() { None } else { Some(values) }
+    if values.is_empty() {
+        None
+    } else {
+        Some(values)
+    }
 }
 
 // ──────────────────────────── Built-in Resolvers ────────────────────────────
@@ -244,8 +293,12 @@ fn resolve_builtin(
 ) -> Option<Vec<String>> {
     // Handle parameterized resolvers (e.g. "waz:models:gemini")
     let parts: Vec<&str> = resolver.splitn(3, ':').collect();
-    
-    match (parts.get(0).copied(), parts.get(1).copied(), parts.get(2).copied()) {
+
+    match (
+        parts.get(0).copied(),
+        parts.get(1).copied(),
+        parts.get(2).copied(),
+    ) {
         (Some("cargo"), Some("bins"), _) => cargo_resolve_bins(cwd),
         (Some("cargo"), Some("examples"), _) => cargo_resolve_examples(cwd),
         (Some("cargo"), Some("packages"), _) => cargo_resolve_packages(cwd),
@@ -255,6 +308,7 @@ fn resolve_builtin(
         (Some("cargo"), Some("benches"), _) => cargo_resolve_benches(cwd),
         (Some("git"), Some("branches"), _) => git_resolve_branches(cwd),
         (Some("git"), Some("remotes"), _) => git_resolve_remotes(cwd),
+        (Some("git"), Some("status_files"), filter) => git_resolve_status_files(cwd, filter),
         (Some("npm"), Some("scripts"), _) => npm_resolve_scripts(cwd),
         (Some("waz"), Some("models"), Some(provider)) => waz_resolve_models(provider),
         (Some("waz"), Some("models"), None) => waz_resolve_models("gemini"),
@@ -289,9 +343,12 @@ fn resolve_waz_context(field: &str, context: Option<&RuntimeContext>) -> Option<
 /// Fetch available models from an LLM provider's API.
 fn waz_resolve_models(provider: &str) -> Option<Vec<String>> {
     let config = crate::config::Config::load();
-    
+
     // Find the provider's API key
-    let api_key = config.llm.providers.iter()
+    let api_key = config
+        .llm
+        .providers
+        .iter()
         .find(|p| p.name.eq_ignore_ascii_case(provider))
         .and_then(|p| p.keys.first().cloned())
         .or_else(|| {
@@ -300,7 +357,7 @@ fn waz_resolve_models(provider: &str) -> Option<Vec<String>> {
                 .into_iter()
                 .find_map(|var| std::env::var(var).ok().filter(|v| !v.is_empty()))
         });
-    
+
     match provider {
         "gemini" => {
             if let Some(key) = api_key {
@@ -319,14 +376,25 @@ fn waz_resolve_models(provider: &str) -> Option<Vec<String>> {
                 fetch_openai_models(&key)
             } else {
                 Some(vec![
-                    "gpt-4o-mini".into(), "gpt-4o".into(), "gpt-4.1-mini".into(),
-                    "gpt-4.1".into(), "o4-mini".into(),
+                    "gpt-4o-mini".into(),
+                    "gpt-4o".into(),
+                    "gpt-4.1-mini".into(),
+                    "gpt-4.1".into(),
+                    "o4-mini".into(),
                 ])
             }
         }
         "ollama" => fetch_ollama_models(),
-        "glm" => Some(vec!["glm-4.7".into(), "glm-4-plus".into(), "glm-4-flash".into()]),
-        "qwen" => Some(vec!["qwen3.5-plus".into(), "qwen3.5-turbo".into(), "qwen-plus".into()]),
+        "glm" => Some(vec![
+            "glm-4.7".into(),
+            "glm-4-plus".into(),
+            "glm-4-flash".into(),
+        ]),
+        "qwen" => Some(vec![
+            "qwen3.5-plus".into(),
+            "qwen3.5-turbo".into(),
+            "qwen-plus".into(),
+        ]),
         "minimax" => Some(vec!["MiniMax-M2.5".into(), "MiniMax-T1".into()]),
         _ => None,
     }
@@ -339,19 +407,23 @@ fn fetch_gemini_models(api_key: &str) -> Option<Vec<String>> {
     );
     let output = std::process::Command::new("curl")
         .args(["-s", "--max-time", "5", &url])
-        .output().ok()?;
+        .output()
+        .ok()?;
     let body = String::from_utf8_lossy(&output.stdout);
     let json: serde_json::Value = serde_json::from_str(&body).ok()?;
     let models = json.get("models")?.as_array()?;
-    let mut names: Vec<String> = models.iter()
+    let mut names: Vec<String> = models
+        .iter()
         .filter_map(|m| {
             let name = m.get("name")?.as_str()?;
             // "models/gemini-2.5-pro" → "gemini-2.5-pro"
             let short = name.strip_prefix("models/").unwrap_or(name);
             // Only include generateContent-capable models
-            let methods = m.get("supportedGenerationMethods")?
-                .as_array()?;
-            if methods.iter().any(|m| m.as_str() == Some("generateContent")) {
+            let methods = m.get("supportedGenerationMethods")?.as_array()?;
+            if methods
+                .iter()
+                .any(|m| m.as_str() == Some("generateContent"))
+            {
                 Some(short.to_string())
             } else {
                 None
@@ -360,23 +432,38 @@ fn fetch_gemini_models(api_key: &str) -> Option<Vec<String>> {
         .collect();
     names.sort();
     names.dedup();
-    if names.is_empty() { None } else { Some(names) }
+    if names.is_empty() {
+        None
+    } else {
+        Some(names)
+    }
 }
 
 fn fetch_openai_models(api_key: &str) -> Option<Vec<String>> {
     let output = std::process::Command::new("curl")
-        .args(["-s", "--max-time", "5",
-               "-H", &format!("Authorization: Bearer {}", api_key),
-               "https://api.openai.com/v1/models"])
-        .output().ok()?;
+        .args([
+            "-s",
+            "--max-time",
+            "5",
+            "-H",
+            &format!("Authorization: Bearer {}", api_key),
+            "https://api.openai.com/v1/models",
+        ])
+        .output()
+        .ok()?;
     let body = String::from_utf8_lossy(&output.stdout);
     let json: serde_json::Value = serde_json::from_str(&body).ok()?;
     let data = json.get("data")?.as_array()?;
-    let mut names: Vec<String> = data.iter()
+    let mut names: Vec<String> = data
+        .iter()
         .filter_map(|m| {
             let id = m.get("id")?.as_str()?;
             // Filter to chat models only
-            if id.starts_with("gpt-") || id.starts_with("o1") || id.starts_with("o3") || id.starts_with("o4") {
+            if id.starts_with("gpt-")
+                || id.starts_with("o1")
+                || id.starts_with("o3")
+                || id.starts_with("o4")
+            {
                 Some(id.to_string())
             } else {
                 None
@@ -384,70 +471,113 @@ fn fetch_openai_models(api_key: &str) -> Option<Vec<String>> {
         })
         .collect();
     names.sort();
-    if names.is_empty() { None } else { Some(names) }
+    if names.is_empty() {
+        None
+    } else {
+        Some(names)
+    }
 }
 
 fn fetch_ollama_models() -> Option<Vec<String>> {
     let output = std::process::Command::new("curl")
         .args(["-s", "--max-time", "3", "http://localhost:11434/api/tags"])
-        .output().ok()?;
+        .output()
+        .ok()?;
     let body = String::from_utf8_lossy(&output.stdout);
     let json: serde_json::Value = serde_json::from_str(&body).ok()?;
     let models = json.get("models")?.as_array()?;
-    let names: Vec<String> = models.iter()
+    let names: Vec<String> = models
+        .iter()
         .filter_map(|m| m.get("name")?.as_str().map(|s| s.to_string()))
         .collect();
-    if names.is_empty() { None } else { Some(names) }
+    if names.is_empty() {
+        None
+    } else {
+        Some(names)
+    }
+}
+
+fn cargo_context(cwd: &str) -> CargoContext {
+    CARGO_CTX_CACHE.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if let Some((cached_cwd, ctx)) = slot.as_ref() {
+            if cached_cwd == cwd {
+                return ctx.clone();
+            }
+        }
+        let ctx = CargoContext::detect(Path::new(cwd));
+        *slot = Some((cwd.to_string(), ctx.clone()));
+        ctx
+    })
 }
 
 /// Cargo: resolve binary targets from Cargo.toml and src/bin/.
 fn cargo_resolve_bins(cwd: &str) -> Option<Vec<String>> {
-    let cwd = std::path::Path::new(cwd);
-    let ctx = crate::tui::cargo_schema::CargoContext::detect(cwd);
-    if ctx.bins.is_empty() { None } else { Some(ctx.bins) }
+    let bins = cargo_context(cwd).bins;
+    if bins.is_empty() {
+        None
+    } else {
+        Some(bins)
+    }
 }
 
 fn cargo_resolve_examples(cwd: &str) -> Option<Vec<String>> {
-    let cwd = std::path::Path::new(cwd);
-    let ctx = crate::tui::cargo_schema::CargoContext::detect(cwd);
-    if ctx.examples.is_empty() { None } else { Some(ctx.examples) }
+    let examples = cargo_context(cwd).examples;
+    if examples.is_empty() {
+        None
+    } else {
+        Some(examples)
+    }
 }
 
 fn cargo_resolve_packages(cwd: &str) -> Option<Vec<String>> {
-    let cwd = std::path::Path::new(cwd);
-    let ctx = crate::tui::cargo_schema::CargoContext::detect(cwd);
-    if ctx.packages.is_empty() { None } else { Some(ctx.packages) }
+    let packages = cargo_context(cwd).packages;
+    if packages.is_empty() {
+        None
+    } else {
+        Some(packages)
+    }
 }
 
 fn cargo_resolve_features(cwd: &str) -> Option<Vec<String>> {
-    let cwd = std::path::Path::new(cwd);
-    let ctx = crate::tui::cargo_schema::CargoContext::detect(cwd);
-    if ctx.features.is_empty() { None } else { Some(ctx.features) }
+    let features = cargo_context(cwd).features;
+    if features.is_empty() {
+        None
+    } else {
+        Some(features)
+    }
 }
 
 fn cargo_resolve_profiles(cwd: &str) -> Option<Vec<String>> {
-    let cwd = std::path::Path::new(cwd);
-    let ctx = crate::tui::cargo_schema::CargoContext::detect(cwd);
-    let mut profiles = ctx.profiles;
-    // Always include the standard profiles
-    for p in &["dev", "release", "test", "bench"] {
-        if !profiles.contains(&p.to_string()) {
+    let mut profiles = cargo_context(cwd).profiles;
+    for p in ["dev", "release", "test", "bench"] {
+        if !profiles.iter().any(|existing| existing == p) {
             profiles.push(p.to_string());
         }
     }
-    if profiles.is_empty() { None } else { Some(profiles) }
+    if profiles.is_empty() {
+        None
+    } else {
+        Some(profiles)
+    }
 }
 
 fn cargo_resolve_tests(cwd: &str) -> Option<Vec<String>> {
-    let cwd = std::path::Path::new(cwd);
-    let ctx = crate::tui::cargo_schema::CargoContext::detect(cwd);
-    if ctx.tests.is_empty() { None } else { Some(ctx.tests) }
+    let tests = cargo_context(cwd).tests;
+    if tests.is_empty() {
+        None
+    } else {
+        Some(tests)
+    }
 }
 
 fn cargo_resolve_benches(cwd: &str) -> Option<Vec<String>> {
-    let cwd = std::path::Path::new(cwd);
-    let ctx = crate::tui::cargo_schema::CargoContext::detect(cwd);
-    if ctx.benches.is_empty() { None } else { Some(ctx.benches) }
+    let benches = cargo_context(cwd).benches;
+    if benches.is_empty() {
+        None
+    } else {
+        Some(benches)
+    }
 }
 
 /// Git: resolve branch names.
@@ -458,11 +588,78 @@ fn git_resolve_branches(cwd: &str) -> Option<Vec<String>> {
         .output()
         .ok()?;
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let branches: Vec<String> = stdout.lines()
+    let branches: Vec<String> = stdout
+        .lines()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
-    if branches.is_empty() { None } else { Some(branches) }
+    if branches.is_empty() {
+        None
+    } else {
+        Some(branches)
+    }
+}
+
+/// Git: resolve paths from `git status --porcelain` for `git add`.
+fn git_resolve_status_files(cwd: &str, filter: Option<&str>) -> Option<Vec<String>> {
+    let output = Command::new("git")
+        .args(["status", "--porcelain", "-uall"])
+        .current_dir(cwd)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let paths = parse_git_status_porcelain(&stdout, filter);
+    if paths.is_empty() {
+        None
+    } else {
+        Some(paths)
+    }
+}
+
+fn parse_git_status_porcelain(stdout: &str, filter: Option<&str>) -> Vec<String> {
+    let mut paths = Vec::new();
+    for line in stdout.lines() {
+        if line.len() < 4 {
+            continue;
+        }
+        let staged = line.as_bytes()[0];
+        let unstaged = line.as_bytes()[1];
+        let include = match filter {
+            Some("staged") => staged != b' ' && staged != b'?',
+            Some("unstaged") => unstaged != b' ' || (staged == b'?' && unstaged == b'?'),
+            _ => true,
+        };
+        if !include {
+            continue;
+        }
+        if let Some(path) = porcelain_path(line) {
+            if !paths.contains(&path) {
+                paths.push(path);
+            }
+        }
+    }
+    paths
+}
+
+fn porcelain_path(line: &str) -> Option<String> {
+    let rest = line.get(3..)?.trim();
+    if rest.is_empty() {
+        return None;
+    }
+    let path = rest
+        .rsplit_once(" -> ")
+        .map(|(_, dst)| dst)
+        .unwrap_or(rest)
+        .trim()
+        .trim_matches('"');
+    if path.is_empty() {
+        None
+    } else {
+        Some(path.to_string())
+    }
 }
 
 /// Git: resolve remote names.
@@ -473,11 +670,16 @@ fn git_resolve_remotes(cwd: &str) -> Option<Vec<String>> {
         .output()
         .ok()?;
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let remotes: Vec<String> = stdout.lines()
+    let remotes: Vec<String> = stdout
+        .lines()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
-    if remotes.is_empty() { None } else { Some(remotes) }
+    if remotes.is_empty() {
+        None
+    } else {
+        Some(remotes)
+    }
 }
 
 /// npm/bun: resolve script names from package.json.
@@ -487,7 +689,11 @@ fn npm_resolve_scripts(cwd: &str) -> Option<Vec<String>> {
     let json: serde_json::Value = serde_json::from_str(&content).ok()?;
     let scripts = json.get("scripts")?.as_object()?;
     let names: Vec<String> = scripts.keys().cloned().collect();
-    if names.is_empty() { None } else { Some(names) }
+    if names.is_empty() {
+        None
+    } else {
+        Some(names)
+    }
 }
 
 // ──────────────────────────── Schema Sharing ────────────────────────────
@@ -498,25 +704,19 @@ fn npm_resolve_scripts(cwd: &str) -> Option<Vec<String>> {
 pub fn share_schema(tool: &str) -> Result<std::path::PathBuf, String> {
     let src = schemas_dir().join(format!("{}.json", tool));
     if !src.exists() {
-        return Err(format!("No schema found for '{}'. Generate one first.", tool));
+        return Err(format!(
+            "No schema found for '{}'. Generate one first.",
+            tool
+        ));
     }
 
-    let content = std::fs::read_to_string(&src)
-        .map_err(|e| format!("Read: {}", e))?;
+    let content = std::fs::read_to_string(&src).map_err(|e| format!("Read: {}", e))?;
 
     // Try SchemaFile format
-    let mut schema: SchemaFile = serde_json::from_str(&content)
-        .map_err(|e| format!("Parse: {}", e))?;
+    let mut schema: SchemaFile =
+        serde_json::from_str(&content).map_err(|e| format!("Parse: {}", e))?;
 
-    // Strip runtime-resolved values (keep data_source definitions)
-    for cmd in &mut schema.commands {
-        for tok in &mut cmd.tokens {
-            if tok.data_source.is_some() {
-                // Clear values that were populated at load time by resolvers
-                tok.values = None;
-            }
-        }
-    }
+    strip_runtime_values(&mut schema);
 
     // Write to CWD for easy sharing
     let filename = format!("{}-schema-v{}.json", tool, schema.meta.version);
@@ -524,12 +724,20 @@ pub fn share_schema(tool: &str) -> Result<std::path::PathBuf, String> {
         .unwrap_or_else(|_| std::path::PathBuf::from("."))
         .join(&filename);
 
-    let json = serde_json::to_string_pretty(&schema)
-        .map_err(|e| format!("Serialize: {}", e))?;
-    std::fs::write(&dest, &json)
-        .map_err(|e| format!("Write: {}", e))?;
+    let json = serde_json::to_string_pretty(&schema).map_err(|e| format!("Serialize: {}", e))?;
+    std::fs::write(&dest, &json).map_err(|e| format!("Write: {}", e))?;
 
     Ok(dest)
+}
+
+fn strip_runtime_values(schema: &mut SchemaFile) {
+    for cmd in &mut schema.commands {
+        for tok in &mut cmd.tokens {
+            if tok.data_source.is_some() {
+                tok.values = None;
+            }
+        }
+    }
 }
 
 /// Import a schema from a local path or URL.
@@ -544,8 +752,8 @@ pub fn import_schema(source: &str) -> Result<String, String> {
     };
 
     // Parse and validate
-    let schema: SchemaFile = serde_json::from_str(&content)
-        .map_err(|e| format!("Invalid schema format: {}", e))?;
+    let schema: SchemaFile =
+        serde_json::from_str(&content).map_err(|e| format!("Invalid schema format: {}", e))?;
 
     let tool = schema.meta.tool.clone();
     if tool.is_empty() {
@@ -561,8 +769,7 @@ pub fn import_schema(source: &str) -> Result<String, String> {
 
     // Save to schemas dir
     let dest = schemas_dir().join(format!("{}.json", tool));
-    std::fs::write(&dest, &content)
-        .map_err(|e| format!("Write: {}", e))?;
+    std::fs::write(&dest, &content).map_err(|e| format!("Write: {}", e))?;
 
     Ok(tool)
 }
@@ -616,7 +823,9 @@ pub fn list_schemas() {
     }
 
     if schemas.is_empty() && legacy_count == 0 {
-        eprintln!("No schemas installed. Run `waz generate <tool> --init` to install curated schemas.");
+        eprintln!(
+            "No schemas installed. Run `waz generate <tool> --init` to install curated schemas."
+        );
         return;
     }
 
@@ -624,8 +833,10 @@ pub fn list_schemas() {
     schemas.sort_by(|a, b| a.0.cmp(&b.0));
 
     // Print header
-    eprintln!("{:<12} {:<6} {:<10} {:<8} {:<6} {:<10}",
-        "Tool", "Ver", "Status", "Cmds", "Source", "Coverage");
+    eprintln!(
+        "{:<12} {:<6} {:<10} {:<8} {:<6} {:<10}",
+        "Tool", "Ver", "Status", "Cmds", "Source", "Coverage"
+    );
     eprintln!("{}", "─".repeat(56));
 
     for (name, sf) in &schemas {
@@ -646,7 +857,8 @@ pub fn list_schemas() {
             _ => &sf.meta.generated_by,
         };
 
-        eprintln!("{:<12} v{:<4} {:<10} {:<8} {:<6} {}",
+        eprintln!(
+            "{:<12} v{:<4} {:<10} {:<8} {:<6} {}",
             name,
             sf.meta.version,
             status,
@@ -657,7 +869,10 @@ pub fn list_schemas() {
     }
 
     if legacy_count > 0 {
-        eprintln!("\n  + {} legacy schema(s) (pre-SchemaFile format)", legacy_count);
+        eprintln!(
+            "\n  + {} legacy schema(s) (pre-SchemaFile format)",
+            legacy_count
+        );
     }
 
     eprintln!("\n📁 {}", dir.display());
@@ -669,11 +884,16 @@ pub fn list_schemas() {
 /// 2. Sends to LLM with a structured prompt
 /// 3. Parses response into Vec<CommandEntry>
 /// 4. Saves to ~/.config/waz/schemas/<tool>.json as SchemaFile
-pub fn generate_schema(config: &Config, tool: &str, model_override: Option<&str>, provider_override: Option<&str>) -> Result<Vec<CommandEntry>, String> {
+pub fn generate_schema(
+    config: &Config,
+    tool: &str,
+    model_override: Option<&str>,
+    provider_override: Option<&str>,
+) -> Result<Vec<CommandEntry>, String> {
     // Step 1: Check tool exists
     let which = Command::new("which").arg(tool).output();
     match which {
-        Ok(out) if out.status.success() => {},
+        Ok(out) if out.status.success() => {}
         _ => return Err(format!("'{}' not found on PATH", tool)),
     }
 
@@ -697,7 +917,13 @@ pub fn generate_schema(config: &Config, tool: &str, model_override: Option<&str>
         .collect();
     let max_subcommands = 20; // Cap to avoid excessive API calls
     for (i, sub) in subcommands.iter().take(max_subcommands).enumerate() {
-        eprintln!("   Running: {} {} --help ({}/{})", tool, sub, i + 1, subcommands.len().min(max_subcommands));
+        eprintln!(
+            "   Running: {} {} --help ({}/{})",
+            tool,
+            sub,
+            i + 1,
+            subcommands.len().min(max_subcommands)
+        );
         let sub_help = run_help(tool, &[sub.as_str()]);
         if !sub_help.is_empty() {
             help_texts.push(format!("=== {} {} --help ===\n{}", tool, sub, sub_help));
@@ -706,7 +932,10 @@ pub fn generate_schema(config: &Config, tool: &str, model_override: Option<&str>
 
     // Determine model info for display
     let model_name = model_override.map(|s| s.to_string()).unwrap_or_else(|| {
-        config.llm.providers.first()
+        config
+            .llm
+            .providers
+            .first()
             .map(|p| p.model.clone())
             .unwrap_or_else(|| "default".to_string())
     });
@@ -731,7 +960,8 @@ pub fn generate_schema(config: &Config, tool: &str, model_override: Option<&str>
     let existing_version = if schema_exists(tool) {
         // Try to read existing version
         let path = schemas_dir().join(format!("{}.json", tool));
-        std::fs::read_to_string(&path).ok()
+        std::fs::read_to_string(&path)
+            .ok()
             .and_then(|c| serde_json::from_str::<SchemaFile>(&c).ok())
             .map(|s| s.meta.version)
             .unwrap_or(0)
@@ -760,14 +990,18 @@ pub fn generate_schema(config: &Config, tool: &str, model_override: Option<&str>
     let schema_path = schemas_dir().join(format!("{}.json", tool));
     let json = serde_json::to_string_pretty(&schema_file)
         .map_err(|e| format!("Failed to serialize: {}", e))?;
-    std::fs::write(&schema_path, &json)
-        .map_err(|e| format!("Failed to write schema: {}", e))?;
+    std::fs::write(&schema_path, &json).map_err(|e| format!("Failed to write schema: {}", e))?;
 
-    eprintln!("   Found {} commands with {} tokens",
+    eprintln!(
+        "   Found {} commands with {} tokens",
         commands.len(),
         commands.iter().map(|c| c.tokens.len()).sum::<usize>()
     );
-    eprintln!("\n✅ Saved to {} (v{})", schema_path.display(), schema_file.meta.version);
+    eprintln!(
+        "\n✅ Saved to {} (v{})",
+        schema_path.display(),
+        schema_file.meta.version
+    );
     eprintln!("   Next time you open the TUI, these commands will auto-load.");
 
     Ok(commands)
@@ -835,7 +1069,9 @@ fn extract_subcommands(help: &str, tool: &str) -> Vec<String> {
                 && !sub_word.starts_with('-')
                 && !sub_word.starts_with('[')
                 && !sub_word.starts_with('<')
-                && sub_word.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+                && sub_word
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
             {
                 subs.push(sub_word.to_string());
             }
@@ -898,134 +1134,26 @@ JSON:"#,
 }
 
 /// Call the LLM to generate schema JSON.
-fn call_llm_for_schema(config: &Config, prompt: &str, model_override: Option<&str>, provider_override: Option<&str>) -> Result<String, String> {
-    let mut state = llm::load_rotation_state();
-    let mut providers: Vec<crate::config::ProviderConfig> = llm::get_ordered_providers_pub(&config.llm)
-        .into_iter().cloned().collect();
-
-    if providers.is_empty() {
-        return Err("No LLM provider configured. Set GEMINI_API_KEY or configure ~/.config/waz/config.toml".to_string());
-    }
-
-    // Filter to specific provider if requested
-    if let Some(prov) = provider_override {
-        providers.retain(|p| p.name.eq_ignore_ascii_case(prov));
-        if providers.is_empty() {
-            return Err(format!("Provider '{}' not configured. Add its API key or configure it in config.toml.", prov));
-        }
-    }
-
-    // Apply model override to the first (or selected) provider
-    if let Some(model) = model_override {
-        if let Some(p) = providers.first_mut() {
-            p.model = model.to_string();
-        }
-    }
-
-    for provider in &providers {
-        if provider.keys.is_empty() {
-            continue;
-        }
-
-        let key_idx = state.next_key_for(&provider.name, provider.keys.len());
-        let key = match provider.keys.get(key_idx) {
-            Some(k) => k,
-            None => continue,
-        };
-
-        let result = match provider.name.as_str() {
-            "gemini" => call_gemini_long(provider, key, prompt),
-            _ => call_openai_long(provider, key, prompt),
-        };
-
-        if let Some(response) = result {
-            state.save();
-            return Ok(response);
-        }
-    }
-
-    state.save();
-    Err("All LLM providers failed. Check your API keys.".to_string())
-}
-
-/// Call Gemini with higher token limit for schema generation.
-fn call_gemini_long(
-    provider: &crate::config::ProviderConfig,
-    key: &str,
+fn call_llm_for_schema(
+    config: &Config,
     prompt: &str,
-) -> Option<String> {
-    let base_url = if provider.base_url.is_empty() {
-        ProviderDefaults::base_url("gemini").to_string()
-    } else {
-        provider.base_url.clone()
-    };
-    let model = if provider.model.is_empty() {
-        ProviderDefaults::model("gemini").to_string()
-    } else {
-        provider.model.clone()
-    };
-
-    let url = format!(
-        "{}/models/{}:generateContent?key={}",
-        base_url, model, key
-    );
-
-    let body = json!({
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.2,
-            "maxOutputTokens": 4096,
-        }
-    });
-
-    let resp = ureq::post(&url)
-        .set("Content-Type", "application/json")
-        .timeout(Duration::from_secs(30))
-        .send_json(&body)
-        .ok()?;
-
-    let json: serde_json::Value = resp.into_json().ok()?;
-    json["candidates"][0]["content"]["parts"][0]["text"]
-        .as_str()
-        .map(|s| s.trim().to_string())
-}
-
-/// Call OpenAI-compatible API with higher token limit.
-fn call_openai_long(
-    provider: &crate::config::ProviderConfig,
-    key: &str,
-    prompt: &str,
-) -> Option<String> {
-    let base_url = if provider.base_url.is_empty() {
-        ProviderDefaults::base_url(&provider.name).to_string()
-    } else {
-        provider.base_url.clone()
-    };
-    let model = if provider.model.is_empty() {
-        ProviderDefaults::model(&provider.name).to_string()
-    } else {
-        provider.model.clone()
-    };
-
-    let url = format!("{}/chat/completions", base_url);
-    let body = json!({
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.2,
-        "max_tokens": 4096,
-    });
-
-    let resp = ureq::post(&url)
-        .set("Content-Type", "application/json")
-        .set("Authorization", &format!("Bearer {}", key))
-        .timeout(Duration::from_secs(30))
-        .send_json(&body)
-        .ok()?;
-
-    let json: serde_json::Value = resp.into_json().ok()?;
-    json["choices"][0]["message"]["content"]
-        .as_str()
-        .map(|s| s.trim().to_string())
+    model_override: Option<&str>,
+    provider_override: Option<&str>,
+) -> Result<String, String> {
+    if config.llm.providers.is_empty() {
+        return Err(
+            "No LLM provider configured. Run `waz login grok`, `waz login anthropic`, or `waz login chatgpt`, set GEMINI_API_KEY / XAI_API_KEY / ANTHROPIC_API_KEY / OPENAI_API_KEY, or configure ~/.config/waz/config.toml"
+                .to_string(),
+        );
+    }
+    llm::complete_filtered(
+        config,
+        prompt,
+        &llm::CompleteOptions::generate(),
+        provider_override,
+        model_override,
+    )
+    .ok_or_else(|| "All LLM providers failed. Check your API keys.".to_string())
 }
 
 /// Normalize LLM JSON output to fix common type errors.
@@ -1036,22 +1164,28 @@ fn normalize_llm_json(json_str: &str) -> String {
     let Ok(mut val) = serde_json::from_str::<serde_json::Value>(json_str) else {
         return json_str.to_string();
     };
-    
+
     if let Some(arr) = val.as_array_mut() {
         for cmd in arr.iter_mut() {
             // Clean command name: remove [brackets] and <angle brackets>
-            if let Some(command) = cmd.get("command").and_then(|v| v.as_str()).map(|s| s.to_string()) {
+            if let Some(command) = cmd
+                .get("command")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+            {
                 // Remove bracketed/angle-bracketed positional args from command name
                 let clean: String = command
                     .split_whitespace()
-                    .filter(|part| !part.starts_with('[') && !part.starts_with('<') && !part.starts_with("--"))
+                    .filter(|part| {
+                        !part.starts_with('[') && !part.starts_with('<') && !part.starts_with("--")
+                    })
                     .collect::<Vec<_>>()
                     .join(" ");
                 if !clean.is_empty() {
                     cmd["command"] = serde_json::Value::String(clean);
                 }
             }
-            
+
             // Fix token types
             if let Some(tokens) = cmd.get_mut("tokens").and_then(|t| t.as_array_mut()) {
                 for token in tokens.iter_mut() {
@@ -1067,7 +1201,7 @@ fn normalize_llm_json(json_str: &str) -> String {
                             _ => {}
                         }
                     }
-                    
+
                     // Fix "flag": false/true → "flag": null
                     if let Some(flag) = token.get("flag") {
                         match flag {
@@ -1081,7 +1215,7 @@ fn normalize_llm_json(json_str: &str) -> String {
             }
         }
     }
-    
+
     serde_json::to_string(&val).unwrap_or_else(|_| json_str.to_string())
 }
 
@@ -1100,7 +1234,10 @@ fn parse_schema_response(tool: &str, response: &str) -> Result<Vec<CommandEntry>
         };
         // Remove closing fence
         let before_close = after_open.trim();
-        before_close.strip_suffix("```").unwrap_or(before_close).trim()
+        before_close
+            .strip_suffix("```")
+            .unwrap_or(before_close)
+            .trim()
     } else {
         trimmed
     };
@@ -1108,8 +1245,13 @@ fn parse_schema_response(tool: &str, response: &str) -> Result<Vec<CommandEntry>
     // Normalize LLM JSON output to fix common type errors
     let json_str = &normalize_llm_json(json_str);
 
-    let commands: Vec<CommandEntry> = serde_json::from_str(json_str)
-        .map_err(|e| format!("Failed to parse AI response as JSON: {}\n\nRaw response:\n{}", e, &json_str[..json_str.len().min(500)]))?;
+    let commands: Vec<CommandEntry> = serde_json::from_str(json_str).map_err(|e| {
+        format!(
+            "Failed to parse AI response as JSON: {}\n\nRaw response:\n{}",
+            e,
+            &json_str[..json_str.len().min(500)]
+        )
+    })?;
 
     if commands.is_empty() {
         return Err(format!("AI generated 0 commands for '{}'", tool));
@@ -1156,8 +1298,7 @@ pub fn version_save(tool: &str) -> Result<u32, String> {
     let next = latest_version(tool) + 1;
     let dest = versions_dir(tool).join(format!("v{}.json", next));
 
-    std::fs::copy(&source, &dest)
-        .map_err(|e| format!("Failed to save version: {}", e))?;
+    std::fs::copy(&source, &dest).map_err(|e| format!("Failed to save version: {}", e))?;
 
     eprintln!("📦 Saved as v{} → {}", next, dest.display());
     Ok(next)
@@ -1171,7 +1312,10 @@ pub fn rollback_schema(tool: &str, version: Option<u32>) -> Result<u32, String> 
         None => {
             let latest = latest_version(tool);
             if latest == 0 {
-                return Err(format!("No version history for '{}'. Use --history to check.", tool));
+                return Err(format!(
+                    "No version history for '{}'. Use --history to check.",
+                    tool
+                ));
             }
             latest
         }
@@ -1186,8 +1330,7 @@ pub fn rollback_schema(tool: &str, version: Option<u32>) -> Result<u32, String> 
         ));
     }
 
-    std::fs::copy(&source, &target)
-        .map_err(|e| format!("Failed to rollback: {}", e))?;
+    std::fs::copy(&source, &target).map_err(|e| format!("Failed to rollback: {}", e))?;
 
     Ok(v)
 }
@@ -1214,7 +1357,10 @@ pub fn show_version_history(tool: &str) {
     if versions.is_empty() {
         let current = schemas_dir().join(format!("{}.json", tool));
         if current.exists() {
-            eprintln!("📋 '{}' has a current schema but no version history yet.", tool);
+            eprintln!(
+                "📋 '{}' has a current schema but no version history yet.",
+                tool
+            );
             eprintln!("   Version history starts when you use --force to regenerate.");
         } else {
             eprintln!("📋 No schema or history found for '{}'.", tool);
@@ -1224,12 +1370,17 @@ pub fn show_version_history(tool: &str) {
 
     versions.sort_by_key(|(n, _)| *n);
 
-    eprintln!("📋 Version history for '{}' ({} versions):", tool, versions.len());
+    eprintln!(
+        "📋 Version history for '{}' ({} versions):",
+        tool,
+        versions.len()
+    );
     eprintln!("─────────────────────────────────────────");
 
     for (v, path) in &versions {
         let meta = std::fs::metadata(path).ok();
-        let modified = meta.as_ref()
+        let modified = meta
+            .as_ref()
             .and_then(|m| m.modified().ok())
             .map(|t| {
                 let elapsed = t.elapsed().unwrap_or_default();
@@ -1248,7 +1399,8 @@ pub fn show_version_history(tool: &str) {
         let size = meta.map(|m| m.len()).unwrap_or(0);
 
         // Parse to get command count
-        let cmd_count = std::fs::read_to_string(path).ok()
+        let cmd_count = std::fs::read_to_string(path)
+            .ok()
             .and_then(|c| serde_json::from_str::<Vec<CommandEntry>>(&c).ok())
             .map(|cmds| format!("{} commands", cmds.len()))
             .unwrap_or_else(|| format!("{} bytes", size));
@@ -1260,7 +1412,10 @@ pub fn show_version_history(tool: &str) {
     }
 
     eprintln!("─────────────────────────────────────────");
-    eprintln!("  Rollback: waz generate {} --rollback        (latest)", tool);
+    eprintln!(
+        "  Rollback: waz generate {} --rollback        (latest)",
+        tool
+    );
     eprintln!("  Specific: waz generate {} --rollback <N>", tool);
 }
 
@@ -1292,7 +1447,12 @@ pub fn show_schema_diff(tool: &str, version: u32) {
     let new_names: std::collections::HashSet<String> =
         new_cmds.iter().map(|c| c.command.clone()).collect();
 
-    eprintln!("\n📊 Diff: v{} ({} cmds) → current ({} cmds):", version, old_cmds.len(), new_cmds.len());
+    eprintln!(
+        "\n📊 Diff: v{} ({} cmds) → current ({} cmds):",
+        version,
+        old_cmds.len(),
+        new_cmds.len()
+    );
     eprintln!("─────────────────────────────────────────");
 
     // Added commands
@@ -1318,8 +1478,10 @@ pub fn show_schema_diff(tool: &str, version: u32) {
 
         if old_token_names != new_token_names || old_cmd.description != new_cmd.description {
             eprintln!("  \x1b[33m~ {}\x1b[0m", cmd_name);
-            let old_set: std::collections::HashSet<&str> = old_token_names.iter().copied().collect();
-            let new_set: std::collections::HashSet<&str> = new_token_names.iter().copied().collect();
+            let old_set: std::collections::HashSet<&str> =
+                old_token_names.iter().copied().collect();
+            let new_set: std::collections::HashSet<&str> =
+                new_token_names.iter().copied().collect();
             for tok in new_set.difference(&old_set) {
                 eprintln!("    \x1b[32m+ token: {}\x1b[0m", tok);
             }
@@ -1332,8 +1494,12 @@ pub fn show_schema_diff(tool: &str, version: u32) {
     if added.is_empty() && removed.is_empty() {
         let mut any_changed = false;
         for cmd_name in &common {
-            let old_json = serde_json::to_string(old_cmds.iter().find(|c| &c.command == *cmd_name).unwrap()).unwrap_or_default();
-            let new_json = serde_json::to_string(new_cmds.iter().find(|c| &c.command == *cmd_name).unwrap()).unwrap_or_default();
+            let old_json =
+                serde_json::to_string(old_cmds.iter().find(|c| &c.command == *cmd_name).unwrap())
+                    .unwrap_or_default();
+            let new_json =
+                serde_json::to_string(new_cmds.iter().find(|c| &c.command == *cmd_name).unwrap())
+                    .unwrap_or_default();
             if old_json != new_json {
                 any_changed = true;
                 break;
@@ -1350,187 +1516,22 @@ pub fn show_schema_diff(tool: &str, version: u32) {
 
 // ──────────────────────────── Export Built-in Schemas ────────────────────────────
 
-/// Export a built-in schema (cargo/git/npm) to JSON file.
-pub fn export_builtin_schema(tool: &str, cwd: &str) -> Result<PathBuf, String> {
-    use crate::tui::app::{CommandEntry, TokenDef, TokenType};
-
-    let commands: Vec<CommandEntry> = match tool {
-        "cargo" => {
-            let cargo_path = std::path::Path::new(cwd).join("Cargo.toml");
-            if !cargo_path.exists() {
-                return Err("No Cargo.toml found in current directory. Run from a Cargo project.".to_string());
-            }
-            let ctx = crate::tui::cargo_schema::CargoContext::detect(std::path::Path::new(cwd));
-            crate::tui::cargo_schema::build_cargo_commands(&ctx)
-        }
-        "git" => {
-            // Build git commands programmatically (mirror of load_git_commands)
-            let branches: Vec<String> = Command::new("git")
-                .args(["branch", "--format=%(refname:short)"])
-                .current_dir(cwd)
-                .output()
-                .ok()
-                .map(|out| {
-                    String::from_utf8_lossy(&out.stdout)
-                        .lines()
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty())
-                        .collect()
-                })
-                .unwrap_or_default();
-
-            vec![
-                CommandEntry {
-                    command: "git status".to_string(),
-                    description: "Show working tree status".to_string(),
-                    group: "git".to_string(),
-                    verified: false,
-                    tokens: vec![],
-                },
-                CommandEntry {
-                    command: "git add".to_string(),
-                    description: "Stage files for commit".to_string(),
-                    group: "git".to_string(),
-                    verified: false,
-                    tokens: vec![TokenDef {
-                        name: "path".to_string(),
-                        description: "File or directory to stage".to_string(),
-                        required: true,
-                        token_type: TokenType::File,
-                        default: Some(".".to_string()),
-                        values: None,
-                        flag: None,
-                        data_source: None,
-                    }],
-                },
-                CommandEntry {
-                    command: "git commit".to_string(),
-                    description: "Record changes to the repository".to_string(),
-                    group: "git".to_string(),
-                    verified: false,
-                    tokens: vec![TokenDef {
-                        name: "m".to_string(),
-                        description: "Commit message".to_string(),
-                        required: true,
-                        token_type: TokenType::String,
-                        default: None,
-                        values: None,
-                        flag: None,
-                        data_source: None,
-                    }],
-                },
-                CommandEntry {
-                    command: "git checkout".to_string(),
-                    description: "Switch branches".to_string(),
-                    group: "git".to_string(),
-                    verified: false,
-                    tokens: vec![TokenDef {
-                        name: "branch".to_string(),
-                        description: "Branch to switch to".to_string(),
-                        required: true,
-                        token_type: if branches.is_empty() { TokenType::String } else { TokenType::Enum },
-                        default: None,
-                        values: if branches.is_empty() { None } else { Some(branches.clone()) },
-                        flag: None,
-                        data_source: None,
-                    }],
-                },
-                CommandEntry {
-                    command: "git push".to_string(),
-                    description: "Push to remote".to_string(),
-                    group: "git".to_string(),
-                    verified: false,
-                    tokens: vec![],
-                },
-                CommandEntry {
-                    command: "git pull".to_string(),
-                    description: "Pull from remote".to_string(),
-                    group: "git".to_string(),
-                    verified: false,
-                    tokens: vec![],
-                },
-                CommandEntry {
-                    command: "git log".to_string(),
-                    description: "Show commit logs".to_string(),
-                    group: "git".to_string(),
-                    verified: false,
-                    tokens: vec![
-                        TokenDef {
-                            name: "n".to_string(),
-                            description: "Number of commits to show".to_string(),
-                            required: false,
-                            token_type: TokenType::Number,
-                            default: Some("10".to_string()),
-                            values: None,
-                            flag: None,
-                            data_source: None,
-                        },
-                        TokenDef {
-                            name: "oneline".to_string(),
-                            description: "Show in one-line format".to_string(),
-                            required: false,
-                            token_type: TokenType::Boolean,
-                            default: Some("true".to_string()),
-                            values: None,
-                            flag: None,
-                            data_source: None,
-                        },
-                    ],
-                },
-            ]
-        }
-        "npm" => {
-            let pkg_path = std::path::Path::new(cwd).join("package.json");
-            let scripts: Vec<String> = if let Ok(content) = std::fs::read_to_string(&pkg_path) {
-                serde_json::from_str::<serde_json::Value>(&content).ok()
-                    .and_then(|v| v.get("scripts")?.as_object().map(|obj| {
-                        obj.keys().cloned().collect()
-                    }))
-                    .unwrap_or_default()
-            } else {
-                vec![]
-            };
-
-            let mut commands = vec![
-                CommandEntry {
-                    command: "npm install".to_string(),
-                    description: "Install dependencies".to_string(),
-                    group: "npm".to_string(),
-                    verified: false,
-                    tokens: vec![],
-                },
-            ];
-
-            if !scripts.is_empty() {
-                commands.push(CommandEntry {
-                    command: "npm run".to_string(),
-                    description: "Run a script".to_string(),
-                    group: "npm".to_string(),
-                    verified: false,
-                    tokens: vec![TokenDef {
-                        name: "script".to_string(),
-                        description: "Script to run".to_string(),
-                        required: true,
-                        token_type: TokenType::Enum,
-                        default: None,
-                        values: Some(scripts),
-                        flag: None,
-                        data_source: None,
-                    }],
-                });
-            }
-
-            commands
-        }
-        _ => return Err(format!("'{}' is not a built-in schema. Built-in schemas: cargo, git, npm", tool)),
-    };
-
-    let schema_path = schemas_dir().join(format!("{}.json", tool));
-    let json = serde_json::to_string_pretty(&commands)
-        .map_err(|e| format!("Failed to serialize: {}", e))?;
-    std::fs::write(&schema_path, &json)
-        .map_err(|e| format!("Failed to write: {}", e))?;
-
+/// Install a curated schema into the user schemas dir (overwrites that tool's file).
+pub fn export_builtin_schema(tool: &str, _cwd: &str) -> Result<PathBuf, String> {
+    let filename = format!("{}.json", tool);
+    let body = curated_schema(&filename).ok_or_else(|| {
+        let names: Vec<_> = CURATED_SCHEMAS
+            .iter()
+            .map(|(name, _)| name.trim_end_matches(".json"))
+            .collect();
+        format!(
+            "'{}' is not a built-in schema. Built-in schemas: {}",
+            tool,
+            names.join(", ")
+        )
+    })?;
+    let schema_path = schemas_dir().join(&filename);
+    std::fs::write(&schema_path, body).map_err(|e| format!("Failed to write: {}", e))?;
     Ok(schema_path)
 }
 
@@ -1656,5 +1657,85 @@ Options:
         let dir = schemas_dir();
         assert!(dir.to_str().unwrap().contains("waz"));
         assert!(dir.to_str().unwrap().contains("schemas"));
+    }
+
+    #[test]
+    fn curated_schemas_all_deserialize() {
+        for (name, body) in CURATED_SCHEMAS {
+            let parsed: SchemaFile = serde_json::from_str(body)
+                .unwrap_or_else(|e| panic!("{name} failed to parse: {e}"));
+            assert!(
+                !parsed.commands.is_empty(),
+                "{name} should contain commands"
+            );
+        }
+        assert_eq!(CURATED_SCHEMAS.len(), 9);
+    }
+
+    #[test]
+    fn unknown_resolver_keeps_the_command() {
+        let mut entry = CommandEntry {
+            command: "git add".to_string(),
+            description: "Stage files".to_string(),
+            group: "git".to_string(),
+            verified: true,
+            tokens: vec![crate::tui::app::TokenDef {
+                name: "path".to_string(),
+                description: "files".to_string(),
+                required: true,
+                token_type: TokenType::File,
+                default: Some(".".to_string()),
+                values: None,
+                flag: None,
+                data_source: Some(DataSource {
+                    command: None,
+                    resolver: Some("nope:missing".to_string()),
+                    parse: "lines".to_string(),
+                }),
+            }],
+        };
+        resolve_data_sources(&mut entry, "/tmp", None);
+        assert_eq!(entry.command, "git add");
+        assert_eq!(entry.tokens[0].token_type, TokenType::File);
+        assert!(entry.tokens[0].values.is_none());
+    }
+
+    #[test]
+    fn share_strips_resolver_values_and_keeps_data_source() {
+        let mut schema: SchemaFile =
+            serde_json::from_str(curated_schema("git.json").unwrap()).unwrap();
+        schema.commands[1].tokens[0].values = Some(vec!["src/main.rs".into()]);
+        strip_runtime_values(&mut schema);
+        let add = schema
+            .commands
+            .iter()
+            .find(|c| c.command == "git add")
+            .unwrap();
+        assert!(add.tokens[0].values.is_none());
+        assert!(add.tokens[0].data_source.is_some());
+    }
+
+    #[test]
+    fn parse_git_status_porcelain_paths() {
+        let porcelain = "\
+M  staged.rs
+ M unstaged.rs
+?? new.rs
+R  old.rs -> renamed.rs
+";
+        let all = parse_git_status_porcelain(porcelain, None);
+        assert_eq!(
+            all,
+            vec!["staged.rs", "unstaged.rs", "new.rs", "renamed.rs"]
+        );
+        let staged = parse_git_status_porcelain(porcelain, Some("staged"));
+        assert_eq!(staged, vec!["staged.rs", "renamed.rs"]);
+        let unstaged = parse_git_status_porcelain(porcelain, Some("unstaged"));
+        assert_eq!(unstaged, vec!["unstaged.rs", "new.rs"]);
+    }
+
+    #[test]
+    fn binary_on_path_finds_sh_or_self() {
+        assert!(binary_on_path("sh") || binary_on_path("bash") || !cfg!(unix));
     }
 }

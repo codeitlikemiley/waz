@@ -1,17 +1,19 @@
-mod context;
 mod ask;
 mod config;
+mod context;
 mod db;
 pub mod generate;
 pub mod hint;
 mod import;
 mod llm;
 mod normalize;
+mod oauth;
 mod predict;
+mod resolve;
 mod run;
 mod runnables;
-mod resolve;
 mod session;
+mod tmp;
 pub mod tui;
 
 use clap::{Parser, Subcommand};
@@ -108,6 +110,10 @@ enum Commands {
         /// Output structured JSON instead of text.
         #[arg(long)]
         json: bool,
+
+        /// Pin an LLM provider (e.g. grok, anthropic, chatgpt). Default: fallback order.
+        #[arg(long)]
+        provider: Option<String>,
     },
 
     /// Check if input looks like natural language (returns exit code 0 if yes).
@@ -230,6 +236,60 @@ enum Commands {
         action: SchemaAction,
     },
 
+    /// Headless TMP: list, inspect, and build commands as JSON (for agents and CI).
+    Tmp {
+        #[command(subcommand)]
+        action: TmpAction,
+    },
+
+    /// Report install health as JSON (for agents and CI).
+    Doctor {
+        /// Working directory used to count loaded schemas.
+        #[arg(long, env = "PWD")]
+        cwd: String,
+    },
+
+    /// Log in with a subscription (grok, anthropic/claude, chatgpt/codex).
+    Login {
+        /// Provider: grok, anthropic, or chatgpt/codex.
+        #[arg(default_value = "grok")]
+        provider: String,
+        /// Device-code flow for SSH / VPS / no local browser callback.
+        #[arg(long)]
+        device: bool,
+        /// Force the browser PKCE loopback (127.0.0.1:56121), even over SSH.
+        #[arg(long)]
+        browser: bool,
+        /// Do not import ~/.grok/auth.json even if the Grok CLI is already signed in.
+        #[arg(long)]
+        no_import: bool,
+        /// Start a new login even if stored tokens are still valid.
+        #[arg(long)]
+        force: bool,
+        /// Print login status as JSON and exit.
+        #[arg(long)]
+        status: bool,
+        /// After login, pin this provider (`llm.strategy=single`, `llm.default=<provider>`).
+        #[arg(long)]
+        default: bool,
+    },
+
+    /// Get or set waz config (llm.strategy, llm.default, …).
+    Config {
+        #[command(subcommand)]
+        action: Option<ConfigAction>,
+        /// JSON output (for agents).
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Remove stored OAuth credentials.
+    Logout {
+        /// Provider: grok, anthropic, or chatgpt/codex.
+        #[arg(default_value = "grok")]
+        provider: String,
+    },
+
     /// AI + TMP: resolve natural language to a grounded command using schemas.
     Resolve {
         /// Natural language query (e.g. "run the backend package").
@@ -278,12 +338,64 @@ enum SchemaAction {
     },
 }
 
+#[derive(Subcommand)]
+enum ConfigAction {
+    /// Print one key (e.g. llm.default).
+    Get { key: String },
+    /// Set a key. Provider defaults must already be set up (login or API key).
+    Set {
+        key: String,
+        #[arg(required = true)]
+        value: Vec<String>,
+    },
+    /// Pin a provider: strategy=single and llm.default=<provider>.
+    Use { provider: String },
+}
+
+#[derive(Subcommand)]
+enum TmpAction {
+    /// List TMP commands available in this directory.
+    List {
+        #[arg(long, env = "PWD")]
+        cwd: String,
+        /// Substring filter on command or group.
+        #[arg(long)]
+        query: Option<String>,
+    },
+    /// Show one command and its resolved token values.
+    Show {
+        /// Exact schema command, e.g. "cargo run".
+        command: String,
+        #[arg(long, env = "PWD")]
+        cwd: String,
+    },
+    /// Fill tokens and print the argv string.
+    Build {
+        /// Exact schema command, e.g. "cargo run".
+        command: String,
+        /// Token assignments, e.g. --set bin=waz --set release=true
+        #[arg(long = "set", value_name = "NAME=VALUE")]
+        set: Vec<String>,
+        #[arg(long, env = "PWD")]
+        cwd: String,
+    },
+}
+
 fn get_db_path() -> PathBuf {
-    let data_dir = dirs::data_dir()
-        .unwrap_or_else(|| dirs::home_dir().unwrap().join(".local").join("share"));
+    let data_dir =
+        dirs::data_dir().unwrap_or_else(|| dirs::home_dir().unwrap().join(".local").join("share"));
     data_dir.join("waz").join("history.db")
 }
 
+fn open_db() -> HistoryDb {
+    match HistoryDb::open(&get_db_path()) {
+        Ok(db) => db,
+        Err(e) => {
+            eprintln!("Failed to open database: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
 
 fn main() {
     let cli = Cli::parse();
@@ -295,14 +407,16 @@ fn main() {
             session,
             exit_code,
         } => {
-            let db = HistoryDb::open(&get_db_path()).expect("Failed to open database");
+            let db = open_db();
             let session_id = session.unwrap_or_else(session::get_session_id);
             let cmd_str = command.join(" ");
             if cmd_str.is_empty() {
                 return;
             }
-            db.insert_command(&cmd_str, &cwd, &session_id, exit_code)
-                .expect("Failed to record command");
+            if let Err(e) = db.insert_command(&cmd_str, &cwd, &session_id, exit_code) {
+                eprintln!("Failed to record command: {}", e);
+                std::process::exit(1);
+            }
         }
 
         Commands::Predict {
@@ -312,9 +426,13 @@ fn main() {
             format,
             fast,
         } => {
-            let db = HistoryDb::open(&get_db_path()).expect("Failed to open database");
+            let db = open_db();
             let session_id = session.unwrap_or_else(session::get_session_id);
-            let engine = PredictionEngine::new(&db);
+            let engine = if fast {
+                PredictionEngine::new_fast(&db)
+            } else {
+                PredictionEngine::new(&db)
+            };
 
             match engine.predict(&session_id, &cwd, prefix.as_deref(), fast) {
                 Some(pred) => {
@@ -341,7 +459,7 @@ fn main() {
         }
 
         Commands::Import { shell } => {
-            let db = HistoryDb::open(&get_db_path()).expect("Failed to open database");
+            let db = open_db();
             eprintln!("Importing shell history...");
             match import::import_history(&db, shell.as_deref()) {
                 Ok(result) => {
@@ -376,12 +494,10 @@ fn main() {
         }
 
         Commands::Stats => {
-            let db = HistoryDb::open(&get_db_path()).expect("Failed to open database");
+            let db = open_db();
             let count = db.command_count().unwrap_or(0);
             let db_path = get_db_path();
-            let size = std::fs::metadata(&db_path)
-                .map(|m| m.len())
-                .unwrap_or(0);
+            let size = std::fs::metadata(&db_path).map(|m| m.len()).unwrap_or(0);
 
             eprintln!("Waz Database Statistics");
             eprintln!("─────────────────────────");
@@ -390,7 +506,13 @@ fn main() {
             eprintln!("  Total commands: {}", count);
         }
 
-        Commands::Ask { query, cwd, session, json } => {
+        Commands::Ask {
+            query,
+            cwd,
+            session,
+            json,
+            provider,
+        } => {
             let query_str = query.join(" ");
             if query_str.is_empty() {
                 eprintln!("No query provided.");
@@ -398,13 +520,14 @@ fn main() {
             }
 
             let config = config::Config::load();
-            let db = HistoryDb::open(&get_db_path()).expect("Failed to open database");
+            let db = open_db();
             let session_id = session.unwrap_or_else(session::get_session_id);
             let recent = db.get_session_commands(&session_id).unwrap_or_default();
+            let provider = provider.as_deref();
 
             if json {
                 // Structured JSON mode for interactive resolver
-                match ask::ask_structured(&config, &query_str, &cwd, &recent) {
+                match ask::ask_structured_on(&config, &query_str, &cwd, &recent, provider) {
                     Some(resp) => {
                         println!("{}", serde_json::to_string(&resp).unwrap());
                     }
@@ -415,15 +538,16 @@ fn main() {
                 }
             } else {
                 // Legacy text mode
-                match ask::ask(&config, &query_str, &cwd, &recent) {
+                match ask::ask_on(&config, &query_str, &cwd, &recent, provider) {
                     Some(result) => {
+                        eprintln!("using {} / {}", result.provider, result.model);
                         println!("{}", result.response);
                         if let Some(cmd) = &result.suggested_command {
                             println!("\n__WAZ_CMD__:{}", cmd);
                         }
                     }
                     None => {
-                        eprintln!("No LLM provider configured. Set an API key or configure ~/.config/waz/config.toml");
+                        eprintln!("No LLM provider configured. Set an API key, run `waz login grok`, or configure ~/.config/waz/config.toml");
                         std::process::exit(1);
                     }
                 }
@@ -452,7 +576,7 @@ fn main() {
         }
 
         Commands::Clear { all, cwd } => {
-            let db = HistoryDb::open(&get_db_path()).expect("Failed to open database");
+            let db = open_db();
 
             if all {
                 let total = db.command_count().unwrap_or(0);
@@ -470,7 +594,14 @@ fn main() {
             }
         }
 
-        Commands::Tui { query, cwd, file, line, result_file, self_mode } => {
+        Commands::Tui {
+            query,
+            cwd,
+            file,
+            line,
+            result_file,
+            self_mode,
+        } => {
             match tui::launch(cwd, file, line, query, self_mode) {
                 Ok(Some(cmd)) => {
                     if let Some(ref path) = result_file {
@@ -508,33 +639,29 @@ fn main() {
             }
         }
 
-        Commands::Run { file, dry_run } => {
-            match run::run_file(file.as_deref(), dry_run) {
-                Ok(status) => {
-                    if !status.success() {
-                        std::process::exit(status.code().unwrap_or(1));
-                    }
-                }
-                Err(e) => {
-                    eprintln!("❌ {}", e);
-                    std::process::exit(1);
+        Commands::Run { file, dry_run } => match run::run_file(file.as_deref(), dry_run) {
+            Ok(status) => {
+                if !status.success() {
+                    std::process::exit(status.code().unwrap_or(1));
                 }
             }
-        }
+            Err(e) => {
+                eprintln!("❌ {}", e);
+                std::process::exit(1);
+            }
+        },
 
-        Commands::Runnables { target } => {
-            match runnables::run_runnables(target.as_deref()) {
-                Ok(status) => {
-                    if !status.success() {
-                        std::process::exit(status.code().unwrap_or(1));
-                    }
-                }
-                Err(e) => {
-                    eprintln!("❌ {}", e);
-                    std::process::exit(1);
+        Commands::Runnables { target } => match runnables::run_runnables(target.as_deref()) {
+            Ok(status) => {
+                if !status.success() {
+                    std::process::exit(status.code().unwrap_or(1));
                 }
             }
-        }
+            Err(e) => {
+                eprintln!("❌ {}", e);
+                std::process::exit(1);
+            }
+        },
 
         Commands::Hint { output } => {
             if let Some(cmd) = hint::extract_hint(&output) {
@@ -542,7 +669,17 @@ fn main() {
             }
         }
 
-        Commands::Generate { tool, force, export, rollback, history, model, provider, init, verify } => {
+        Commands::Generate {
+            tool,
+            force,
+            export,
+            rollback,
+            history,
+            model,
+            provider,
+            init,
+            verify,
+        } => {
             // Handle --verify (launch verification TUI)
             if verify {
                 if let Err(e) = tui::verify::launch(&tool) {
@@ -606,8 +743,11 @@ fn main() {
 
             // Normal generate flow
             if !force && generate::schema_exists(&tool) {
-                eprintln!("Schema for '{}' already exists at {:?}", tool,
-                    generate::schemas_dir().join(format!("{}.json", tool)));
+                eprintln!(
+                    "Schema for '{}' already exists at {:?}",
+                    tool,
+                    generate::schemas_dir().join(format!("{}.json", tool))
+                );
                 eprintln!("Use --force to regenerate, --history to see versions, or --rollback to restore.");
                 std::process::exit(0);
             }
@@ -622,10 +762,8 @@ fn main() {
             let config = config::Config::load();
 
             // Merge CLI flags with [generate] config: CLI > config > defaults
-            let effective_model = model.as_deref()
-                .or(config.generate.model.as_deref());
-            let effective_provider = provider.as_deref()
-                .or(config.generate.provider.as_deref());
+            let effective_model = model.as_deref().or(config.generate.model.as_deref());
+            let effective_provider = provider.as_deref().or(config.generate.provider.as_deref());
 
             match generate::generate_schema(&config, &tool, effective_model, effective_provider) {
                 Ok(commands) => {
@@ -654,43 +792,50 @@ fn main() {
                 SchemaAction::List => {
                     generate::list_schemas();
                 }
-                SchemaAction::Share { tool } => {
-                    match generate::share_schema(&tool) {
-                        Ok(path) => eprintln!("✅ Exported shareable schema to {}", path.display()),
-                        Err(e) => {
-                            eprintln!("❌ Share failed: {}", e);
-                            std::process::exit(1);
-                        }
+                SchemaAction::Share { tool } => match generate::share_schema(&tool) {
+                    Ok(path) => eprintln!("✅ Exported shareable schema to {}", path.display()),
+                    Err(e) => {
+                        eprintln!("❌ Share failed: {}", e);
+                        std::process::exit(1);
                     }
-                }
-                SchemaAction::Import { source } => {
-                    match generate::import_schema(&source) {
-                        Ok(tool) => {
-                            eprintln!("✅ Imported schema for '{}'", tool);
-                            eprintln!("   Run `waz generate {} --verify` to review.", tool);
-                        }
-                        Err(e) => {
-                            eprintln!("❌ Import failed: {}", e);
-                            std::process::exit(1);
-                        }
+                },
+                SchemaAction::Import { source } => match generate::import_schema(&source) {
+                    Ok(tool) => {
+                        eprintln!("✅ Imported schema for '{}'", tool);
+                        eprintln!("   Run `waz generate {} --verify` to review.", tool);
                     }
-                }
+                    Err(e) => {
+                        eprintln!("❌ Import failed: {}", e);
+                        std::process::exit(1);
+                    }
+                },
                 SchemaAction::Keywords { tool, words } => {
                     let path = generate::schemas_dir().join(format!("{}.json", tool));
                     if !path.exists() {
-                        eprintln!("❌ No schema for '{}'. Run `waz generate {}` first.", tool, tool);
+                        eprintln!(
+                            "❌ No schema for '{}'. Run `waz generate {}` first.",
+                            tool, tool
+                        );
                         std::process::exit(1);
                     }
                     let content = std::fs::read_to_string(&path).expect("read schema");
-                    let mut schema: tui::app::SchemaFile = serde_json::from_str(&content).expect("parse schema");
+                    let mut schema: tui::app::SchemaFile =
+                        serde_json::from_str(&content).expect("parse schema");
 
                     if words.is_empty() {
                         // Show current keywords
                         if schema.meta.keywords.is_empty() {
                             eprintln!("📝 No keywords set for '{}'.", tool);
-                            eprintln!("   Usage: waz schema keywords {} postgres postgresql database db", tool);
+                            eprintln!(
+                                "   Usage: waz schema keywords {} postgres postgresql database db",
+                                tool
+                            );
                         } else {
-                            eprintln!("🔑 Keywords for '{}': {}", tool, schema.meta.keywords.join(", "));
+                            eprintln!(
+                                "🔑 Keywords for '{}': {}",
+                                tool,
+                                schema.meta.keywords.join(", ")
+                            );
                         }
                     } else {
                         schema.meta.keywords = words.clone();
@@ -703,7 +848,12 @@ fn main() {
             }
         }
 
-        Commands::Resolve { query, cwd, tool, json } => {
+        Commands::Resolve {
+            query,
+            cwd,
+            tool,
+            json,
+        } => {
             let config = config::Config::load();
             let query_str = query.join(" ");
             let tool_ref = tool.as_deref();
@@ -731,5 +881,168 @@ fn main() {
                 }
             }
         }
+
+        Commands::Tmp { action } => match action {
+            TmpAction::List { cwd, query } => {
+                let listed = tmp::list(&cwd, query.as_deref());
+                println!("{}", serde_json::to_string_pretty(&listed).unwrap());
+            }
+            TmpAction::Show { command, cwd } => match tmp::show(&cwd, &command) {
+                Ok(shown) => println!("{}", serde_json::to_string_pretty(&shown).unwrap()),
+                Err(e) => {
+                    eprintln!("{}", serde_json::json!({ "error": e }));
+                    std::process::exit(1);
+                }
+            },
+            TmpAction::Build { command, set, cwd } => match tmp::build(&cwd, &command, &set) {
+                Ok(built) => println!("{}", serde_json::to_string_pretty(&built).unwrap()),
+                Err(e) => {
+                    eprintln!("{}", serde_json::json!({ "error": e }));
+                    std::process::exit(1);
+                }
+            },
+        },
+
+        Commands::Doctor { cwd } => {
+            let report = tmp::doctor(&cwd, &get_db_path().display().to_string());
+            println!("{}", serde_json::to_string_pretty(&report).unwrap());
+        }
+
+        Commands::Config { action, json } => match action {
+            None => {
+                let view = config::view();
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&view).unwrap_or_else(|_| "{}".into())
+                    );
+                } else {
+                    println!("{}", config::format_view(&view));
+                }
+            }
+            Some(ConfigAction::Get { key }) => match config::get_value(&key) {
+                Ok(v) => println!("{v}"),
+                Err(e) => {
+                    eprintln!("{e}");
+                    std::process::exit(1);
+                }
+            },
+            Some(ConfigAction::Set { key, value }) => {
+                match config::set_value(&key, &value.join(" ")) {
+                    Ok(v) => println!("{key} = {v}"),
+                    Err(e) => {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            Some(ConfigAction::Use { provider }) => match config::use_provider(&provider) {
+                Ok(name) => {
+                    eprintln!("Pinned {name} (llm.strategy=single, llm.default={name}).");
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&config::view())
+                                .unwrap_or_else(|_| "{}".into())
+                        );
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    std::process::exit(1);
+                }
+            },
+        },
+
+        Commands::Login {
+            provider,
+            device,
+            browser,
+            no_import,
+            force,
+            status,
+            default,
+        } => {
+            let name = oauth::canonical_provider(&provider);
+            if status {
+                if provider == "grok" && name == "grok" {
+                    // `waz login --status` with the default provider prints every slot.
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&oauth::status_all())
+                            .unwrap_or_else(|_| "{}".into())
+                    );
+                } else {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&oauth::status_for(&name))
+                            .unwrap_or_else(|_| "{}".into())
+                    );
+                }
+                return;
+            }
+            if !oauth::supported_providers().contains(&name.as_str()) {
+                eprintln!(
+                    "OAuth login supports {}. Got: {provider}",
+                    oauth::supported_providers().join(", ")
+                );
+                std::process::exit(1);
+            }
+            match oauth::login(
+                &name,
+                oauth::LoginOptions {
+                    device,
+                    browser,
+                    import_grok_cli: !no_import,
+                    force,
+                },
+            ) {
+                Ok(result) => {
+                    eprintln!(
+                        "Logged in to {name} as {} ({}).",
+                        result.identity(),
+                        result.source
+                    );
+                    if let Some(warning) = result.warning {
+                        eprintln!("{warning}");
+                    }
+                    match name.as_str() {
+                        "grok" => eprintln!(
+                            "waz will use SuperGrok OAuth for grok (model grok-4.6 unless you set one)."
+                        ),
+                        "anthropic" => eprintln!(
+                            "waz will use Claude Pro/Max OAuth for anthropic (Bearer + claude-code beta)."
+                        ),
+                        "codex" => eprintln!(
+                            "waz will use ChatGPT/Codex OAuth via chatgpt.com/backend-api/codex."
+                        ),
+                        _ => {}
+                    }
+                    if default {
+                        match config::use_provider(&name) {
+                            Ok(_) => eprintln!(
+                                "Pinned {name} (llm.strategy=single, llm.default={name})."
+                            ),
+                            Err(e) => eprintln!("Logged in, but could not pin default: {e}"),
+                        }
+                    } else {
+                        eprintln!("To pin this provider: waz config use {name}");
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Login failed: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::Logout { provider } => match oauth::logout(&provider) {
+            Ok(true) => eprintln!("Logged out of {provider}."),
+            Ok(false) => eprintln!("No stored {provider} credentials."),
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        },
     }
 }

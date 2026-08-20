@@ -105,8 +105,12 @@ pub struct SchemaMeta {
     pub keywords: Vec<String>,
 }
 
-fn default_generated_by() -> String { "ai".to_string() }
-fn default_coverage() -> String { "partial".to_string() }
+fn default_generated_by() -> String {
+    "ai".to_string()
+}
+fn default_coverage() -> String {
+    "partial".to_string()
+}
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CommandEntry {
@@ -151,7 +155,9 @@ pub struct DataSource {
     pub parse: String,
 }
 
-fn default_parse_mode() -> String { "lines".to_string() }
+fn default_parse_mode() -> String {
+    "lines".to_string()
+}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum TokenType {
@@ -240,9 +246,13 @@ impl App {
             self.filtered_commands = (0..self.command_list.len()).collect();
         } else {
             // Score each command for relevance — higher is better
-            let mut scored: Vec<(usize, u8)> = self.command_list.iter().enumerate()
+            let mut scored: Vec<(usize, u8)> = self
+                .command_list
+                .iter()
+                .enumerate()
                 .filter_map(|(i, cmd)| {
-                    let subcommand = cmd.command
+                    let subcommand = cmd
+                        .command
                         .strip_prefix(&format!("{} ", cmd.group))
                         .unwrap_or(&cmd.command)
                         .to_lowercase();
@@ -275,81 +285,57 @@ impl App {
     }
 
     /// Select a command and prepare token editing.
-pub fn select_command(&mut self) {
-    if self.filtered_commands.is_empty() {
-        return;
-    }
-    let idx = self.filtered_commands[self.selected_index];
-    self.selected_command = Some(idx);
-    
-    // Lazily resolve data sources when a command is first selected
-    let cwd = self.cwd.clone();
-    let runtime_context = self.runtime_context.clone();
-    crate::generate::resolve_data_sources_pub_ctx(
-        &mut self.command_list[idx],
-        &cwd,
-        runtime_context.as_ref(),
-    );
-    
-    let cmd = &self.command_list[idx];
-
-    // Pre-fill token values with defaults, then fall back to single resolved values.
-    self.token_values = cmd.tokens.iter().map(|t| {
-        if let Some(default) = &t.default {
-            default.clone()
-        } else if let Some(values) = &t.values {
-            if values.len() == 1 {
-                values[0].clone()
-            } else {
-                String::new()
-            }
-        } else {
-            String::new()
+    pub fn select_command(&mut self) {
+        if self.filtered_commands.is_empty() {
+            return;
         }
-    }).collect();
+        let idx = self.filtered_commands[self.selected_index];
+        self.selected_command = Some(idx);
 
-    self.active_token = 0;
-    self.editing_tokens = !cmd.tokens.is_empty();
-}
+        // Lazily resolve data sources when a command is first selected
+        let cwd = self.cwd.clone();
+        let runtime_context = self.runtime_context.clone();
+        crate::generate::resolve_data_sources_pub_ctx(
+            &mut self.command_list[idx],
+            &cwd,
+            runtime_context.as_ref(),
+        );
+
+        let cmd = &self.command_list[idx];
+        self.token_values = Self::default_token_values(cmd);
+
+        self.active_token = 0;
+        self.editing_tokens = !cmd.tokens.is_empty();
+    }
     /// Build the final command string from selected command + token values.
-pub fn build_command(&self) -> Option<String> {
-    let idx = self.selected_command?;
-    let cmd = &self.command_list[idx];
-    let mut parts = vec![cmd.command.clone()];
-    let mut positional_args: Vec<String> = Vec::new();
-
-    for (i, token) in cmd.tokens.iter().enumerate() {
-        let value = self.token_values.get(i).cloned().unwrap_or_default();
-        if value.is_empty() {
-            continue;
-        }
-        match token.token_type {
-            TokenType::Boolean => {
-                if value == "true" || value == "yes" {
-                    if let Some(ref f) = token.flag {
-                        parts.push(f.clone());
-                    }
-                    // No flag = positional boolean (skip, not meaningful)
-                }
-            }
-            TokenType::Enum | TokenType::String | TokenType::File | TokenType::Number => {
-                if let Some(ref f) = token.flag {
-                    // Flagged argument: --flag value
-                    parts.push(f.clone());
-                    parts.push(value);
-                } else {
-                    // Positional argument: just the value (no flag prefix)
-                    positional_args.push(value);
-                }
-            }
-        }
+    pub fn build_command(&self) -> Option<String> {
+        let idx = self.selected_command?;
+        Some(assemble_command(
+            &self.command_list[idx],
+            &self.token_values,
+        ))
     }
 
-    // Positional args go at the end (after all flags)
-    parts.extend(positional_args);
+    /// Default token values used when a command is selected (defaults, else a unique enum).
+    pub fn default_token_values(cmd: &CommandEntry) -> Vec<String> {
+        cmd.tokens
+            .iter()
+            .map(|t| {
+                if let Some(default) = &t.default {
+                    default.clone()
+                } else if let Some(values) = &t.values {
+                    if values.len() == 1 {
+                        values[0].clone()
+                    } else {
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                }
+            })
+            .collect()
+    }
 
-    Some(parts.join(" "))
-}
     pub fn move_up(&mut self) {
         if self.editing_tokens {
             if self.active_token > 0 {
@@ -383,5 +369,187 @@ pub fn build_command(&self) -> Option<String> {
                 self.selected_index += 1;
             }
         }
+    }
+}
+
+/// Serialize a TMP command + filled tokens to a shell argv string.
+/// Flags first, then positionals — this order is part of tmp/1.
+pub fn assemble_command(cmd: &CommandEntry, token_values: &[String]) -> String {
+    let mut parts = vec![cmd.command.clone()];
+    let mut positional_args: Vec<String> = Vec::new();
+
+    for (i, token) in cmd.tokens.iter().enumerate() {
+        let value = token_values.get(i).cloned().unwrap_or_default();
+        if value.is_empty() {
+            continue;
+        }
+        match token.token_type {
+            TokenType::Boolean => {
+                if value == "true" || value == "yes" {
+                    if let Some(ref f) = token.flag {
+                        parts.push(f.clone());
+                    }
+                }
+            }
+            TokenType::Enum | TokenType::String | TokenType::File | TokenType::Number => {
+                if let Some(ref f) = token.flag {
+                    parts.push(f.clone());
+                    parts.push(value);
+                } else {
+                    positional_args.push(value);
+                }
+            }
+        }
+    }
+
+    parts.extend(positional_args);
+    parts.join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+
+    fn token(
+        name: &str,
+        token_type: TokenType,
+        flag: Option<&str>,
+        default: Option<&str>,
+    ) -> TokenDef {
+        TokenDef {
+            name: name.to_string(),
+            description: name.to_string(),
+            required: false,
+            token_type,
+            default: default.map(|s| s.to_string()),
+            values: None,
+            flag: flag.map(|s| s.to_string()),
+            data_source: None,
+        }
+    }
+
+    fn app_with(cmd: CommandEntry, values: Vec<&str>) -> App {
+        let mut app = App::new("/tmp".into(), Config::default(), None);
+        app.command_list.push(cmd);
+        app.filtered_commands = vec![0];
+        app.selected_index = 0;
+        app.selected_command = Some(0);
+        app.token_values = values.into_iter().map(|s| s.to_string()).collect();
+        app
+    }
+
+    #[test]
+    fn build_command_git_commit_omits_false_booleans() {
+        let cmd = CommandEntry {
+            command: "git commit".into(),
+            description: "Record changes".into(),
+            group: "git".into(),
+            verified: true,
+            tokens: vec![
+                token("message", TokenType::String, Some("-m"), None),
+                token("amend", TokenType::Boolean, Some("--amend"), Some("false")),
+                token(
+                    "no-edit",
+                    TokenType::Boolean,
+                    Some("--no-edit"),
+                    Some("false"),
+                ),
+            ],
+        };
+        let app = app_with(cmd, vec!["fix login", "false", "false"]);
+        assert_eq!(
+            app.build_command().as_deref(),
+            Some("git commit -m fix login")
+        );
+    }
+
+    #[test]
+    fn build_command_git_commit_amend() {
+        let cmd = CommandEntry {
+            command: "git commit".into(),
+            description: "Record changes".into(),
+            group: "git".into(),
+            verified: true,
+            tokens: vec![
+                token("message", TokenType::String, Some("-m"), None),
+                token("amend", TokenType::Boolean, Some("--amend"), Some("false")),
+            ],
+        };
+        let app = app_with(cmd, vec!["fix", "true"]);
+        assert_eq!(
+            app.build_command().as_deref(),
+            Some("git commit -m fix --amend")
+        );
+    }
+
+    #[test]
+    fn build_command_cargo_run_bin_flag() {
+        let cmd = CommandEntry {
+            command: "cargo run".into(),
+            description: "Run".into(),
+            group: "cargo".into(),
+            verified: true,
+            tokens: vec![
+                token("bin", TokenType::Enum, Some("--bin"), None),
+                token(
+                    "release",
+                    TokenType::Boolean,
+                    Some("--release"),
+                    Some("false"),
+                ),
+            ],
+        };
+        let app = app_with(cmd, vec!["waz", "false"]);
+        assert_eq!(app.build_command().as_deref(), Some("cargo run --bin waz"));
+    }
+
+    #[test]
+    fn build_command_positional_after_flags() {
+        let cmd = CommandEntry {
+            command: "git add".into(),
+            description: "Stage".into(),
+            group: "git".into(),
+            verified: true,
+            tokens: vec![
+                token("force", TokenType::Boolean, Some("-f"), Some("false")),
+                token("path", TokenType::File, None, Some(".")),
+            ],
+        };
+        let app = app_with(cmd, vec!["true", "src/main.rs"]);
+        assert_eq!(
+            app.build_command().as_deref(),
+            Some("git add -f src/main.rs")
+        );
+    }
+
+    #[test]
+    fn curated_cargo_schema_run_flags() {
+        let schema: SchemaFile =
+            serde_json::from_str(include_str!("../../schemas/curated/cargo.json")).unwrap();
+        assert_eq!(schema.commands.len(), 12);
+        let run = schema
+            .commands
+            .iter()
+            .find(|c| c.command == "cargo run")
+            .unwrap();
+        assert_eq!(
+            run.tokens
+                .iter()
+                .find(|t| t.name == "bin")
+                .unwrap()
+                .flag
+                .as_deref(),
+            Some("--bin")
+        );
+        assert_eq!(
+            run.tokens
+                .iter()
+                .find(|t| t.name == "release")
+                .unwrap()
+                .flag
+                .as_deref(),
+            Some("--release")
+        );
     }
 }

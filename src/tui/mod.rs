@@ -8,13 +8,13 @@ use std::sync::mpsc;
 
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
 
-use app::{App, Mode, TokenType};
 use crate::context::RuntimeContext;
+use app::{App, Mode, TokenType};
 
 /// Launch the TUI overlay. Returns the resolved command (if any).
 pub fn launch(
@@ -43,15 +43,9 @@ pub fn launch(
         app.cursor_pos = app.input.len();
     }
 
-    // Open /dev/tty — the real terminal, regardless of how stdin/stdout are redirected.
-    // When launched from a ZLE widget, all fds are redirected to /dev/tty by the widget.
-    // When launched manually, stdin/stdout are already the terminal.
-    let tty = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open("/dev/tty")?;
-
-    let mut tty_write = tty.try_clone()?;
+    // Prefer /dev/tty so ZLE widgets work even when stdin/stdout are redirected.
+    // Fall back to Windows CONOUT$ then stderr so PowerShell can open the palette.
+    let mut tty_write = open_tui_writer()?;
 
     enable_raw_mode()?;
     execute!(tty_write, EnterAlternateScreen)?;
@@ -66,6 +60,30 @@ pub fn launch(
     terminal.show_cursor()?;
 
     result.map(|_| app.output_command)
+}
+
+fn open_tui_writer() -> io::Result<Box<dyn io::Write>> {
+    #[cfg(unix)]
+    {
+        if let Ok(tty) = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/tty")
+        {
+            return Ok(Box::new(tty));
+        }
+    }
+    #[cfg(windows)]
+    {
+        if let Ok(conout) = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("CONOUT$")
+        {
+            return Ok(Box::new(conout));
+        }
+    }
+    Ok(Box::new(io::stderr()))
 }
 
 fn run_event_loop<W: io::Write>(
@@ -194,7 +212,6 @@ fn run_event_loop<W: io::Write>(
                     handle_enter(app, &ai_tx);
                 }
 
-
                 KeyCode::Backspace => {
                     if app.editing_tokens {
                         // Delete from active token value
@@ -269,7 +286,8 @@ fn run_event_loop<W: io::Write>(
                     } else {
                         // If AI commands are showing but user starts typing,
                         // clear the old response and let them ask a new question
-                        if app.mode == Mode::Ai && !app.ai_commands.is_empty() && !app.ai_selecting {
+                        if app.mode == Mode::Ai && !app.ai_commands.is_empty() && !app.ai_selecting
+                        {
                             app.ai_commands.clear();
                             app.ai_selecting = false;
                         }
@@ -440,7 +458,8 @@ fn handle_enter(app: &mut App, ai_tx: &mpsc::Sender<AiResult>) {
                     );
 
                     if let Some(ref tool) = project_tool {
-                        let _ = tx.send(AiResult::Status(format!("📡 Resolving {} schema...", tool)));
+                        let _ =
+                            tx.send(AiResult::Status(format!("📡 Resolving {} schema...", tool)));
 
                         // Run TMP resolve and ask_structured in PARALLEL
                         let config2 = config.clone();
@@ -475,19 +494,23 @@ fn handle_enter(app: &mut App, ai_tx: &mpsc::Sender<AiResult>) {
                         // Check TMP result first
                         if let Ok(resolve_result) = resolve_handle.join() {
                             match resolve_result {
-                                Ok(res) if res.confidence == "high" || res.confidence == "medium" => {
+                                Ok(res)
+                                    if res.confidence == "high" || res.confidence == "medium" =>
+                                {
                                     let _ = tx.send(AiResult::Resolve(res));
                                     return; // Don't wait for ask — TMP won
                                 }
                                 Ok(res) => {
-                                    let _ = tx.send(AiResult::Status(
-                                        format!("↩️ TMP low confidence ({}), using AI...", res.confidence)
-                                    ));
+                                    let _ = tx.send(AiResult::Status(format!(
+                                        "↩️ TMP low confidence ({}), using AI...",
+                                        res.confidence
+                                    )));
                                 }
                                 Err(e) => {
-                                    let _ = tx.send(AiResult::Status(
-                                        format!("⚠ TMP: {}", e.chars().take(60).collect::<String>())
-                                    ));
+                                    let _ = tx.send(AiResult::Status(format!(
+                                        "⚠ TMP: {}",
+                                        e.chars().take(60).collect::<String>()
+                                    )));
                                 }
                             }
                         }
@@ -505,12 +528,7 @@ fn handle_enter(app: &mut App, ai_tx: &mpsc::Sender<AiResult>) {
                             .and_then(|db| db.get_recent_by_cwd(&cwd, None, 10).ok())
                             .unwrap_or_default();
 
-                        let result = crate::ask::ask_structured(
-                            &config,
-                            &query,
-                            &cwd,
-                            &recent,
-                        );
+                        let result = crate::ask::ask_structured(&config, &query, &cwd, &recent);
                         let _ = tx.send(AiResult::Ask(result));
                     }
                 });
@@ -541,7 +559,9 @@ fn apply_ai_result(app: &mut App, result: AiResult) -> bool {
             });
             app.ai_commands = vec![app::AiCommand {
                 cmd: res.command,
-                desc: res.tokens_filled.iter()
+                desc: res
+                    .tokens_filled
+                    .iter()
                     .map(|t| format!("{} = {}", t.name, t.value))
                     .collect::<Vec<_>>()
                     .join(", "),
@@ -559,13 +579,15 @@ fn apply_ai_result(app: &mut App, result: AiResult) -> bool {
                         role: "assistant".to_string(),
                         content: resp.explanation,
                     });
-                    app.ai_commands = resp.commands.into_iter().map(|c| {
-                        app::AiCommand {
+                    app.ai_commands = resp
+                        .commands
+                        .into_iter()
+                        .map(|c| app::AiCommand {
                             cmd: c.cmd,
                             desc: c.desc,
                             placeholders: c.placeholders,
-                        }
-                    }).collect();
+                        })
+                        .collect();
                     if !app.ai_commands.is_empty() {
                         app.ai_selecting = true;
                         app.ai_selected_cmd = 0;
@@ -607,7 +629,7 @@ fn handle_tab(app: &mut App) {
                     let idx = values.iter().position(|v| v == current).unwrap_or(0);
                     let next = (idx + 1) % values.len();
                     app.token_values[app.active_token] = values[next].clone();
-                    
+
                     // If this is a "provider" token, re-resolve the "model" token
                     let token_name = token.name.clone();
                     let new_value = values[next].clone();
@@ -619,8 +641,8 @@ fn handle_tab(app: &mut App) {
                             .position(|t| t.name == "model")
                         {
                             // Update the resolver to use the new provider
-                            if let Some(ref mut ds) = app.command_list[cmd_idx].tokens[model_idx]
-                                .data_source
+                            if let Some(ref mut ds) =
+                                app.command_list[cmd_idx].tokens[model_idx].data_source
                             {
                                 ds.resolver = Some(format!("waz:models:{}", new_value));
                             }
@@ -632,7 +654,9 @@ fn handle_tab(app: &mut App) {
                                 runtime_context.as_ref(),
                             );
                             // Reset model value to first available option
-                            if let Some(ref vals) = app.command_list[cmd_idx].tokens[model_idx].values {
+                            if let Some(ref vals) =
+                                app.command_list[cmd_idx].tokens[model_idx].values
+                            {
                                 if !vals.is_empty() {
                                     app.token_values[model_idx] = vals[0].clone();
                                 }
@@ -715,7 +739,8 @@ fn update_filter(app: &mut App) {
 fn load_tmp_commands(app: &mut App) {
     if app.config_mode {
         // Config mode: load only the waz schema (bundled in binary)
-        let waz_schema_bytes = include_str!("../../schemas/curated/waz.json");
+        let waz_schema_bytes =
+            crate::generate::curated_schema("waz.json").expect("waz.json is embedded");
         match serde_json::from_str::<crate::tui::app::SchemaFile>(waz_schema_bytes) {
             Ok(sf) => {
                 app.command_list.extend(sf.commands);
@@ -726,10 +751,8 @@ fn load_tmp_commands(app: &mut App) {
         }
     } else {
         // Normal mode: load all schemas (curated + generated)
-        let commands = crate::generate::load_all_schemas_with_context(
-            &app.cwd,
-            app.runtime_context.as_ref(),
-        );
+        let commands =
+            crate::generate::load_all_schemas_with_context(&app.cwd, app.runtime_context.as_ref());
         app.command_list.extend(commands);
     }
     app.filter_commands();

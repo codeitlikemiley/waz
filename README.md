@@ -109,6 +109,10 @@ PowerShell does not have Zsh-style ghost text — PSReadLine fills the line on *
 waz predict --cwd .                        # Proactive prediction (no prefix)
 waz predict --prefix "git" --format json   # Prediction with prefix (`tier` may be output_hint, sequence, workflow, cwd_history, or llm)
 waz hint --output "Run 'npm start'"        # Store an output-based follow-up for the next prompt
+waz doctor --cwd .                         # JSON health report (version, db, schemas)
+waz tmp list --cwd .                       # JSON TMP commands loaded for this directory
+waz tmp show "cargo run" --cwd .           # JSON tokens + resolved data sources
+waz tmp build "cargo run" --cwd . --set bin=waz --set release=true
 waz record -- "git push"                   # Manually record a command
 waz stats                                  # Show database statistics
 waz generate brew                          # Generate TMP schema for a CLI tool
@@ -196,18 +200,19 @@ waz runnables
 waz runnables runners::unified_runner::tests
 ```
 
-#### Built-in Curated Schemas (8)
+#### Built-in Curated Schemas (9)
 
 | Schema | Commands | Dynamic Data Sources |
 |--------|----------|---------------------|
 | `cargo` | 12 | bins, features, packages, profiles, tests, benches from `Cargo.toml` |
 | `cargo-script` | 1 | current script file path |
 | `rust-script` | 1 | current script file path |
-| `git` | 12 | branches, remotes from local repo |
+| `git` | 12 | branches, remotes, status files from local repo |
 | `npm` | 8 | scripts from `package.json` |
 | `bun` | 8 | scripts from `package.json` |
 | `npx` | 1 | — |
 | `bunx` | 1 | — |
+| `waz` | waz CLI | models from the configured provider |
 
 Schemas are **contextual** — cargo commands only appear when `Cargo.toml` exists, npm/bun when `package.json` exists. Git is always available.
 
@@ -564,31 +569,107 @@ waz clear --all      # Clear ALL history across all directories
 
 ## LLM Providers
 
-Tier 4 uses an LLM when local history and workflows can't produce a prediction. Waz supports **6 providers**:
+Waz talks **five wire protocols**: OpenAI-compatible (`/v1/chat/completions`), Anthropic (`/v1/messages`), Gemini (`generateContent`), Ollama (`/api/generate`), and ChatGPT Codex (`/responses` on `chatgpt.com/backend-api/codex`). Unknown provider names default to OpenAI-compatible.
 
-| Provider | Default Model | Base URL | Free Tier |
-|----------|---------------|----------|-----------|
-| **Gemini** | `gemini-3.1-flash-lite-preview` | `generativelanguage.googleapis.com` | 50 req/day |
-| **GLM (z.ai)** | `glm-4.7` | `api.z.ai` | Free for dev use |
-| **Qwen (Alibaba)** | `qwen3.5-plus` | `dashscope-intl.aliyuncs.com` | 1M tokens free |
-| **MiniMax** | `MiniMax-M2.5` | `api.minimax.io` | Free credits |
-| **OpenAI** | `gpt-4o-mini` | `api.openai.com` | Paid only |
-| **Ollama** | `llama3.2` | `localhost:11434` | Local, always free |
+Pin which one is used with `waz config use <provider>` or `waz ask --provider grok`. `waz config` shows what is ready.
+
+### Supported — subscription OAuth
+
+Same first-party clients as [Open Codex](https://opencodex.me/) `ocx login`. No pay-as-you-go key required.
+
+| Provider | Command | Subscription | Protocol | Default model |
+|----------|---------|--------------|----------|---------------|
+| **Grok (xAI)** | `waz login grok` | SuperGrok / X Premium+ | OpenAI-compatible → `api.x.ai/v1` | `grok-4.6` |
+| **Claude** | `waz login anthropic` | Claude Pro / Max | Anthropic messages + OAuth beta | `claude-sonnet-4-5` |
+| **ChatGPT / Codex** | `waz login chatgpt` | ChatGPT Plus / Pro / Codex | Codex responses API | `gpt-5.4-mini` |
+
+Aliases: `xai` → grok, `claude` → anthropic, `codex` → chatgpt.
+
+### Supported — API keys and local
+
+| Provider | Protocol | Default model | How to enable |
+|----------|----------|---------------|---------------|
+| **Gemini** | gemini | `gemini-3.1-flash-lite-preview` | `GEMINI_API_KEY` |
+| **Grok (xAI)** | openai | `grok-3-mini` | `XAI_API_KEY` / `GROK_API_KEY` (optional if OAuth is logged in) |
+| **Claude** | anthropic | `claude-sonnet-4-5` | `ANTHROPIC_API_KEY` |
+| **OpenAI** | openai | `gpt-4o-mini` | `OPENAI_API_KEY` |
+| **OpenRouter** | openai | `openai/gpt-4o-mini` | `OPENROUTER_API_KEY` |
+| **Groq** | openai | `llama-3.3-70b-versatile` | `GROQ_API_KEY` |
+| **DeepSeek** | openai | `deepseek-chat` | `DEEPSEEK_API_KEY` |
+| **GLM / Qwen / MiniMax** | openai | (see defaults) | `GLM_API_KEY` / `DASHSCOPE_API_KEY` / `MINIMAX_API_KEY` |
+| **Ollama** | ollama | `llama3.2` | `WAZ_OLLAMA=1` or `OLLAMA_HOST` |
+| **LM Studio** | openai | `local` | `WAZ_LMSTUDIO=1` |
+| **llama.cpp** | openai | `local` | `WAZ_LLAMACPP=1` |
+| **vLLM** | openai | `local` | `WAZ_VLLM=1` |
+| **Any OpenAI-compatible proxy** | openai | (your model) | `OPENAI_BASE_URL` |
+
+Local servers are opt-in so a dead localhost does not stall `waz predict`.
+
+### Not supported
+
+These are **not** in waz. Do not expect `waz login` or `config use` to work for them.
+
+| Not in waz | Why |
+|------------|-----|
+| **Cursor** OAuth | Cursor’s own HTTP/2 API, not a chat-completions backend waz can call |
+| **Google Antigravity** / Cloud Code Assist OAuth | Not the Gemini API; Gemini in waz is API-key only (`GEMINI_API_KEY`) |
+| **Kiro** (AWS CodeWhisperer) | Product-specific runtime + profile ARN |
+| **Command Code** | Separate product API |
+| **Kimi Coding Plan** OAuth | Not ported (Kimi/Moonshot pay-as-you-go keys are not this flow) |
+| **GitHub Copilot** OAuth | Unofficial extra-header bridge; not ported |
+| **Nous Portal** OAuth | Hermes/Nous gateway; not ported |
+| **ChatGPT Plus as `api.openai.com`** | Plus/Pro is Codex OAuth (`waz login chatgpt`), not an OpenAI API key |
+| **SuperGrok cookies / grok.com scrape** | Use `waz login grok` (official xAI OAuth) or `XAI_API_KEY` |
+
+### Login, import, and pin
+
+| Command | Subscription | Imports if already signed in |
+|---------|--------------|------------------------------|
+| `waz login grok` | SuperGrok / X Premium+ | `~/.grok/auth.json` |
+| `waz login anthropic` | Claude Pro / Max | Claude Code Keychain / `~/.claude/.credentials.json` |
+| `waz login chatgpt` | ChatGPT Plus / Pro / Codex | `~/.codex/auth.json` |
+
+```bash
+waz login grok
+waz login anthropic
+waz login chatgpt           # aliases: codex
+waz login grok --device     # SSH / VPS (Grok only)
+waz login --status          # JSON for every slot
+waz logout anthropic
+```
+
+Tokens are stored in the waz config directory as `auth.json` (mode 0600; same folder as `config.toml`), refreshed automatically, and never written into `config.toml`. If you are already signed in to the Grok CLI, waz imports that session (refresh then belongs to waz; the grok CLI may need to log in again later).
+
+Default OAuth model is `grok-4.6`. Pin a provider from the CLI (refuses providers that are not logged in or keyed):
+
+```bash
+waz login grok --default     # login and pin
+waz config use grok          # pin an already-logged-in provider
+waz config set llm.strategy fallback
+waz config get llm.default
+waz config                   # show strategy, default, providers
+```
+
+xAI may still return HTTP 403 on some SuperGrok tiers for the OAuth API surface. If login succeeds but inference fails with 403, create a key at [console.x.ai](https://console.x.ai) and set `XAI_API_KEY`.
 
 ### Zero-Config Setup
 
-Just export your API key — waz auto-detects it:
-
 ```bash
-# Any ONE of these is enough to enable LLM predictions:
-export GEMINI_API_KEY="your-key"       # Google Gemini
-export GLM_API_KEY="your-key"          # z.ai GLM
-export DASHSCOPE_API_KEY="your-key"    # Alibaba Qwen
-export MINIMAX_API_KEY="your-key"      # MiniMax
-export OPENAI_API_KEY="your-key"       # OpenAI
-```
+# SuperGrok / X Premium+ (no API key):
+waz login grok
 
-Multiple env vars? Waz creates a provider for each and uses **fallback** strategy by default.
+# Cloud API keys — any ONE is enough (fallback tries the rest):
+export GEMINI_API_KEY="..."
+export XAI_API_KEY="..."            # Grok pay-as-you-go (optional if OAuth is logged in)
+export ANTHROPIC_API_KEY="..."      # Claude
+export OPENAI_API_KEY="..."
+
+# Local — opt-in so a dead localhost does not stall predict:
+export WAZ_OLLAMA=1                 # Ollama on localhost:11434
+export WAZ_LMSTUDIO=1               # LM Studio on 127.0.0.1:1234/v1
+export WAZ_LLAMACPP=1               # llama.cpp server on 127.0.0.1:8080/v1
+export OPENAI_BASE_URL="http://127.0.0.1:4000/v1"   # LiteLLM / any proxy
+```
 
 ---
 
@@ -723,14 +804,42 @@ Env vars are **additive** — they add to the key pool, never override:
 
 ### Custom Provider (Any OpenAI-Compatible API)
 
-Any service with an OpenAI-compatible `/v1/chat/completions` endpoint works:
+Any service with an OpenAI-compatible `/v1/chat/completions` endpoint works. Set `api` only if waz cannot infer it (`openai`, `anthropic`, `gemini`, `ollama`):
 
 ```toml
 [[llm.providers]]
 name = "custom"
+api = "openai"
 base_url = "https://your-api-endpoint.com/v1"
 keys = ["your-key"]
 model = "your-model-name"
+```
+
+Grok (xAI) and Claude:
+
+```toml
+[[llm.providers]]
+name = "grok"
+# SuperGrok: run `waz login grok` (do not put the OAuth token here)
+model = "grok-4.6"
+# keys = ["xai-..."]   # optional pay-as-you-go API key
+
+[[llm.providers]]
+name = "anthropic"
+keys = ["sk-ant-..."]
+model = "claude-sonnet-4-5"
+```
+
+Local Ollama / LM Studio (no keys):
+
+```toml
+[[llm.providers]]
+name = "ollama"
+# api inferred as ollama; base_url http://localhost:11434
+
+[[llm.providers]]
+name = "lmstudio"
+# api inferred as openai; base_url http://127.0.0.1:1234/v1
 ```
 
 ---
@@ -787,7 +896,8 @@ model = "your-model-name"
 
 - **History DB**: `~/Library/Application Support/waz/history.db` (macOS) / `~/.local/share/waz/history.db` (Linux)
 - **Rotation state**: `~/Library/Application Support/waz/rotation.json`
-- **Config**: `~/.config/waz/config.toml`
+- **Config**: `~/.config/waz/config.toml` (or `~/Library/Application Support/waz/config.toml` on macOS). Prefer `waz config` / `waz config use` over editing by hand.
+- **OAuth tokens**: `auth.json` next to `config.toml` (mode 0600)
 - **Curated Schemas**: `schemas/curated/*.json` (bundled in repo, auto-copied on first run)
 - **Active Schemas**: `~/Library/Application Support/waz/schemas/*.json` (installed schemas)
 - **Schema Versions**: `~/Library/Application Support/waz/schemas/versions/<tool>/v1.json ...`

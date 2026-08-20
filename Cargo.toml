@@ -1,6 +1,6 @@
 [package]
 name = "waz"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2021"
 description = "Warp-style command prediction and command palette for any terminal — ghost-text autosuggestions, AI assistant, and interactive TUI"
 license = "MIT"
@@ -21,6 +21,7 @@ dirs = "5"
 chrono = "0.4"
 uuid = { version = "1", features = ["v4"] }
 ureq = { version = "2", features = ["json"] }
+sha2 = "0.10"
 toml = "0.8"
 ratatui = "0.29"
 crossterm = { version = "0.28", features = ["use-dev-tty"] }
