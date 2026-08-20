@@ -61,9 +61,18 @@ pub struct PredictionEngine<'a> {
 
 impl<'a> PredictionEngine<'a> {
     pub fn new(db: &'a HistoryDb) -> Self {
+        Self::with_config(db, Config::load())
+    }
+
+    /// Fast interactive path: skip disk config (and therefore the LLM provider list).
+    pub fn new_fast(db: &'a HistoryDb) -> Self {
+        Self::with_config(db, Config::default())
+    }
+
+    fn with_config(db: &'a HistoryDb, config: Config) -> Self {
         Self {
             db,
-            config: Config::load(),
+            config,
             hint_path: hint::hint_file_path(),
         }
     }

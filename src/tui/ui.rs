@@ -1,9 +1,9 @@
 use ratatui::{
-    Frame,
-    layout::{Constraint, Direction, Layout, Rect, Alignment},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
+    Frame,
 };
 
 use super::app::{App, Mode, TokenType};
@@ -19,7 +19,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(2),  // header
+            Constraint::Length(2), // header
             Constraint::Min(5),    // content
             Constraint::Length(3), // input
             Constraint::Length(1), // footer
@@ -40,9 +40,12 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         Mode::Shell => Some(("Shell Mode", Color::Green)),
     };
 
-    let mut spans = vec![
-        Span::styled("🔮 waz", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-    ];
+    let mut spans = vec![Span::styled(
+        "🔮 waz",
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+    )];
 
     if let Some((label, color)) = mode_label {
         spans.push(Span::raw("  "));
@@ -52,10 +55,11 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         ));
     }
 
-    let header = Paragraph::new(Line::from(spans))
-        .block(Block::default()
+    let header = Paragraph::new(Line::from(spans)).block(
+        Block::default()
             .borders(Borders::BOTTOM)
-            .border_style(Style::default().fg(Color::DarkGray)));
+            .border_style(Style::default().fg(Color::DarkGray)),
+    );
 
     f.render_widget(header, area);
 }
@@ -75,23 +79,37 @@ fn draw_empty_content(f: &mut Frame, area: Rect) {
         Line::from(""),
         Line::from(""),
         Line::from(vec![
-            Span::styled("  /", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "  /",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled("   Command palette", Style::default().fg(Color::DarkGray)),
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("  !", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "  !",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled("   Shell command", Style::default().fg(Color::DarkGray)),
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("  …", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "  …",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled("   Just type for AI", Style::default().fg(Color::DarkGray)),
         ]),
     ];
 
-    let paragraph = Paragraph::new(lines)
-        .alignment(Alignment::Left);
+    let paragraph = Paragraph::new(lines).alignment(Alignment::Left);
     f.render_widget(paragraph, area);
 }
 
@@ -115,9 +133,10 @@ fn draw_tmp_content(f: &mut Frame, app: &App, area: Rect) {
         } else {
             "  No commands match your filter."
         };
-        let lines: Vec<Line> = msg.lines().map(|l| {
-            Line::from(Span::styled(l, Style::default().fg(Color::DarkGray)))
-        }).collect();
+        let lines: Vec<Line> = msg
+            .lines()
+            .map(|l| Line::from(Span::styled(l, Style::default().fg(Color::DarkGray))))
+            .collect();
         let paragraph = Paragraph::new(lines);
         f.render_widget(paragraph, area);
     } else {
@@ -139,14 +158,12 @@ fn draw_command_list(f: &mut Frame, app: &App, area: Rect, dimmed: bool) {
                 // Spacer between groups
                 items.push(ListItem::new(Line::from("")));
             }
-            let header = Line::from(vec![
-                Span::styled(
-                    format!("  {}", cmd.group),
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ]);
+            let header = Line::from(vec![Span::styled(
+                format!("  {}", cmd.group),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )]);
             items.push(ListItem::new(header));
             last_group = Some(cmd.group.clone());
         }
@@ -156,15 +173,22 @@ fn draw_command_list(f: &mut Frame, app: &App, area: Rect, dimmed: bool) {
         let style = if dimmed {
             Style::default().fg(Color::DarkGray)
         } else if is_selected {
-            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(Color::White)
         };
 
-        let prefix = if is_selected && !dimmed { "  ▸ " } else { "    " };
+        let prefix = if is_selected && !dimmed {
+            "  ▸ "
+        } else {
+            "    "
+        };
 
         // Show subcommand only (strip the group prefix)
-        let display_name = cmd.command
+        let display_name = cmd
+            .command
             .strip_prefix(&format!("{} ", cmd.group))
             .unwrap_or(&cmd.command);
 
@@ -196,19 +220,21 @@ fn draw_token_form(f: &mut Frame, app: &App, area: Rect) {
     };
     let cmd = &app.command_list[cmd_idx];
 
-    let mut lines: Vec<Line> = vec![Line::from(vec![
-        Span::styled(
-            format!("▸ {}", cmd.command),
-            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
-        ),
-    ])];
+    let mut lines: Vec<Line> = vec![Line::from(vec![Span::styled(
+        format!("▸ {}", cmd.command),
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD),
+    )])];
 
     lines.push(Line::from(""));
 
     if let Some(ctx) = app.runtime_context.as_ref() {
         lines.push(Line::from(vec![Span::styled(
             "  Context:",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         )]));
 
         if let Some(ref file) = ctx.file_path {
@@ -251,7 +277,9 @@ fn draw_token_form(f: &mut Frame, app: &App, area: Rect) {
 
     lines.push(Line::from(Span::styled(
         "  Tokens:",
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
     )));
 
     for (i, token) in cmd.tokens.iter().enumerate() {
@@ -265,14 +293,20 @@ fn draw_token_form(f: &mut Frame, app: &App, area: Rect) {
         };
 
         let name_style = if is_active {
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(Color::Cyan)
         };
 
         let value_display = match &token.token_type {
             TokenType::Boolean => {
-                if value == "true" { "☑ yes".to_string() } else { "☐ no".to_string() }
+                if value == "true" {
+                    "☑ yes".to_string()
+                } else {
+                    "☐ no".to_string()
+                }
             }
             TokenType::Enum => {
                 if value.is_empty() {
@@ -286,7 +320,11 @@ fn draw_token_form(f: &mut Frame, app: &App, area: Rect) {
                 }
             }
             _ => {
-                if value.is_empty() { "[___]".to_string() } else { value.clone() }
+                if value.is_empty() {
+                    "[___]".to_string()
+                } else {
+                    value.clone()
+                }
             }
         };
 
@@ -299,7 +337,9 @@ fn draw_token_form(f: &mut Frame, app: &App, area: Rect) {
             Span::styled(
                 value_display,
                 if is_active {
-                    Style::default().fg(Color::White).add_modifier(Modifier::UNDERLINED)
+                    Style::default()
+                        .fg(Color::White)
+                        .add_modifier(Modifier::UNDERLINED)
                 } else {
                     Style::default().fg(Color::Gray)
                 },
@@ -310,10 +350,7 @@ fn draw_token_form(f: &mut Frame, app: &App, area: Rect) {
         if is_active {
             lines.push(Line::from(vec![
                 Span::raw("      "),
-                Span::styled(
-                    &token.description,
-                    Style::default().fg(Color::DarkGray),
-                ),
+                Span::styled(&token.description, Style::default().fg(Color::DarkGray)),
             ]));
         }
     }
@@ -323,14 +360,16 @@ fn draw_token_form(f: &mut Frame, app: &App, area: Rect) {
         lines.push(Line::from(""));
         lines.push(Line::from(vec![
             Span::styled("  → ", Style::default().fg(Color::Green)),
-            Span::styled(preview, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                preview,
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
         ]));
     }
 
-    let paragraph = Paragraph::new(lines).block(
-        Block::default()
-            .borders(Borders::NONE),
-    );
+    let paragraph = Paragraph::new(lines).block(Block::default().borders(Borders::NONE));
 
     f.render_widget(paragraph, area);
 }
@@ -349,7 +388,12 @@ fn draw_ai_content(f: &mut Frame, app: &App, area: Rect) {
         match msg.role.as_str() {
             "user" => {
                 lines.push(Line::from(vec![
-                    Span::styled("  You: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "  You: ",
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::raw(&msg.content),
                 ]));
                 lines.push(Line::from(""));
@@ -357,7 +401,9 @@ fn draw_ai_content(f: &mut Frame, app: &App, area: Rect) {
             "assistant" => {
                 lines.push(Line::from(Span::styled(
                     "  🔮 waz:",
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
                 )));
                 // Render explanation as multi-line
                 for line in msg.content.lines() {
@@ -376,7 +422,9 @@ fn draw_ai_content(f: &mut Frame, app: &App, area: Rect) {
     if !app.ai_commands.is_empty() {
         lines.push(Line::from(Span::styled(
             "  Commands:",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         )));
 
         for (i, cmd) in app.ai_commands.iter().enumerate() {
@@ -384,14 +432,19 @@ fn draw_ai_content(f: &mut Frame, app: &App, area: Rect) {
 
             let prefix = if is_selected { "  ▸ " } else { "    " };
             let style = if is_selected {
-                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::White)
             };
 
             lines.push(Line::from(vec![
                 Span::styled(prefix, style),
-                Span::styled(format!("[{}] ", i + 1), Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!("[{}] ", i + 1),
+                    Style::default().fg(Color::DarkGray),
+                ),
                 Span::styled(&cmd.cmd, style),
             ]));
 
@@ -421,7 +474,9 @@ fn draw_ai_content(f: &mut Frame, app: &App, area: Rect) {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             "  ⌨ Fill in placeholders:",
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
         )));
         lines.push(Line::from(""));
 
@@ -445,7 +500,9 @@ fn draw_ai_content(f: &mut Frame, app: &App, area: Rect) {
             let val = &app.ai_placeholder_values[i];
 
             let label_style = if is_active {
-                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::DarkGray)
             };
@@ -502,7 +559,9 @@ fn draw_shell_content(f: &mut Frame, app: &App, area: Rect) {
             Span::styled("  → ", Style::default().fg(Color::Green)),
             Span::styled(
                 &app.input,
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
             ),
         ]));
     }
@@ -535,10 +594,7 @@ fn draw_input(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(input_widget, area);
 
     // Position cursor (offset by visual prefix width)
-    f.set_cursor_position((
-        area.x + prefix_len + app.cursor_pos as u16,
-        area.y + 1,
-    ));
+    f.set_cursor_position((area.x + prefix_len + app.cursor_pos as u16, area.y + 1));
 }
 
 fn draw_footer(f: &mut Frame, app: &App, area: Rect) {

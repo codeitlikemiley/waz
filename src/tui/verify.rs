@@ -6,21 +6,20 @@
 
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{
-    Frame,
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout, Rect, Alignment},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
-    Terminal,
+    Frame, Terminal,
 };
 use std::io;
 
-use crate::tui::app::{SchemaFile, CommandEntry, TokenDef, TokenType};
+use crate::tui::app::{CommandEntry, SchemaFile, TokenDef, TokenType};
 
 // ──────────────────────────── State ────────────────────────────
 
@@ -37,7 +36,6 @@ enum EditField {
     Name,
     Description,
     Flag,
-    DataSource,
 }
 
 /// Verification TUI state.
@@ -93,10 +91,6 @@ impl VerifyApp {
         self.schema.commands.get(self.cmd_idx)
     }
 
-    fn current_cmd_mut(&mut self) -> Option<&mut CommandEntry> {
-        self.schema.commands.get_mut(self.cmd_idx)
-    }
-
     fn current_token(&self) -> Option<&TokenDef> {
         self.current_cmd().and_then(|c| c.tokens.get(self.tok_idx))
     }
@@ -123,19 +117,26 @@ impl VerifyApp {
             self.schema.meta.coverage = "full".to_string();
         }
 
-        let json = serde_json::to_string_pretty(&self.schema)
-            .map_err(|e| format!("Serialize: {}", e))?;
-        std::fs::write(&self.path, &json)
-            .map_err(|e| format!("Write: {}", e))?;
+        let json =
+            serde_json::to_string_pretty(&self.schema).map_err(|e| format!("Serialize: {}", e))?;
+        std::fs::write(&self.path, &json).map_err(|e| format!("Write: {}", e))?;
         self.saved = true;
-        self.status = format!("✅ Saved ({}/{} verified)", self.verified_count(), self.cmd_count());
+        self.status = format!(
+            "✅ Saved ({}/{} verified)",
+            self.verified_count(),
+            self.cmd_count()
+        );
         Ok(())
     }
 
     fn toggle_verified(&mut self) {
         if let Some(cmd) = self.schema.commands.get_mut(self.cmd_idx) {
             cmd.verified = !cmd.verified;
-            let state = if cmd.verified { "verified" } else { "unverified" };
+            let state = if cmd.verified {
+                "verified"
+            } else {
+                "unverified"
+            };
             self.status = format!("Toggled '{}' → {}", cmd.command, state);
         }
     }
@@ -175,7 +176,9 @@ impl VerifyApp {
         // Clone data source info up front to avoid borrow issues
         let ds_info = self.current_token().and_then(|tok| {
             tok.data_source.as_ref().map(|ds| {
-                let label = ds.resolver.clone()
+                let label = ds
+                    .resolver
+                    .clone()
                     .or(ds.command.clone())
                     .unwrap_or_default();
                 (label, tok.clone())
@@ -219,17 +222,10 @@ impl VerifyApp {
     }
 
     fn start_edit(&mut self, field: EditField) {
-        let buf = self.current_token().map(|tok| {
-            match field {
-                EditField::Name => tok.name.clone(),
-                EditField::Description => tok.description.clone(),
-                EditField::Flag => tok.flag.clone().unwrap_or_default(),
-                EditField::DataSource => {
-                    tok.data_source.as_ref()
-                        .and_then(|ds| ds.resolver.clone().or(ds.command.clone()))
-                        .unwrap_or_default()
-                }
-            }
+        let buf = self.current_token().map(|tok| match field {
+            EditField::Name => tok.name.clone(),
+            EditField::Description => tok.description.clone(),
+            EditField::Flag => tok.flag.clone().unwrap_or_default(),
         });
         if let Some(buf) = buf {
             self.edit_buf = buf;
@@ -245,13 +241,15 @@ impl VerifyApp {
                         EditField::Name => tok.name = self.edit_buf.clone(),
                         EditField::Description => tok.description = self.edit_buf.clone(),
                         EditField::Flag => {
-                            tok.flag = if self.edit_buf.is_empty() { None } else { Some(self.edit_buf.clone()) };
-                        }
-                        EditField::DataSource => {
-                            // Don't change data source from inline edit for now
+                            tok.flag = if self.edit_buf.is_empty() {
+                                None
+                            } else {
+                                Some(self.edit_buf.clone())
+                            };
                         }
                     }
-                    self.status = format!("Updated {} → '{}'", format!("{:?}", field), self.edit_buf);
+                    self.status =
+                        format!("Updated {} → '{}'", format!("{:?}", field), self.edit_buf);
                 }
             }
         }
@@ -291,7 +289,8 @@ impl VerifyApp {
 fn chrono_today() -> String {
     // Simple date without chrono dependency
     let output = std::process::Command::new("date").arg("+%Y-%m-%d").output();
-    output.ok()
+    output
+        .ok()
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_else(|| "2026-03-05".to_string())
 }
@@ -302,7 +301,10 @@ fn chrono_today() -> String {
 pub fn launch(tool: &str) -> io::Result<()> {
     let schema_path = crate::generate::schemas_dir().join(format!("{}.json", tool));
     if !schema_path.exists() {
-        eprintln!("❌ No schema found for '{}'. Run `waz generate {}` first.", tool, tool);
+        eprintln!(
+            "❌ No schema found for '{}'. Run `waz generate {}` first.",
+            tool, tool
+        );
         std::process::exit(1);
     }
 
@@ -335,7 +337,11 @@ pub fn launch(tool: &str) -> io::Result<()> {
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
 
     if app.saved {
-        eprintln!("✅ Schema saved ({}/{} commands verified)", app.verified_count(), app.cmd_count());
+        eprintln!(
+            "✅ Schema saved ({}/{} commands verified)",
+            app.verified_count(),
+            app.cmd_count()
+        );
     }
 
     Ok(())
@@ -349,7 +355,9 @@ fn handle_key(app: &mut VerifyApp, code: KeyCode, modifiers: KeyModifiers) {
         match code {
             KeyCode::Enter => app.finish_edit(),
             KeyCode::Esc => app.cancel_edit(),
-            KeyCode::Backspace => { app.edit_buf.pop(); }
+            KeyCode::Backspace => {
+                app.edit_buf.pop();
+            }
             KeyCode::Char(c) => app.edit_buf.push(c),
             _ => {}
         }
@@ -373,40 +381,36 @@ fn handle_key(app: &mut VerifyApp, code: KeyCode, modifiers: KeyModifiers) {
         }
 
         // Navigation
-        KeyCode::Up | KeyCode::Char('k') => {
-            match app.pane {
-                Pane::Commands => {
-                    if app.cmd_idx > 0 {
-                        app.cmd_idx -= 1;
-                        app.tok_idx = 0;
-                        app.ds_test_result = None;
-                    }
-                }
-                Pane::Tokens => {
-                    if app.tok_idx > 0 {
-                        app.tok_idx -= 1;
-                        app.ds_test_result = None;
-                    }
+        KeyCode::Up | KeyCode::Char('k') => match app.pane {
+            Pane::Commands => {
+                if app.cmd_idx > 0 {
+                    app.cmd_idx -= 1;
+                    app.tok_idx = 0;
+                    app.ds_test_result = None;
                 }
             }
-        }
-        KeyCode::Down | KeyCode::Char('j') => {
-            match app.pane {
-                Pane::Commands => {
-                    if app.cmd_idx + 1 < app.cmd_count() {
-                        app.cmd_idx += 1;
-                        app.tok_idx = 0;
-                        app.ds_test_result = None;
-                    }
-                }
-                Pane::Tokens => {
-                    if app.tok_idx + 1 < app.tok_count() {
-                        app.tok_idx += 1;
-                        app.ds_test_result = None;
-                    }
+            Pane::Tokens => {
+                if app.tok_idx > 0 {
+                    app.tok_idx -= 1;
+                    app.ds_test_result = None;
                 }
             }
-        }
+        },
+        KeyCode::Down | KeyCode::Char('j') => match app.pane {
+            Pane::Commands => {
+                if app.cmd_idx + 1 < app.cmd_count() {
+                    app.cmd_idx += 1;
+                    app.tok_idx = 0;
+                    app.ds_test_result = None;
+                }
+            }
+            Pane::Tokens => {
+                if app.tok_idx + 1 < app.tok_count() {
+                    app.tok_idx += 1;
+                    app.ds_test_result = None;
+                }
+            }
+        },
 
         // Switch panes
         KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
@@ -457,7 +461,7 @@ fn draw(f: &mut Frame, app: &VerifyApp) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),  // header
+            Constraint::Length(3), // header
             Constraint::Min(10),   // main content
             Constraint::Length(3), // detail/ds test
             Constraint::Length(2), // footer
@@ -473,28 +477,43 @@ fn draw(f: &mut Frame, app: &VerifyApp) {
 fn draw_header(f: &mut Frame, app: &VerifyApp, area: Rect) {
     let verified = app.verified_count();
     let total = app.cmd_count();
-    let pct = if total > 0 { (verified * 100) / total } else { 0 };
+    let pct = if total > 0 {
+        (verified * 100) / total
+    } else {
+        0
+    };
     let all_ok = verified == total;
 
     let status_icon = if all_ok { "✅" } else { "🔍" };
 
-    let header = Paragraph::new(vec![
-        Line::from(vec![
-            Span::styled(
-                format!(" {} Schema Verification: {} ", status_icon, app.tool),
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+    let header = Paragraph::new(vec![Line::from(vec![
+        Span::styled(
+            format!(" {} Schema Verification: {} ", status_icon, app.tool),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!(
+                "  v{} | {}/{} verified ({}%) | {} ",
+                app.schema.meta.version,
+                verified,
+                total,
+                pct,
+                if all_ok { "COMPLETE" } else { "IN PROGRESS" }
             ),
-            Span::styled(
-                format!("  v{} | {}/{} verified ({}%) | {} ",
-                    app.schema.meta.version, verified, total, pct,
-                    if all_ok { "COMPLETE" } else { "IN PROGRESS" }),
-                Style::default().fg(if all_ok { Color::Green } else { Color::DarkGray }),
-            ),
-        ]),
-    ])
-    .block(Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(if all_ok { Color::Green } else { Color::Cyan })));
+            Style::default().fg(if all_ok {
+                Color::Green
+            } else {
+                Color::DarkGray
+            }),
+        ),
+    ])])
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(if all_ok { Color::Green } else { Color::Cyan })),
+    );
 
     f.render_widget(header, area);
 }
@@ -515,33 +534,62 @@ fn draw_main(f: &mut Frame, app: &VerifyApp, area: Rect) {
 fn draw_commands_list(f: &mut Frame, app: &VerifyApp, area: Rect) {
     let is_focused = app.pane == Pane::Commands;
 
-    let items: Vec<ListItem> = app.schema.commands.iter().enumerate().map(|(i, cmd)| {
-        let icon = if cmd.verified { "✅" } else { "○ " };
-        let selected = i == app.cmd_idx;
-        let tok_count = cmd.tokens.len();
+    let items: Vec<ListItem> = app
+        .schema
+        .commands
+        .iter()
+        .enumerate()
+        .map(|(i, cmd)| {
+            let icon = if cmd.verified { "✅" } else { "○ " };
+            let selected = i == app.cmd_idx;
+            let tok_count = cmd.tokens.len();
 
-        let style = if selected {
-            Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD)
-                .bg(if is_focused { Color::DarkGray } else { Color::Black })
-        } else {
-            Style::default().fg(if cmd.verified { Color::Green } else { Color::Gray })
-        };
+            let style = if selected {
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD)
+                    .bg(if is_focused {
+                        Color::DarkGray
+                    } else {
+                        Color::Black
+                    })
+            } else {
+                Style::default().fg(if cmd.verified {
+                    Color::Green
+                } else {
+                    Color::Gray
+                })
+            };
 
-        ListItem::new(Line::from(vec![
-            Span::styled(format!("{} ", icon), Style::default().fg(if cmd.verified { Color::Green } else { Color::DarkGray })),
-            Span::styled(&cmd.command, style),
-            Span::styled(format!("  [{}]", tok_count), Style::default().fg(Color::DarkGray)),
-        ]))
-    }).collect();
+            ListItem::new(Line::from(vec![
+                Span::styled(
+                    format!("{} ", icon),
+                    Style::default().fg(if cmd.verified {
+                        Color::Green
+                    } else {
+                        Color::DarkGray
+                    }),
+                ),
+                Span::styled(&cmd.command, style),
+                Span::styled(
+                    format!("  [{}]", tok_count),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]))
+        })
+        .collect();
 
-    let border_color = if is_focused { Color::Cyan } else { Color::DarkGray };
-    let list = List::new(items)
-        .block(Block::default()
+    let border_color = if is_focused {
+        Color::Cyan
+    } else {
+        Color::DarkGray
+    };
+    let list = List::new(items).block(
+        Block::default()
             .title(" Commands ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(border_color)));
+            .border_style(Style::default().fg(border_color)),
+    );
 
     f.render_widget(list, area);
 }
@@ -569,11 +617,18 @@ fn draw_tokens_detail(f: &mut Frame, app: &VerifyApp, area: Rect) {
     lines.push(Line::from(""));
 
     if cmd.tokens.is_empty() {
-        lines.push(Line::from(Span::styled("  No tokens defined", Style::default().fg(Color::DarkGray))));
+        lines.push(Line::from(Span::styled(
+            "  No tokens defined",
+            Style::default().fg(Color::DarkGray),
+        )));
     } else {
         for (i, tok) in cmd.tokens.iter().enumerate() {
             let selected = i == app.tok_idx && is_focused;
-            let bg = if selected { Color::DarkGray } else { Color::Reset };
+            let bg = if selected {
+                Color::DarkGray
+            } else {
+                Color::Reset
+            };
 
             // Token header line
             let req_label = if tok.required { "req" } else { "opt" };
@@ -587,7 +642,10 @@ fn draw_tokens_detail(f: &mut Frame, app: &VerifyApp, area: Rect) {
                 ),
                 Span::styled(
                     &tok.name,
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD).bg(bg),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD)
+                        .bg(bg),
                 ),
                 Span::styled(
                     format!("  [{}]", type_label),
@@ -595,7 +653,13 @@ fn draw_tokens_detail(f: &mut Frame, app: &VerifyApp, area: Rect) {
                 ),
                 Span::styled(
                     format!("  {}", req_label),
-                    Style::default().fg(if tok.required { Color::Red } else { Color::DarkGray }).bg(bg),
+                    Style::default()
+                        .fg(if tok.required {
+                            Color::Red
+                        } else {
+                            Color::DarkGray
+                        })
+                        .bg(bg),
                 ),
                 Span::styled(
                     format!("  {}", flag_label),
@@ -611,7 +675,9 @@ fn draw_tokens_detail(f: &mut Frame, app: &VerifyApp, area: Rect) {
 
             // Data source line (if any)
             if let Some(ref ds) = tok.data_source {
-                let src = ds.resolver.as_deref()
+                let src = ds
+                    .resolver
+                    .as_deref()
                     .or(ds.command.as_deref())
                     .unwrap_or("none");
                 lines.push(Line::from(vec![
@@ -643,7 +709,9 @@ fn draw_tokens_detail(f: &mut Frame, app: &VerifyApp, area: Rect) {
                         ),
                         Span::styled(
                             format!("{}▌", app.edit_buf),
-                            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                            Style::default()
+                                .fg(Color::White)
+                                .add_modifier(Modifier::BOLD),
                         ),
                     ]));
                 }
@@ -653,12 +721,18 @@ fn draw_tokens_detail(f: &mut Frame, app: &VerifyApp, area: Rect) {
         }
     }
 
-    let border_color = if is_focused { Color::Cyan } else { Color::DarkGray };
+    let border_color = if is_focused {
+        Color::Cyan
+    } else {
+        Color::DarkGray
+    };
     let para = Paragraph::new(lines)
-        .block(Block::default()
-            .title(format!(" Tokens ({}) ", cmd.tokens.len()))
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(border_color)))
+        .block(
+            Block::default()
+                .title(format!(" Tokens ({}) ", cmd.tokens.len()))
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(border_color)),
+        )
         .wrap(Wrap { trim: true });
 
     f.render_widget(para, area);
@@ -675,20 +749,19 @@ fn draw_detail(f: &mut Frame, app: &VerifyApp, area: Rect) {
         Span::styled(" ", Style::default()),
         Span::raw(&msg),
     ]))
-    .block(Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray))
-        .title(" Status "));
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::DarkGray))
+            .title(" Status "),
+    );
 
     f.render_widget(para, area);
 }
 
 fn draw_footer(f: &mut Frame, app: &VerifyApp, area: Rect) {
     let keys = if app.editing.is_some() {
-        vec![
-            ("Enter", "confirm"),
-            ("Esc", "cancel"),
-        ]
+        vec![("Enter", "confirm"), ("Esc", "cancel")]
     } else if app.pane == Pane::Commands {
         vec![
             ("Space", "toggle ✅"),
@@ -713,12 +786,18 @@ fn draw_footer(f: &mut Frame, app: &VerifyApp, area: Rect) {
         ]
     };
 
-    let spans: Vec<Span> = keys.iter().flat_map(|(k, v)| {
-        vec![
-            Span::styled(format!(" {} ", k), Style::default().fg(Color::Black).bg(Color::DarkGray)),
-            Span::styled(format!(" {} ", v), Style::default().fg(Color::DarkGray)),
-        ]
-    }).collect();
+    let spans: Vec<Span> = keys
+        .iter()
+        .flat_map(|(k, v)| {
+            vec![
+                Span::styled(
+                    format!(" {} ", k),
+                    Style::default().fg(Color::Black).bg(Color::DarkGray),
+                ),
+                Span::styled(format!(" {} ", v), Style::default().fg(Color::DarkGray)),
+            ]
+        })
+        .collect();
 
     let footer = Paragraph::new(Line::from(spans));
     f.render_widget(footer, area);

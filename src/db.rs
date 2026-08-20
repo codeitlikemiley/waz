@@ -43,7 +43,10 @@ impl HistoryDb {
 
     fn init_schema(&self) -> Result<()> {
         self.conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS commands (
+            "PRAGMA journal_mode=WAL;
+            PRAGMA busy_timeout=5000;
+            PRAGMA synchronous=NORMAL;
+            CREATE TABLE IF NOT EXISTS commands (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 command TEXT NOT NULL,
                 cwd TEXT NOT NULL,
@@ -276,15 +279,6 @@ impl HistoryDb {
     /// Delete all history.
     pub fn clear_all(&self) -> Result<usize> {
         self.conn.execute("DELETE FROM commands", [])
-    }
-
-    /// Count commands for a specific working directory.
-    pub fn count_by_cwd(&self, cwd: &str) -> Result<i64> {
-        self.conn.query_row(
-            "SELECT COUNT(*) FROM commands WHERE cwd = ?1",
-            params![cwd],
-            |row| row.get(0),
-        )
     }
 }
 

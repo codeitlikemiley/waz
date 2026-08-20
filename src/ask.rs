@@ -1,6 +1,4 @@
 use crate::config::Config;
-use serde_json::json;
-use std::time::Duration;
 
 /// A suggested command from the AI with metadata.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -16,6 +14,10 @@ pub struct SuggestedCommand {
 pub struct StructuredResponse {
     pub explanation: String,
     pub commands: Vec<SuggestedCommand>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 /// Result from asking the LLM a natural language question (legacy).
@@ -23,6 +25,8 @@ pub struct StructuredResponse {
 pub struct AskResult {
     pub response: String,
     pub suggested_command: Option<String>,
+    pub provider: String,
+    pub model: String,
 }
 
 /// Ask the LLM and return a structured response with commands array.
@@ -32,26 +36,58 @@ pub fn ask_structured(
     cwd: &str,
     recent_commands: &[String],
 ) -> Option<StructuredResponse> {
+    ask_structured_on(config, query, cwd, recent_commands, None)
+}
+
+pub fn ask_structured_on(
+    config: &Config,
+    query: &str,
+    cwd: &str,
+    recent_commands: &[String],
+    provider: Option<&str>,
+) -> Option<StructuredResponse> {
     let prompt = build_structured_prompt(query, cwd, recent_commands);
-    let raw = call_ask_llm(config, &prompt)?;
+    let completion = call_ask_llm(config, &prompt, provider)?;
 
     // Try JSON parsing first
-    if let Some(parsed) = parse_structured_json(&raw) {
+    if let Some(mut parsed) = parse_structured_json(&completion.text) {
+        parsed.provider = Some(completion.provider);
+        parsed.model = Some(completion.model);
         return Some(parsed);
     }
 
     // Fallback: parse text format (extract $ commands)
-    Some(fallback_parse(&raw))
+    let mut parsed = fallback_parse(&completion.text);
+    parsed.provider = Some(completion.provider);
+    parsed.model = Some(completion.model);
+    Some(parsed)
 }
 
 /// Ask the LLM a natural language question (legacy text format).
-pub fn ask(config: &Config, query: &str, cwd: &str, recent_commands: &[String]) -> Option<AskResult> {
+pub fn ask(
+    config: &Config,
+    query: &str,
+    cwd: &str,
+    recent_commands: &[String],
+) -> Option<AskResult> {
+    ask_on(config, query, cwd, recent_commands, None)
+}
+
+pub fn ask_on(
+    config: &Config,
+    query: &str,
+    cwd: &str,
+    recent_commands: &[String],
+    provider: Option<&str>,
+) -> Option<AskResult> {
     let prompt = build_ask_prompt(query, cwd, recent_commands);
-    let response = call_ask_llm(config, &prompt)?;
-    let suggested_command = extract_command(&response);
+    let completion = call_ask_llm(config, &prompt, provider)?;
+    let suggested_command = extract_command(&completion.text);
     Some(AskResult {
-        response,
+        response: completion.text,
         suggested_command,
+        provider: completion.provider,
+        model: completion.model,
     })
 }
 
@@ -153,6 +189,8 @@ fn fallback_parse(raw: &str) -> StructuredResponse {
     StructuredResponse {
         explanation: explanation_lines.join("\n"),
         commands,
+        provider: None,
+        model: None,
     }
 }
 
@@ -199,172 +237,39 @@ Completion (just the remaining words):",
         partial
     );
 
-    let llm = &config.llm;
-    if llm.providers.is_empty() {
+    let mut opts = crate::llm::CompleteOptions::ask();
+    opts.timeout_secs = 2;
+    opts.max_tokens = 40;
+    let r = crate::llm::complete(config, &prompt, &opts)?;
+    let cleaned = r.trim().trim_matches('"').trim_matches('\'').trim();
+    if cleaned.is_empty() {
         return None;
     }
-
-    let mut state = crate::llm::load_rotation_state();
-    let ordered = crate::llm::get_ordered_providers_pub(llm);
-
-    for provider in &ordered {
-        if provider.keys.is_empty() && provider.name != "ollama" {
-            continue;
-        }
-        let key_idx = state.next_key_for(&provider.name, provider.keys.len());
-
-        // Short timeout (2s) for inline completion — it's ghost text, not blocking
-        let result = match provider.name.as_str() {
-            "gemini" => call_gemini_ask(provider, key_idx, &prompt, 2),
-            "ollama" => call_ollama_ask(provider, &prompt, 2),
-            _ => call_openai_ask(provider, key_idx, &prompt, 2),
-        };
-
-        if let Some(r) = result {
-            state.save();
-            // Clean up the response — remove quotes, trim, ensure it doesn't repeat the input
-            let cleaned = r.trim().trim_matches('"').trim_matches('\'').trim();
-            if cleaned.is_empty() {
-                continue;
-            }
-            // If the LLM repeated the input, strip it
-            let completion = if cleaned.to_lowercase().starts_with(&partial.to_lowercase()) {
-                cleaned[partial.len()..].trim_start().to_string()
-            } else {
-                cleaned.to_string()
-            };
-            if completion.is_empty() {
-                continue;
-            }
-            return Some(completion);
-        }
+    let completion = if cleaned.to_lowercase().starts_with(&partial.to_lowercase()) {
+        cleaned[partial.len()..].trim_start().to_string()
+    } else {
+        cleaned.to_string()
+    };
+    if completion.is_empty() {
+        None
+    } else {
+        Some(completion)
     }
-
-    state.save();
-    None
 }
 
 /// Call the LLM for an ask query (uses longer timeout since user is waiting).
-fn call_ask_llm(config: &Config, prompt: &str) -> Option<String> {
-    let llm = &config.llm;
-
-    if llm.providers.is_empty() {
-        return None;
-    }
-
-    let mut state = crate::llm::load_rotation_state();
-
-    let ordered = crate::llm::get_ordered_providers_pub(llm);
-    for provider in &ordered {
-        if provider.keys.is_empty() && provider.name != "ollama" {
-            continue;
-        }
-        let key_idx = state.next_key_for(&provider.name, provider.keys.len());
-
-        // Use longer timeout for ask (10s) since user is waiting for a response
-        let result = match provider.name.as_str() {
-            "gemini" => call_gemini_ask(provider, key_idx, prompt, 10),
-            "ollama" => call_ollama_ask(provider, prompt, 10),
-            _ => call_openai_ask(provider, key_idx, prompt, 10),
-        };
-
-        if let Some(r) = result {
-            state.save();
-            return Some(r);
-        }
-    }
-
-    state.save();
-    None
-}
-
-fn call_gemini_ask(
-    provider: &crate::config::ProviderConfig,
-    key_idx: usize,
+fn call_ask_llm(
+    config: &Config,
     prompt: &str,
-    timeout: u64,
-) -> Option<String> {
-    let key = provider.keys.get(key_idx)?;
-    let url = format!(
-        "{}/models/{}:generateContent?key={}",
-        provider.base_url, provider.model, key
-    );
-
-    let body = json!({
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.3,
-            "maxOutputTokens": 500
-        }
-    });
-
-    let resp = ureq::post(&url)
-        .set("Content-Type", "application/json")
-        .timeout(Duration::from_secs(timeout))
-        .send_json(&body)
-        .ok()?;
-
-    let json: serde_json::Value = resp.into_json().ok()?;
-    json["candidates"][0]["content"]["parts"][0]["text"]
-        .as_str()
-        .map(|s| s.trim().to_string())
-}
-
-fn call_openai_ask(
-    provider: &crate::config::ProviderConfig,
-    key_idx: usize,
-    prompt: &str,
-    timeout: u64,
-) -> Option<String> {
-    let key = provider.keys.get(key_idx)?;
-    let url = format!("{}/chat/completions", provider.base_url);
-
-    let body = json!({
-        "model": provider.model,
-        "messages": [
-            {"role": "system", "content": "You are a helpful shell assistant. Keep responses short and terminal-friendly."},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.3,
-        "max_tokens": 500
-    });
-
-    let resp = ureq::post(&url)
-        .set("Authorization", &format!("Bearer {}", key))
-        .set("Content-Type", "application/json")
-        .timeout(Duration::from_secs(timeout))
-        .send_json(&body)
-        .ok()?;
-
-    let json: serde_json::Value = resp.into_json().ok()?;
-    json["choices"][0]["message"]["content"]
-        .as_str()
-        .map(|s| s.trim().to_string())
-}
-
-fn call_ollama_ask(
-    provider: &crate::config::ProviderConfig,
-    prompt: &str,
-    timeout: u64,
-) -> Option<String> {
-    let url = format!("{}/api/generate", provider.base_url);
-    let body = json!({
-        "model": provider.model,
-        "prompt": prompt,
-        "stream": false,
-        "options": {
-            "temperature": 0.3,
-            "num_predict": 500
-        }
-    });
-
-    let resp = ureq::post(&url)
-        .timeout(Duration::from_secs(timeout))
-        .send_json(&body)
-        .ok()?;
-
-    let json: serde_json::Value = resp.into_json().ok()?;
-    json["response"].as_str().map(|s| s.trim().to_string())
+    provider: Option<&str>,
+) -> Option<crate::llm::Completion> {
+    crate::llm::complete_with(
+        config,
+        prompt,
+        &crate::llm::CompleteOptions::ask(),
+        provider,
+        None,
+    )
 }
 
 /// Extract the first suggested command from the LLM response.
@@ -410,13 +315,50 @@ pub fn is_natural_language(input: &str) -> bool {
     if words.len() == 2 {
         let first = words[0].to_lowercase();
         let nl_starters = [
-            "how", "what", "why", "where", "when", "which", "who",
-            "can", "do", "does", "is", "are", "show", "list", "find",
-            "create", "make", "delete", "remove", "install", "update",
-            "uninstall", "upgrade", "check", "search", "open", "close",
-            "start", "stop", "restart", "kill", "run", "build", "deploy",
-            "explain", "describe", "compare", "convert", "generate",
-            "download", "upload", "compress", "extract", "mount",
+            "how",
+            "what",
+            "why",
+            "where",
+            "when",
+            "which",
+            "who",
+            "can",
+            "do",
+            "does",
+            "is",
+            "are",
+            "show",
+            "list",
+            "find",
+            "create",
+            "make",
+            "delete",
+            "remove",
+            "install",
+            "update",
+            "uninstall",
+            "upgrade",
+            "check",
+            "search",
+            "open",
+            "close",
+            "start",
+            "stop",
+            "restart",
+            "kill",
+            "run",
+            "build",
+            "deploy",
+            "explain",
+            "describe",
+            "compare",
+            "convert",
+            "generate",
+            "download",
+            "upload",
+            "compress",
+            "extract",
+            "mount",
         ];
         return nl_starters.contains(&first.as_str());
     }

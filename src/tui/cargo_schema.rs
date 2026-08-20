@@ -6,8 +6,6 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use super::app::{CommandEntry, TokenDef, TokenType};
-
 /// All dynamic values resolved from a Cargo project.
 #[derive(Debug, Clone, Default)]
 pub struct CargoContext {
@@ -292,7 +290,10 @@ impl CargoContext {
 fn read_package_name(dir: &Path) -> Option<String> {
     let content = std::fs::read_to_string(dir.join("Cargo.toml")).ok()?;
     let toml: toml::Value = content.parse().ok()?;
-    toml.get("package")?.get("name")?.as_str().map(|s| s.to_string())
+    toml.get("package")?
+        .get("name")?
+        .as_str()
+        .map(|s| s.to_string())
 }
 
 /// Simple glob expander for workspace member patterns like `crates/*`.
@@ -311,352 +312,6 @@ fn glob_member_dirs(cwd: &Path, pattern: &str) -> Result<Vec<PathBuf>, std::io::
         }
     }
     Ok(results)
-}
-
-// ──────────────────────────── Token builder helpers ────────────────────────────
-
-fn pkg_token(ctx: &CargoContext) -> TokenDef {
-    TokenDef {
-        name: "package".to_string(),
-        description: "Target package".to_string(),
-        required: false,
-        token_type: if ctx.packages.len() > 1 { TokenType::Enum } else { TokenType::String },
-        default: ctx.package_name.clone(),
-        values: if ctx.packages.len() > 1 { Some(ctx.packages.clone()) } else { None },
-        flag: Some("-p".to_string()), data_source: None,
-    }
-}
-
-fn bin_token(ctx: &CargoContext) -> TokenDef {
-    TokenDef {
-        name: "bin".to_string(),
-        description: "Binary target name".to_string(),
-        required: false,
-        token_type: if !ctx.bins.is_empty() { TokenType::Enum } else { TokenType::String },
-        default: if ctx.bins.len() == 1 { Some(ctx.bins[0].clone()) } else { None },
-        values: if !ctx.bins.is_empty() { Some(ctx.bins.clone()) } else { None },
-        flag: Some("--bin".to_string()), data_source: None,
-    }
-}
-
-fn example_token(ctx: &CargoContext) -> TokenDef {
-    TokenDef {
-        name: "example".to_string(),
-        description: "Example target name".to_string(),
-        required: false,
-        token_type: if !ctx.examples.is_empty() { TokenType::Enum } else { TokenType::String },
-        default: None,
-        values: if !ctx.examples.is_empty() { Some(ctx.examples.clone()) } else { None },
-        flag: Some("--example".to_string()), data_source: None,
-    }
-}
-
-fn features_token(ctx: &CargoContext) -> TokenDef {
-    TokenDef {
-        name: "features".to_string(),
-        description: "Features to activate".to_string(),
-        required: false,
-        token_type: if !ctx.features.is_empty() { TokenType::Enum } else { TokenType::String },
-        default: None,
-        values: if !ctx.features.is_empty() { Some(ctx.features.clone()) } else { None },
-        flag: Some("-F".to_string()), data_source: None,
-    }
-}
-
-fn release_token() -> TokenDef {
-    TokenDef {
-        name: "release".to_string(),
-        description: "Build with optimizations".to_string(),
-        required: false,
-        token_type: TokenType::Boolean,
-        default: Some("false".to_string()),
-        values: None,
-        flag: Some("--release".to_string()), data_source: None,
-    }
-}
-
-fn profile_token(ctx: &CargoContext) -> TokenDef {
-    TokenDef {
-        name: "profile".to_string(),
-        description: "Build profile".to_string(),
-        required: false,
-        token_type: TokenType::Enum,
-        default: None,
-        values: Some(ctx.profiles.clone()),
-        flag: Some("--profile".to_string()), data_source: None,
-    }
-}
-
-fn test_name_token(ctx: &CargoContext) -> TokenDef {
-    TokenDef {
-        name: "test".to_string(),
-        description: "Test name filter".to_string(),
-        required: false,
-        token_type: if !ctx.tests.is_empty() { TokenType::Enum } else { TokenType::String },
-        default: None,
-        values: if !ctx.tests.is_empty() { Some(ctx.tests.clone()) } else { None },
-        flag: Some("--test".to_string()), data_source: None,
-    }
-}
-
-fn bench_token(ctx: &CargoContext) -> TokenDef {
-    TokenDef {
-        name: "bench".to_string(),
-        description: "Bench target name".to_string(),
-        required: false,
-        token_type: if !ctx.benches.is_empty() { TokenType::Enum } else { TokenType::String },
-        default: None,
-        values: if !ctx.benches.is_empty() { Some(ctx.benches.clone()) } else { None },
-        flag: Some("--bench".to_string()), data_source: None,
-    }
-}
-
-fn all_features_token() -> TokenDef {
-    TokenDef {
-        name: "all-features".to_string(),
-        description: "Activate all features".to_string(),
-        required: false,
-        token_type: TokenType::Boolean,
-        default: Some("false".to_string()),
-        values: None,
-        flag: Some("--all-features".to_string()), data_source: None,
-    }
-}
-
-fn workspace_token() -> TokenDef {
-    TokenDef {
-        name: "workspace".to_string(),
-        description: "Apply to all workspace packages".to_string(),
-        required: false,
-        token_type: TokenType::Boolean,
-        default: Some("false".to_string()),
-        values: None,
-        flag: Some("--workspace".to_string()), data_source: None,
-    }
-}
-
-// ──────────────────────────── Command builder ────────────────────────────
-
-/// Build all cargo commands with tokens populated from project context.
-pub fn build_cargo_commands(ctx: &CargoContext) -> Vec<CommandEntry> {
-    vec![
-        CommandEntry {
-            command: "cargo build".to_string(),
-            description: "Compile the current package".to_string(),
-            group: "cargo".to_string(), verified: false,
-            tokens: vec![
-                pkg_token(ctx),
-                bin_token(ctx),
-                example_token(ctx),
-                features_token(ctx),
-                release_token(),
-                all_features_token(),
-                workspace_token(),
-            ],
-        },
-        CommandEntry {
-            command: "cargo run".to_string(),
-            description: "Run a binary or example".to_string(),
-            group: "cargo".to_string(), verified: false,
-            tokens: vec![
-                pkg_token(ctx),
-                bin_token(ctx),
-                example_token(ctx),
-                features_token(ctx),
-                release_token(),
-            ],
-        },
-        CommandEntry {
-            command: "cargo test".to_string(),
-            description: "Run tests".to_string(),
-            group: "cargo".to_string(), verified: false,
-            tokens: vec![
-                pkg_token(ctx),
-                test_name_token(ctx),
-                features_token(ctx),
-                release_token(),
-                workspace_token(),
-            ],
-        },
-        CommandEntry {
-            command: "cargo bench".to_string(),
-            description: "Run benchmarks".to_string(),
-            group: "cargo".to_string(), verified: false,
-            tokens: vec![
-                pkg_token(ctx),
-                bench_token(ctx),
-                features_token(ctx),
-                workspace_token(),
-            ],
-        },
-        CommandEntry {
-            command: "cargo check".to_string(),
-            description: "Analyze without building".to_string(),
-            group: "cargo".to_string(), verified: false,
-            tokens: vec![
-                pkg_token(ctx),
-                features_token(ctx),
-                all_features_token(),
-                workspace_token(),
-            ],
-        },
-        CommandEntry {
-            command: "cargo doc".to_string(),
-            description: "Build documentation".to_string(),
-            group: "cargo".to_string(), verified: false,
-            tokens: vec![
-                pkg_token(ctx),
-                features_token(ctx),
-                TokenDef {
-                    name: "open".to_string(),
-                    description: "Open docs in browser".to_string(),
-                    required: false,
-                    token_type: TokenType::Boolean,
-                    default: Some("false".to_string()),
-                    values: None,
-                    flag: Some("--open".to_string()), data_source: None,
-                },
-                TokenDef {
-                    name: "no-deps".to_string(),
-                    description: "Skip dependency docs".to_string(),
-                    required: false,
-                    token_type: TokenType::Boolean,
-                    default: Some("false".to_string()),
-                    values: None,
-                    flag: Some("--no-deps".to_string()), data_source: None,
-                },
-                workspace_token(),
-            ],
-        },
-        CommandEntry {
-            command: "cargo clean".to_string(),
-            description: "Remove target directory".to_string(),
-            group: "cargo".to_string(), verified: false,
-            tokens: vec![
-                pkg_token(ctx),
-                profile_token(ctx),
-            ],
-        },
-        CommandEntry {
-            command: "cargo add".to_string(),
-            description: "Add a dependency".to_string(),
-            group: "cargo".to_string(), verified: false,
-            tokens: vec![
-                TokenDef {
-                    name: "crate".to_string(),
-                    description: "Crate name to add".to_string(),
-                    required: true,
-                    token_type: TokenType::String,
-                    default: None,
-                    values: None,
-                    flag: None, data_source: None, // positional
-                },
-                TokenDef {
-                    name: "dev".to_string(),
-                    description: "Add as dev dependency".to_string(),
-                    required: false,
-                    token_type: TokenType::Boolean,
-                    default: Some("false".to_string()),
-                    values: None,
-                    flag: Some("--dev".to_string()), data_source: None,
-                },
-                TokenDef {
-                    name: "build".to_string(),
-                    description: "Add as build dependency".to_string(),
-                    required: false,
-                    token_type: TokenType::Boolean,
-                    default: Some("false".to_string()),
-                    values: None,
-                    flag: Some("--build".to_string()), data_source: None,
-                },
-                features_token(ctx),
-            ],
-        },
-        CommandEntry {
-            command: "cargo remove".to_string(),
-            description: "Remove a dependency".to_string(),
-            group: "cargo".to_string(), verified: false,
-            tokens: vec![
-                TokenDef {
-                    name: "crate".to_string(),
-                    description: "Crate name to remove".to_string(),
-                    required: true,
-                    token_type: TokenType::String,
-                    default: None,
-                    values: None,
-                    flag: None, data_source: None, // positional
-                },
-            ],
-        },
-        CommandEntry {
-            command: "cargo clippy".to_string(),
-            description: "Run Clippy linter".to_string(),
-            group: "cargo".to_string(), verified: false,
-            tokens: vec![
-                pkg_token(ctx),
-                TokenDef {
-                    name: "fix".to_string(),
-                    description: "Auto-fix warnings".to_string(),
-                    required: false,
-                    token_type: TokenType::Boolean,
-                    default: Some("false".to_string()),
-                    values: None,
-                    flag: Some("--fix".to_string()), data_source: None,
-                },
-                workspace_token(),
-            ],
-        },
-        CommandEntry {
-            command: "cargo fmt".to_string(),
-            description: "Format code".to_string(),
-            group: "cargo".to_string(), verified: false,
-            tokens: vec![
-                TokenDef {
-                    name: "check".to_string(),
-                    description: "Check formatting without changing files".to_string(),
-                    required: false,
-                    token_type: TokenType::Boolean,
-                    default: Some("false".to_string()),
-                    values: None,
-                    flag: Some("--check".to_string()), data_source: None,
-                },
-            ],
-        },
-        CommandEntry {
-            command: "cargo publish".to_string(),
-            description: "Publish to crates.io".to_string(),
-            group: "cargo".to_string(), verified: false,
-            tokens: vec![
-                pkg_token(ctx),
-                TokenDef {
-                    name: "dry-run".to_string(),
-                    description: "Verify without publishing".to_string(),
-                    required: false,
-                    token_type: TokenType::Boolean,
-                    default: Some("false".to_string()),
-                    values: None,
-                    flag: Some("--dry-run".to_string()), data_source: None,
-                },
-                TokenDef {
-                    name: "allow-dirty".to_string(),
-                    description: "Allow uncommitted changes".to_string(),
-                    required: false,
-                    token_type: TokenType::Boolean,
-                    default: Some("false".to_string()),
-                    values: None,
-                    flag: Some("--allow-dirty".to_string()), data_source: None,
-                },
-            ],
-        },
-    ]
-}
-
-/// Load cargo commands into the app, replacing the old inline loader.
-pub fn load(app: &mut super::app::App) {
-    let cwd = Path::new(&app.cwd);
-    let ctx = CargoContext::detect(cwd);
-    let commands = build_cargo_commands(&ctx);
-    app.command_list.extend(commands);
 }
 
 // ──────────────────────────── Tests ────────────────────────────
@@ -695,7 +350,8 @@ path = "src/server.rs"
 name = "cli"
 path = "src/cli.rs"
 "#,
-        ).unwrap();
+        )
+        .unwrap();
 
         let ctx = CargoContext::detect(&dir);
         assert!(ctx.bins.contains(&"server".to_string()));
@@ -712,13 +368,25 @@ path = "src/cli.rs"
 name = "myapp"
 version = "0.1.0"
 "#,
-        ).unwrap();
+        )
+        .unwrap();
         fs::write(dir.join("src").join("main.rs"), "fn main() {}").unwrap();
-        fs::write(dir.join("src").join("bin").join("worker.rs"), "fn main() {}").unwrap();
-        fs::write(dir.join("src").join("bin").join("daemon.rs"), "fn main() {}").unwrap();
+        fs::write(
+            dir.join("src").join("bin").join("worker.rs"),
+            "fn main() {}",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("src").join("bin").join("daemon.rs"),
+            "fn main() {}",
+        )
+        .unwrap();
 
         let ctx = CargoContext::detect(&dir);
-        assert!(ctx.bins.contains(&"myapp".to_string()), "should include pkg name from main.rs");
+        assert!(
+            ctx.bins.contains(&"myapp".to_string()),
+            "should include pkg name from main.rs"
+        );
         assert!(ctx.bins.contains(&"worker".to_string()));
         assert!(ctx.bins.contains(&"daemon".to_string()));
         let _ = fs::remove_dir_all(&dir);
@@ -738,7 +406,8 @@ version = "0.1.0"
 name = "myapp"
 path = "src/main.rs"
 "#,
-        ).unwrap();
+        )
+        .unwrap();
         fs::write(dir.join("src").join("main.rs"), "fn main() {}").unwrap();
 
         let ctx = CargoContext::detect(&dir);
@@ -760,7 +429,8 @@ version = "0.1.0"
 [[example]]
 name = "demo"
 "#,
-        ).unwrap();
+        )
+        .unwrap();
         fs::write(dir.join("examples").join("hello.rs"), "fn main() {}").unwrap();
         fs::write(dir.join("examples").join("demo.rs"), "fn main() {}").unwrap();
 
@@ -789,10 +459,14 @@ json = []
 yaml = ["dep:serde_yaml"]
 xml = []
 "#,
-        ).unwrap();
+        )
+        .unwrap();
 
         let ctx = CargoContext::detect(&dir);
-        assert!(!ctx.features.contains(&"default".to_string()), "default should be excluded");
+        assert!(
+            !ctx.features.contains(&"default".to_string()),
+            "default should be excluded"
+        );
         assert!(ctx.features.contains(&"json".to_string()));
         assert!(ctx.features.contains(&"yaml".to_string()));
         assert!(ctx.features.contains(&"xml".to_string()));
@@ -812,7 +486,8 @@ version = "0.1.0"
 [profile.production]
 opt-level = 3
 "#,
-        ).unwrap();
+        )
+        .unwrap();
 
         let ctx = CargoContext::detect(&dir);
         // Should have the 4 static profiles + custom
@@ -838,7 +513,8 @@ version = "0.1.0"
 name = "integration"
 path = "tests/integration.rs"
 "#,
-        ).unwrap();
+        )
+        .unwrap();
         fs::write(dir.join("tests").join("integration.rs"), "").unwrap();
         fs::write(dir.join("tests").join("e2e.rs"), "").unwrap();
         fs::write(dir.join("benches").join("perf.rs"), "").unwrap();
@@ -849,51 +525,6 @@ path = "tests/integration.rs"
         // dedup: integration from TOML + filesystem
         assert_eq!(ctx.tests.iter().filter(|t| *t == "integration").count(), 1);
         assert!(ctx.benches.contains(&"perf".to_string()));
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_build_commands_count() {
-        let dir = setup_project("cmd_count");
-        fs::write(
-            dir.join("Cargo.toml"),
-            r#"[package]
-name = "myapp"
-version = "0.1.0"
-"#,
-        ).unwrap();
-
-        let ctx = CargoContext::detect(&dir);
-        let cmds = build_cargo_commands(&ctx);
-        assert_eq!(cmds.len(), 12, "should produce 12 cargo commands");
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_build_command_flags() {
-        let dir = setup_project("cmd_flags");
-        fs::write(
-            dir.join("Cargo.toml"),
-            r#"[package]
-name = "myapp"
-version = "0.1.0"
-"#,
-        ).unwrap();
-
-        let ctx = CargoContext::detect(&dir);
-        let cmds = build_cargo_commands(&ctx);
-
-        // Find cargo run
-        let run_cmd = cmds.iter().find(|c| c.command == "cargo run").unwrap();
-        let pkg_token = run_cmd.tokens.iter().find(|t| t.name == "package").unwrap();
-        assert_eq!(pkg_token.flag, Some("-p".to_string()));
-
-        let bin_tok = run_cmd.tokens.iter().find(|t| t.name == "bin").unwrap();
-        assert_eq!(bin_tok.flag, Some("--bin".to_string()));
-
-        let release_tok = run_cmd.tokens.iter().find(|t| t.name == "release").unwrap();
-        assert_eq!(release_tok.flag, Some("--release".to_string()));
-
         let _ = fs::remove_dir_all(&dir);
     }
 }

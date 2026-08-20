@@ -13,6 +13,7 @@ use std::path::Path;
 /// Detect the best TMP tool to use, checking in priority order:
 /// 1. Query keyword match (user explicitly mentions a tool name)
 /// 2. CWD project file match (e.g., Cargo.toml → cargo)
+#[allow(dead_code)]
 pub fn detect_best_tool(query: &str, cwd: &str) -> Option<String> {
     detect_best_tool_with_context(query, cwd, None)
 }
@@ -179,22 +180,34 @@ fn detect_project_tool_with_available(
     }
 
     if p.join("Cargo.toml").exists() {
-        if let Some(t) = check("cargo") { return Some(t); }
+        if let Some(t) = check("cargo") {
+            return Some(t);
+        }
     }
     if p.join("package.json").exists() {
-        if let Some(t) = check("npm") { return Some(t); }
+        if let Some(t) = check("npm") {
+            return Some(t);
+        }
     }
     if p.join("go.mod").exists() {
-        if let Some(t) = check("go") { return Some(t); }
+        if let Some(t) = check("go") {
+            return Some(t);
+        }
     }
     if p.join("Gemfile").exists() {
-        if let Some(t) = check("bundler") { return Some(t); }
+        if let Some(t) = check("bundler") {
+            return Some(t);
+        }
     }
     if p.join("pyproject.toml").exists() || p.join("setup.py").exists() {
-        if let Some(t) = check("python") { return Some(t); }
+        if let Some(t) = check("python") {
+            return Some(t);
+        }
     }
     if p.join(".git").exists() {
-        if let Some(t) = check("git") { return Some(t); }
+        if let Some(t) = check("git") {
+            return Some(t);
+        }
     }
     None
 }
@@ -360,7 +373,10 @@ fn parse_resolve_response(raw: &str) -> Result<ResolveResult, String> {
             trimmed
         };
         let before_close = after_open.trim();
-        before_close.strip_suffix("```").unwrap_or(before_close).trim()
+        before_close
+            .strip_suffix("```")
+            .unwrap_or(before_close)
+            .trim()
     } else {
         trimmed
     };
@@ -374,121 +390,8 @@ fn parse_resolve_response(raw: &str) -> Result<ResolveResult, String> {
     })
 }
 
-/// Call the LLM for resolve queries (reuses ask module's LLM infrastructure).
 fn call_resolve_llm(config: &Config, prompt: &str) -> Option<String> {
-    let llm = &config.llm;
-    if llm.providers.is_empty() {
-        return None;
-    }
-
-    let mut state = crate::llm::load_rotation_state();
-    let ordered = crate::llm::get_ordered_providers_pub(llm);
-
-    for provider in &ordered {
-        if provider.keys.is_empty() && provider.name != "ollama" {
-            continue;
-        }
-        let key_idx = state.next_key_for(&provider.name, provider.keys.len());
-
-        let result = match provider.name.as_str() {
-            "gemini" => call_gemini_resolve(provider, key_idx, prompt),
-            "ollama" => call_ollama_resolve(provider, prompt),
-            _ => call_openai_resolve(provider, key_idx, prompt),
-        };
-
-        if let Some(r) = result {
-            state.save();
-            return Some(r);
-        }
-    }
-
-    state.save();
-    None
-}
-
-fn call_gemini_resolve(
-    provider: &crate::config::ProviderConfig,
-    key_idx: usize,
-    prompt: &str,
-) -> Option<String> {
-    let key = provider.keys.get(key_idx)?;
-    let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-        provider.model, key
-    );
-    let body = serde_json::json!({
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 1024}
-    });
-
-    let resp = ureq::post(&url)
-        .timeout(std::time::Duration::from_secs(15))
-        .send_json(&body)
-        .ok()?;
-
-    let json: serde_json::Value = resp.into_json().ok()?;
-    json["candidates"][0]["content"]["parts"][0]["text"]
-        .as_str()
-        .map(|s| s.trim().to_string())
-}
-
-fn call_openai_resolve(
-    provider: &crate::config::ProviderConfig,
-    key_idx: usize,
-    prompt: &str,
-) -> Option<String> {
-    let key = provider.keys.get(key_idx)?;
-    let base = if provider.base_url.is_empty() {
-        "https://api.openai.com/v1"
-    } else {
-        &provider.base_url
-    };
-    let url = format!("{}/chat/completions", base);
-
-    let body = serde_json::json!({
-        "model": provider.model,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.1,
-        "max_tokens": 1024
-    });
-
-    let resp = ureq::post(&url)
-        .set("Authorization", &format!("Bearer {}", key))
-        .timeout(std::time::Duration::from_secs(15))
-        .send_json(&body)
-        .ok()?;
-
-    let json: serde_json::Value = resp.into_json().ok()?;
-    json["choices"][0]["message"]["content"]
-        .as_str()
-        .map(|s| s.trim().to_string())
-}
-
-fn call_ollama_resolve(
-    provider: &crate::config::ProviderConfig,
-    prompt: &str,
-) -> Option<String> {
-    let base = if provider.base_url.is_empty() {
-        "http://localhost:11434"
-    } else {
-        &provider.base_url
-    };
-    let url = format!("{}/api/generate", base);
-
-    let body = serde_json::json!({
-        "model": provider.model,
-        "prompt": prompt,
-        "stream": false,
-        "options": {"temperature": 0.1}
-    });
-
-    let resp = ureq::post(&url)
-        .timeout(std::time::Duration::from_secs(15))
-        .send_json(&body)
-        .ok()?;
-
-    let json: serde_json::Value = resp.into_json().ok()?;
-    json["response"].as_str().map(|s| s.trim().to_string())
+    crate::llm::complete(config, prompt, &crate::llm::CompleteOptions::resolve())
 }
 
 #[cfg(test)]
