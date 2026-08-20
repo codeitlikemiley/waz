@@ -1,6 +1,53 @@
-# Token Model Protocol (tmp/1)
+# TMP schemas
 
-This is the schema format waz uses for the `/` command palette and `waz resolve`. It is **implicit tmp/1**: there is no required `meta.protocol` field yet. Existing JSON on disk stays valid.
+The `/` palette and `waz resolve` use **Token Model Protocol** schemas (implicit **tmp/1**). Curated JSON ships in `schemas/curated/*.json` and is copied to the user schemas dir on first load (never overwritten).
+
+User-facing generate and schema CLI is below. The file format follows.
+
+## Generate (background by default)
+
+```bash
+waz generate docker              # returns a job id; shell stays usable
+waz generate docker --wait       # block until the schema is written
+waz generate --jobs
+waz generate kubectl --force     # version the old file, then regenerate
+waz generate brew --verify       # review TUI
+waz generate brew --history
+waz generate brew --rollback
+waz generate brew --rollback 1
+waz generate cargo --init        # install curated schemas
+waz generate cargo --export      # dump a curated schema to cwd
+```
+
+Generate harvests nested `--help`, then calls your pinned LLM in batches using the `tmp-schema` [plugin skill](plugins.md). It does not drop the start of help to fit 12k.
+
+If generation fails after `--force`, the previous version is restored.
+
+## Schema CLI
+
+```bash
+waz schema list
+waz schema share cargo
+waz schema import ./brew-schema.json
+waz schema import https://example.com/schema.json
+waz schema keywords psql postgres postgresql database db
+```
+
+Share strips resolved `values` when `data_source` is set. Import backups the existing file first.
+
+Headless (agents / CI):
+
+```bash
+waz tmp list --cwd . --query cargo
+waz tmp show "cargo run" --cwd .
+waz tmp build "cargo run" --cwd . --set bin=waz --set release=true
+```
+
+Same argv serializer as the TUI (flags, then positionals). Missing required tokens exit 1 with `{"error":…}` on stderr.
+
+## Token Model Protocol (tmp/1)
+
+There is no required `meta.protocol` field yet. Existing JSON on disk stays valid.
 
 Canonical documents live in `schemas/curated/*.json`. User copies are written to `~/.config/waz/schemas/` on first launch and are not overwritten.
 

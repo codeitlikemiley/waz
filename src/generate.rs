@@ -6,10 +6,13 @@
 use crate::config::Config;
 use crate::context::RuntimeContext;
 use crate::llm;
+use crate::plugin;
 use crate::tui::app::{CommandEntry, SchemaFile, SchemaMeta};
 #[cfg(test)]
 use crate::tui::app::{DataSource, TokenType};
 use crate::tui::cargo_schema::CargoContext;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
@@ -878,83 +881,271 @@ pub fn list_schemas() {
     eprintln!("\n📁 {}", dir.display());
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenerateJob {
+    pub id: String,
+    pub tool: String,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pid: Option<u32>,
+    pub started_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finished_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command_count: Option<usize>,
+    pub log_path: String,
+    pub schema_path: String,
+}
+
+pub fn jobs_dir() -> PathBuf {
+    let dir = dirs::data_dir()
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".local")
+                .join("share")
+        })
+        .join("waz")
+        .join("jobs");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+fn job_path(id: &str) -> PathBuf {
+    jobs_dir().join(format!("{id}.json"))
+}
+
+fn write_job(job: &GenerateJob) {
+    if let Ok(body) = serde_json::to_vec_pretty(job) {
+        let _ = std::fs::write(job_path(&job.id), body);
+    }
+}
+
+fn read_job(id: &str) -> Option<GenerateJob> {
+    let raw = std::fs::read_to_string(job_path(id)).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
+pub fn list_jobs() -> Vec<GenerateJob> {
+    let mut jobs = Vec::new();
+    let Ok(entries) = std::fs::read_dir(jobs_dir()) else {
+        return jobs;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        if let Ok(raw) = std::fs::read_to_string(&path) {
+            if let Ok(job) = serde_json::from_str::<GenerateJob>(&raw) {
+                jobs.push(job);
+            }
+        }
+    }
+    jobs.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+    jobs
+}
+
+/// Start schema generation. Default is a detached child so the shell is free.
+pub fn start_generate(
+    tool: &str,
+    force: bool,
+    wait: bool,
+    model: Option<&str>,
+    provider: Option<&str>,
+) -> Result<Value, String> {
+    if !force && schema_exists(tool) {
+        return Ok(json!({
+            "status": "exists",
+            "tool": tool,
+            "schema": schemas_dir().join(format!("{tool}.json")).display().to_string(),
+            "hint": "Use force=true or `waz generate --force` to regenerate.",
+        }));
+    }
+
+    if wait {
+        let config = Config::load();
+        let commands = generate_schema(&config, tool, model, provider)?;
+        if let Ok(id) = std::env::var("WAZ_GENERATE_JOB") {
+            if let Some(mut job) = read_job(&id) {
+                job.status = "done".into();
+                job.finished_at = Some(chrono::Utc::now().to_rfc3339());
+                job.command_count = Some(commands.len());
+                write_job(&job);
+            }
+        }
+        return Ok(json!({
+            "status": "done",
+            "tool": tool,
+            "commands": commands.len(),
+            "schema": schemas_dir().join(format!("{tool}.json")).display().to_string(),
+        }));
+    }
+
+    let id = format!("{:x}", uuid::Uuid::new_v4().as_u128())
+        .chars()
+        .take(8)
+        .collect::<String>();
+    let log_path = jobs_dir().join(format!("{id}.log"));
+    let schema_path = schemas_dir().join(format!("{tool}.json"));
+    let job = GenerateJob {
+        id: id.clone(),
+        tool: tool.to_string(),
+        status: "queued".into(),
+        pid: None,
+        started_at: chrono::Utc::now().to_rfc3339(),
+        finished_at: None,
+        error: None,
+        command_count: None,
+        log_path: log_path.display().to_string(),
+        schema_path: schema_path.display().to_string(),
+    };
+    write_job(&job);
+
+    let exe = std::env::current_exe().map_err(|e| format!("current exe: {e}"))?;
+    let log = std::fs::File::create(&log_path).map_err(|e| format!("job log: {e}"))?;
+    let err = log.try_clone().map_err(|e| format!("job log: {e}"))?;
+    let mut cmd = Command::new(exe);
+    cmd.arg("generate")
+        .arg(tool)
+        .arg("--wait")
+        .stdin(std::process::Stdio::null())
+        .stdout(log)
+        .stderr(err)
+        .env("WAZ_GENERATE_JOB", &id);
+    if force {
+        cmd.arg("--force");
+    }
+    if let Some(m) = model {
+        cmd.arg("--model").arg(m);
+    }
+    if let Some(p) = provider {
+        cmd.arg("--provider").arg(p);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x00000200 | 0x00000008);
+    }
+    let child = cmd.spawn().map_err(|e| format!("spawn generate: {e}"))?;
+    let mut job = job;
+    job.status = "running".into();
+    job.pid = Some(child.id());
+    write_job(&job);
+    Ok(json!({
+        "status": "running",
+        "job_id": id,
+        "tool": tool,
+        "log": job.log_path,
+        "hint": "Shell is free. Check with `waz generate --jobs` or waz_generate_jobs.",
+    }))
+}
+
+fn finish_job(result: Result<usize, String>) {
+    let Ok(id) = std::env::var("WAZ_GENERATE_JOB") else {
+        return;
+    };
+    let Some(mut job) = read_job(&id) else {
+        return;
+    };
+    job.finished_at = Some(chrono::Utc::now().to_rfc3339());
+    match result {
+        Ok(n) => {
+            job.status = "done".into();
+            job.command_count = Some(n);
+        }
+        Err(e) => {
+            job.status = "error".into();
+            job.error = Some(e);
+        }
+    }
+    write_job(&job);
+}
+
 /// Generate a TMP schema for a CLI tool using AI.
 ///
-/// 1. Runs `<tool> --help` and subcommand help recursively
-/// 2. Sends to LLM with a structured prompt
-/// 3. Parses response into Vec<CommandEntry>
-/// 4. Saves to ~/.config/waz/schemas/<tool>.json as SchemaFile
+/// Harvests `--help` (including one nested level), then asks the LLM in
+/// batches using the bundled Agent Plugin `tmp-schema` skill.
 pub fn generate_schema(
     config: &Config,
     tool: &str,
     model_override: Option<&str>,
     provider_override: Option<&str>,
 ) -> Result<Vec<CommandEntry>, String> {
-    // Step 1: Check tool exists
     let which = Command::new("which").arg(tool).output();
     match which {
         Ok(out) if out.status.success() => {}
-        _ => return Err(format!("'{}' not found on PATH", tool)),
-    }
-
-    eprintln!("🔍 Detecting {} commands...", tool);
-
-    // Step 2: Gather help text
-    let mut help_texts = Vec::new();
-
-    // Main help
-    let main_help = run_help(tool, &[]);
-    if main_help.is_empty() {
-        return Err(format!("'{}' --help produced no output", tool));
-    }
-    eprintln!("   Running: {} --help", tool);
-    help_texts.push(format!("=== {} --help ===\n{}", tool, main_help));
-
-    // Extract subcommands from the main help and run --help on each
-    let subcommands: Vec<String> = extract_subcommands(&main_help, tool)
-        .into_iter()
-        .filter(|s| s != tool) // Don't run `tool tool --help`
-        .collect();
-    let max_subcommands = 20; // Cap to avoid excessive API calls
-    for (i, sub) in subcommands.iter().take(max_subcommands).enumerate() {
-        eprintln!(
-            "   Running: {} {} --help ({}/{})",
-            tool,
-            sub,
-            i + 1,
-            subcommands.len().min(max_subcommands)
-        );
-        let sub_help = run_help(tool, &[sub.as_str()]);
-        if !sub_help.is_empty() {
-            help_texts.push(format!("=== {} {} --help ===\n{}", tool, sub, sub_help));
+        _ => {
+            let err = format!("'{tool}' not found on PATH");
+            finish_job(Err(err.clone()));
+            return Err(err);
         }
     }
 
-    // Determine model info for display
+    eprintln!("🔍 Harvesting {tool} help (nested subcommands)...");
+    let pages = harvest_help(tool);
+    if pages.is_empty() {
+        let err = format!("'{tool}' --help produced no output");
+        finish_job(Err(err.clone()));
+        return Err(err);
+    }
+    eprintln!("   {} help pages", pages.len());
+
     let model_name = model_override.map(|s| s.to_string()).unwrap_or_else(|| {
         config
             .llm
             .providers
-            .first()
+            .iter()
+            .find(|p| crate::config::canonical_name(&p.name) == config.llm.default)
+            .or_else(|| config.llm.providers.first())
             .map(|p| p.model.clone())
             .unwrap_or_else(|| "default".to_string())
     });
-    eprintln!("\n🤖 Generating schema with AI (model: {})...", model_name);
+    eprintln!("🤖 Generating schema with AI (model: {model_name}) via tmp-schema skill...");
 
-    // Step 3: Build prompt and call LLM
-    let help_combined = help_texts.join("\n\n");
-    // Truncate if too long (keep last portion which has subcommands)
-    let help_truncated = if help_combined.len() > 12000 {
-        &help_combined[help_combined.len() - 12000..]
-    } else {
-        &help_combined
-    };
+    let batches = chunk_help(&pages, 9000);
+    let mut commands: Vec<CommandEntry> = Vec::new();
+    for (i, batch) in batches.iter().enumerate() {
+        eprintln!("   LLM batch {}/{}", i + 1, batches.len());
+        let existing: Vec<&str> = commands.iter().map(|c| c.command.as_str()).collect();
+        let prompt = build_generate_prompt(tool, batch, &existing);
+        match call_llm_for_schema(config, &prompt, model_override, provider_override) {
+            Ok(response) => match parse_schema_response(tool, &response) {
+                Ok(more) => {
+                    for cmd in more {
+                        if let Some(old) = commands.iter_mut().find(|c| c.command == cmd.command) {
+                            if cmd.tokens.len() > old.tokens.len() {
+                                *old = cmd;
+                            }
+                        } else {
+                            commands.push(cmd);
+                        }
+                    }
+                }
+                Err(e) => eprintln!("   batch {} parse warning: {e}", i + 1),
+            },
+            Err(e) => {
+                if commands.is_empty() {
+                    finish_job(Err(e.clone()));
+                    return Err(e);
+                }
+                eprintln!("   batch {} LLM warning: {e}", i + 1);
+            }
+        }
+    }
 
-    let prompt = build_generate_prompt(tool, help_truncated);
-    let response = call_llm_for_schema(config, &prompt, model_override, provider_override)?;
-
-    // Step 4: Parse response
-    let commands = parse_schema_response(tool, &response)?;
+    if commands.is_empty() {
+        let err = format!("AI generated 0 commands for '{tool}'");
+        finish_job(Err(err.clone()));
+        return Err(err);
+    }
 
     // Step 5: Save as SchemaFile with meta
     let existing_version = if schema_exists(tool) {
@@ -977,7 +1168,11 @@ pub fn generate_schema(
             generated_with: Some(model_name),
             verified: false,
             verified_at: None,
-            coverage: "partial".to_string(),
+            coverage: if commands.len() + 1 >= pages.len() {
+                "full".into()
+            } else {
+                "partial".into()
+            },
             waz_version: Some(env!("CARGO_PKG_VERSION").to_string()),
             requires_file: None,
             requires_file_kind: None,
@@ -988,14 +1183,22 @@ pub fn generate_schema(
     };
 
     let schema_path = schemas_dir().join(format!("{}.json", tool));
-    let json = serde_json::to_string_pretty(&schema_file)
-        .map_err(|e| format!("Failed to serialize: {}", e))?;
-    std::fs::write(&schema_path, &json).map_err(|e| format!("Failed to write schema: {}", e))?;
+    let json = serde_json::to_string_pretty(&schema_file).map_err(|e| {
+        let msg = format!("Failed to serialize: {e}");
+        finish_job(Err(msg.clone()));
+        msg
+    })?;
+    std::fs::write(&schema_path, &json).map_err(|e| {
+        let msg = format!("Failed to write schema: {e}");
+        finish_job(Err(msg.clone()));
+        msg
+    })?;
 
     eprintln!(
-        "   Found {} commands with {} tokens",
+        "   Found {} commands with {} tokens (coverage {})",
         commands.len(),
-        commands.iter().map(|c| c.tokens.len()).sum::<usize>()
+        commands.iter().map(|c| c.tokens.len()).sum::<usize>(),
+        schema_file.meta.coverage
     );
     eprintln!(
         "\n✅ Saved to {} (v{})",
@@ -1004,20 +1207,104 @@ pub fn generate_schema(
     );
     eprintln!("   Next time you open the TUI, these commands will auto-load.");
 
+    finish_job(Ok(commands.len()));
     Ok(commands)
 }
 
-/// Run `<tool> [args...] --help` and return stdout+stderr.
+fn harvest_help(tool: &str) -> Vec<(String, String)> {
+    let mut pages = Vec::new();
+    let main = run_help(tool, &[]);
+    if main.trim().is_empty() {
+        return pages;
+    }
+    eprintln!("   {tool} --help");
+    pages.push((tool.to_string(), main.clone()));
+    let subs: Vec<String> = extract_subcommands(&main, tool)
+        .into_iter()
+        .filter(|s| s != tool)
+        .take(60)
+        .collect();
+    const MAX_PAGES: usize = 80;
+    const MAX_NEST: usize = 8;
+    for sub in &subs {
+        if pages.len() >= MAX_PAGES {
+            break;
+        }
+        let text = run_help(tool, &[sub.as_str()]);
+        if text.trim().is_empty() {
+            continue;
+        }
+        let title = format!("{tool} {sub}");
+        eprintln!("   {title} --help");
+        pages.push((title, text.clone()));
+        let nested: Vec<String> = extract_subcommands(&text, tool)
+            .into_iter()
+            .filter(|n| n != tool && n != sub)
+            .take(MAX_NEST)
+            .collect();
+        for nest in nested {
+            if pages.len() >= MAX_PAGES {
+                break;
+            }
+            let ntext = run_help(tool, &[sub.as_str(), nest.as_str()]);
+            if ntext.trim().is_empty() {
+                continue;
+            }
+            let ntitle = format!("{tool} {sub} {nest}");
+            eprintln!("   {ntitle} --help");
+            pages.push((ntitle, ntext));
+        }
+    }
+    pages
+}
+
+fn chunk_help(pages: &[(String, String)], max: usize) -> Vec<String> {
+    let mut batches = Vec::new();
+    let mut cur = String::new();
+    for (title, text) in pages {
+        let piece = format!("=== {title} --help ===\n{text}\n\n");
+        if !cur.is_empty() && cur.len() + piece.len() > max {
+            batches.push(std::mem::take(&mut cur));
+        }
+        if piece.len() > max {
+            let mut start = 0;
+            while start < piece.len() {
+                let end = (start + max).min(piece.len());
+                batches.push(piece[start..end].to_string());
+                start = end;
+            }
+        } else {
+            cur.push_str(&piece);
+        }
+    }
+    if !cur.is_empty() {
+        batches.push(cur);
+    }
+    if batches.is_empty() {
+        batches.push(String::new());
+    }
+    batches
+}
+
+/// Run `<tool> [args...] --help` (falls back to `-h`).
 fn run_help(tool: &str, args: &[&str]) -> String {
+    let text = run_help_flag(tool, args, "--help");
+    if text.trim().is_empty() {
+        run_help_flag(tool, args, "-h")
+    } else {
+        text
+    }
+}
+
+fn run_help_flag(tool: &str, args: &[&str], flag: &str) -> String {
     let mut cmd = Command::new(tool);
     cmd.args(args);
-    cmd.arg("--help");
-
+    cmd.arg(flag);
     match cmd.output() {
         Ok(out) => {
             let stdout = String::from_utf8_lossy(&out.stdout);
             let stderr = String::from_utf8_lossy(&out.stderr);
-            format!("{}{}", stdout, stderr)
+            format!("{stdout}{stderr}")
         }
         Err(_) => String::new(),
     }
@@ -1081,56 +1368,19 @@ fn extract_subcommands(help: &str, tool: &str) -> Vec<String> {
     subs
 }
 
-/// Build the LLM prompt for schema generation.
-fn build_generate_prompt(tool: &str, help_text: &str) -> String {
-    format!(
-        r#"You are a CLI tool analyzer. Given the help output of '{}', generate a JSON array of command entries.
-
-Each entry must have this exact format:
-{{
-  "command": "{} subcommand",
-  "description": "Short description",
-  "group": "{}",
-  "tokens": [
-    {{
-      "name": "param_name",
-      "description": "Short description",
-      "required": true,
-      "token_type": "String",
-      "default": null,
-      "values": null,
-      "flag": "--flag-name",
-      "data_source": null
-    }}
-  ]
-}}
-
-CRITICAL RULES:
-- The "command" field must be ONLY the binary name and subcommand, e.g. "{} install" or "{}"
-  NEVER put positional args, brackets, or angle brackets in the command field.
-  Positional arguments go in the tokens array with "flag": null.
-- Include the most commonly used subcommands
-- For the BASE command (no subcommand), create an entry with command: "{}"
-  and include ALL its options as tokens
-- For each subcommand, include ALL flags and options shown in the help output
-- "default" must ALWAYS be either null or a string like "false", "0", never a bare boolean or number
-- "flag" must be either a string like "--verbose" or null (for positional args), never false
-- "values" must be either null or a string array like ["option1", "option2"]
-- Use token_type "Boolean" for flags that are on/off switches
-- Use token_type "Enum" when there are specific allowed values (put them in "values")
-- Use token_type "File" for file/directory/path arguments
-- Use token_type "Number" for numeric values
-- Set "flag" to the CLI flag (e.g. "--verbose", "-n")
-- Set "flag" to null for positional arguments
-- Do NOT make flags into separate commands. "--resume" is a flag, not a subcommand.
-- Output ONLY the JSON array, no markdown, no explanation, no code fences
-
-Help output:
-{}
-
-JSON:"#,
-        tool, tool, tool, tool, tool, tool, help_text
-    )
+/// Build the LLM prompt for schema generation from the Agent Plugin skill.
+fn build_generate_prompt(tool: &str, help_text: &str, existing: &[&str]) -> String {
+    let skill =
+        plugin::skill_text("waz", "tmp-schema").unwrap_or_else(plugin::bundled_tmp_schema_prompt);
+    let already = if existing.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\nAlready emitted (do not repeat unless adding tokens): {}\n",
+            existing.join(", ")
+        )
+    };
+    format!("{skill}\n\nTool binary: {tool}\n{already}\nHelp harvest:\n{help_text}\n\nJSON array:")
 }
 
 /// Call the LLM to generate schema JSON.
@@ -1242,6 +1492,8 @@ fn parse_schema_response(tool: &str, response: &str) -> Result<Vec<CommandEntry>
         trimmed
     };
 
+    let json_str = extract_json_array(json_str);
+
     // Normalize LLM JSON output to fix common type errors
     let json_str = &normalize_llm_json(json_str);
 
@@ -1258,6 +1510,13 @@ fn parse_schema_response(tool: &str, response: &str) -> Result<Vec<CommandEntry>
     }
 
     Ok(commands)
+}
+
+fn extract_json_array(s: &str) -> &str {
+    match (s.find('['), s.rfind(']')) {
+        (Some(start), Some(end)) if end > start => &s[start..=end],
+        _ => s,
+    }
 }
 
 // ──────────────────────────── Versioned Backup / Rollback / Diff ────────────────────────────
@@ -1540,6 +1799,9 @@ mod tests {
     use super::*;
     use crate::context::RuntimeContext;
     use crate::tui::app::SchemaMeta;
+    use std::sync::Mutex;
+
+    static SCHEMA_ENV: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_extract_subcommands() {
@@ -1564,6 +1826,43 @@ Options:
         assert!(subs.contains(&"search".to_string()));
         assert!(subs.contains(&"upgrade".to_string()));
         assert!(!subs.contains(&"help".to_string()));
+    }
+
+    #[test]
+    fn start_generate_reports_exists_without_spawning() {
+        let _lock = SCHEMA_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("waz-schema-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let old = std::env::var("WAZ_SCHEMAS_DIR").ok();
+        std::env::set_var("WAZ_SCHEMAS_DIR", dir.to_str().unwrap());
+        std::fs::write(
+            dir.join("docker.json"),
+            r#"{"meta":{"tool":"docker"},"commands":[]}"#,
+        )
+        .unwrap();
+        let v = start_generate("docker", false, false, None, None).unwrap();
+        match old {
+            Some(v) => std::env::set_var("WAZ_SCHEMAS_DIR", v),
+            None => std::env::remove_var("WAZ_SCHEMAS_DIR"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(v["status"], "exists");
+    }
+
+    #[test]
+    fn chunk_help_splits_oversized_pages() {
+        let pages = vec![("t".into(), "abcdefghij".repeat(20))];
+        let batches = chunk_help(&pages, 50);
+        assert!(batches.len() > 1);
+        assert!(batches
+            .iter()
+            .all(|b| b.len() <= 50 || b.len() < pages[0].1.len() + 40));
+    }
+
+    #[test]
+    fn extract_json_array_strips_prose() {
+        let raw = "Sure, here you go:\n[{\"command\":\"git status\"}]\nThanks!";
+        assert_eq!(extract_json_array(raw), "[{\"command\":\"git status\"}]");
     }
 
     #[test]
@@ -1654,6 +1953,8 @@ Options:
 
     #[test]
     fn test_schemas_dir() {
+        let _lock = SCHEMA_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("WAZ_SCHEMAS_DIR");
         let dir = schemas_dir();
         assert!(dir.to_str().unwrap().contains("waz"));
         assert!(dir.to_str().unwrap().contains("schemas"));
