@@ -356,6 +356,13 @@ enum SchemaAction {
         source: String,
     },
 
+    /// Replace installed curated schemas with the copies bundled in this waz.
+    /// Backs up each replaced file. Empty tool list = all bundled schemas.
+    Upgrade {
+        #[arg(trailing_var_arg = true)]
+        tools: Vec<String>,
+    },
+
     /// Set custom trigger keywords for AI query matching.
     Keywords {
         /// Tool name (e.g. psql, cargo, brew).
@@ -409,6 +416,11 @@ enum TmpAction {
         command: String,
         #[arg(long, env = "PWD")]
         cwd: String,
+        /// Focused file (grounds cargo bin/example from RuntimeContext).
+        #[arg(long)]
+        file: Option<String>,
+        #[arg(long)]
+        line: Option<usize>,
     },
     /// Fill tokens and print the argv string.
     Build {
@@ -419,6 +431,10 @@ enum TmpAction {
         set: Vec<String>,
         #[arg(long, env = "PWD")]
         cwd: String,
+        #[arg(long)]
+        file: Option<String>,
+        #[arg(long)]
+        line: Option<usize>,
     },
 }
 
@@ -946,6 +962,32 @@ fn main() {
                         std::process::exit(1);
                     }
                 },
+                SchemaAction::Upgrade { tools } => match generate::upgrade_schemas(&tools) {
+                    Ok(reports) => {
+                        for r in reports {
+                            match r.status.as_str() {
+                                "installed" => {
+                                    eprintln!("✅ {} installed from bundle", r.tool)
+                                }
+                                "replaced" => {
+                                    if let Some(v) = r.backup {
+                                        eprintln!("✅ {} replaced (backup v{v})", r.tool);
+                                    } else {
+                                        eprintln!("✅ {} replaced", r.tool);
+                                    }
+                                }
+                                "unchanged" => {
+                                    eprintln!("•  {} already matches this waz", r.tool)
+                                }
+                                other => eprintln!("•  {} {other}", r.tool),
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("❌ {e}");
+                        std::process::exit(1);
+                    }
+                },
                 SchemaAction::Import { source } => match generate::import_schema(&source) {
                     Ok(tool) => {
                         eprintln!("✅ Imported schema for '{}'", tool);
@@ -1012,7 +1054,11 @@ fn main() {
                     } else {
                         // Human-readable output
                         eprintln!("🎯 {}", result.explanation);
-                        println!("{}", result.command);
+                        if !result.argv.is_empty() {
+                            println!("{}", result.argv);
+                        } else {
+                            println!("{}", result.command);
+                        }
                         if !result.tokens_filled.is_empty() {
                             eprintln!();
                             for tf in &result.tokens_filled {
@@ -1034,14 +1080,25 @@ fn main() {
                 let listed = tmp::list(&cwd, query.as_deref());
                 println!("{}", serde_json::to_string_pretty(&listed).unwrap());
             }
-            TmpAction::Show { command, cwd } => match tmp::show(&cwd, &command) {
+            TmpAction::Show {
+                command,
+                cwd,
+                file,
+                line,
+            } => match tmp::show(&cwd, &command, file.as_deref(), line) {
                 Ok(shown) => println!("{}", serde_json::to_string_pretty(&shown).unwrap()),
                 Err(e) => {
                     eprintln!("{}", serde_json::json!({ "error": e }));
                     std::process::exit(1);
                 }
             },
-            TmpAction::Build { command, set, cwd } => match tmp::build(&cwd, &command, &set) {
+            TmpAction::Build {
+                command,
+                set,
+                cwd,
+                file,
+                line,
+            } => match tmp::build(&cwd, &command, &set, file.as_deref(), line) {
                 Ok(built) => println!("{}", serde_json::to_string_pretty(&built).unwrap()),
                 Err(e) => {
                     eprintln!("{}", serde_json::json!({ "error": e }));

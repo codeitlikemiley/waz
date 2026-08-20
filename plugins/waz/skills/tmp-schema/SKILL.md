@@ -45,7 +45,8 @@ Return **only** a JSON array (no markdown fences, no commentary). Each element:
    - git remotes → `{"resolver":"git:remotes"}`
    - cargo bins/examples/packages/features/profiles/tests/benches → `cargo:<name>`
    - npm scripts → `{"resolver":"npm:scripts"}`
-   Otherwise use `"data_source": {"command": "<safe list cmd>", "parse": "lines"}`.
+   For brew installed packages use `{"command":"brew list -1","parse":"lines"}`. Never `brew formulae` or `brew casks` (too large; hits the data_source timeout).
+   Otherwise use `"data_source": {"command": "<safe short list cmd>", "parse": "lines"}`.
 10. Boolean flags default to `"false"` and `required: false`.
 11. Required positionals: `required: true`, `flag: null`.
 12. `group` is the tool name (the binary).

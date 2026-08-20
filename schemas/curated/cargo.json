@@ -1,12 +1,12 @@
 {
   "meta": {
     "tool": "cargo",
-    "version": 1,
+    "version": 2,
     "generated_by": "human",
     "verified": true,
-    "verified_at": "2026-03-05",
+    "verified_at": "2026-08-20",
     "coverage": "full",
-    "waz_version": "0.1.2",
+    "waz_version": "0.1.10",
     "requires_file": "Cargo.toml",
     "requires_binary": "cargo"
   },
@@ -20,7 +20,7 @@
         { "name": "package", "description": "Package to build", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-p", "data_source": { "resolver": "cargo:packages" } },
         { "name": "bin", "description": "Binary target to build", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "--bin", "data_source": { "resolver": "cargo:bins" } },
         { "name": "example", "description": "Example target to build", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "--example", "data_source": { "resolver": "cargo:examples" } },
-        { "name": "features", "description": "Comma-separated features to activate", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-F", "data_source": { "resolver": "cargo:features" } },
+        { "name": "features", "description": "Comma-separated features to activate", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-F", "repeat": true, "data_source": { "resolver": "cargo:features" } },
         { "name": "release", "description": "Build in release mode", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--release" },
         { "name": "profile", "description": "Build profile to use", "required": false, "token_type": "Enum", "default": null, "values": ["dev", "release", "test", "bench"], "flag": "--profile", "data_source": { "resolver": "cargo:profiles" } },
         { "name": "all-features", "description": "Activate all features", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--all-features" },
@@ -36,7 +36,7 @@
         { "name": "package", "description": "Package to run", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-p", "data_source": { "resolver": "cargo:packages" } },
         { "name": "bin", "description": "Binary target to run", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "--bin", "data_source": { "resolver": "cargo:bins" } },
         { "name": "example", "description": "Example to run", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "--example", "data_source": { "resolver": "cargo:examples" } },
-        { "name": "features", "description": "Features to activate", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-F", "data_source": { "resolver": "cargo:features" } },
+        { "name": "features", "description": "Features to activate", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-F", "repeat": true, "data_source": { "resolver": "cargo:features" } },
         { "name": "release", "description": "Run in release mode", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--release" }
       ]
     },
@@ -48,7 +48,7 @@
       "tokens": [
         { "name": "package", "description": "Package to test", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-p", "data_source": { "resolver": "cargo:packages" } },
         { "name": "test", "description": "Test target to run", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "--test", "data_source": { "resolver": "cargo:tests" } },
-        { "name": "features", "description": "Features to activate", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-F", "data_source": { "resolver": "cargo:features" } },
+        { "name": "features", "description": "Features to activate", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-F", "repeat": true, "data_source": { "resolver": "cargo:features" } },
         { "name": "release", "description": "Test in release mode", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--release" },
         { "name": "workspace", "description": "Test all workspace members", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--workspace" }
       ]
@@ -60,7 +60,7 @@
       "verified": true,
       "tokens": [
         { "name": "package", "description": "Package to check", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-p", "data_source": { "resolver": "cargo:packages" } },
-        { "name": "features", "description": "Features to activate", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-F", "data_source": { "resolver": "cargo:features" } },
+        { "name": "features", "description": "Features to activate", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-F", "repeat": true, "data_source": { "resolver": "cargo:features" } },
         { "name": "all-features", "description": "Activate all features", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--all-features" },
         { "name": "workspace", "description": "Check all workspace members", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--workspace" }
       ]
@@ -72,7 +72,7 @@
       "verified": true,
       "tokens": [
         { "name": "package", "description": "Package to lint", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-p", "data_source": { "resolver": "cargo:packages" } },
-        { "name": "features", "description": "Features to activate", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-F", "data_source": { "resolver": "cargo:features" } },
+        { "name": "features", "description": "Features to activate", "required": false, "token_type": "Enum", "default": null, "values": [], "flag": "-F", "repeat": true, "data_source": { "resolver": "cargo:features" } },
         { "name": "fix", "description": "Auto-fix suggestions", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--fix" },
         { "name": "workspace", "description": "Lint all workspace members", "required": false, "token_type": "Boolean", "default": "false", "values": null, "flag": "--workspace" }
       ]

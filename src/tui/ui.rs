@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-use super::app::{App, Mode, TokenType};
+use super::app::{command_uses_project_context, App, Mode, TokenType};
 
 /// Render the TUI overlay.
 pub fn draw(f: &mut Frame, app: &App) {
@@ -229,50 +229,52 @@ fn draw_token_form(f: &mut Frame, app: &App, area: Rect) {
 
     lines.push(Line::from(""));
 
-    if let Some(ctx) = app.runtime_context.as_ref() {
-        lines.push(Line::from(vec![Span::styled(
-            "  Context:",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )]));
+    if command_uses_project_context(cmd) {
+        if let Some(ctx) = app.runtime_context.as_ref() {
+            lines.push(Line::from(vec![Span::styled(
+                "  Context:",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )]));
 
-        if let Some(ref file) = ctx.file_path {
+            if let Some(ref file) = ctx.file_path {
+                lines.push(Line::from(vec![
+                    Span::raw("    file: "),
+                    Span::styled(file, Style::default().fg(Color::White)),
+                ]));
+            }
             lines.push(Line::from(vec![
-                Span::raw("    file: "),
-                Span::styled(file, Style::default().fg(Color::White)),
+                Span::raw("    kind: "),
+                Span::styled(&ctx.file_kind, Style::default().fg(Color::Yellow)),
             ]));
-        }
-        lines.push(Line::from(vec![
-            Span::raw("    kind: "),
-            Span::styled(&ctx.file_kind, Style::default().fg(Color::Yellow)),
-        ]));
-        if let Some(ref package) = ctx.package_name {
-            lines.push(Line::from(vec![
-                Span::raw("    package: "),
-                Span::styled(package, Style::default().fg(Color::Green)),
-            ]));
-        }
-        if let Some(ref target) = ctx.recommended_target {
-            lines.push(Line::from(vec![
-                Span::raw("    target: "),
-                Span::styled(target, Style::default().fg(Color::Green)),
-            ]));
-        }
-        if let Some(ref engine) = ctx.script_engine {
-            lines.push(Line::from(vec![
-                Span::raw("    script: "),
-                Span::styled(engine, Style::default().fg(Color::Magenta)),
-            ]));
-        }
-        if let Some(line) = ctx.line {
-            lines.push(Line::from(vec![
-                Span::raw("    line: "),
-                Span::styled(line.to_string(), Style::default().fg(Color::DarkGray)),
-            ]));
-        }
+            if let Some(ref package) = ctx.package_name {
+                lines.push(Line::from(vec![
+                    Span::raw("    package: "),
+                    Span::styled(package, Style::default().fg(Color::Green)),
+                ]));
+            }
+            if let Some(ref target) = ctx.recommended_target {
+                lines.push(Line::from(vec![
+                    Span::raw("    target: "),
+                    Span::styled(target, Style::default().fg(Color::Green)),
+                ]));
+            }
+            if let Some(ref engine) = ctx.script_engine {
+                lines.push(Line::from(vec![
+                    Span::raw("    script: "),
+                    Span::styled(engine, Style::default().fg(Color::Magenta)),
+                ]));
+            }
+            if let Some(line) = ctx.line {
+                lines.push(Line::from(vec![
+                    Span::raw("    line: "),
+                    Span::styled(line.to_string(), Style::default().fg(Color::DarkGray)),
+                ]));
+            }
 
-        lines.push(Line::from(""));
+            lines.push(Line::from(""));
+        }
     }
 
     lines.push(Line::from(Span::styled(
@@ -283,6 +285,9 @@ fn draw_token_form(f: &mut Frame, app: &App, area: Rect) {
     )));
 
     for (i, token) in cmd.tokens.iter().enumerate() {
+        if !super::app::token_is_visible(token, cmd, &app.token_values) {
+            continue;
+        }
         let is_active = i == app.active_token;
         let value = app.token_values.get(i).cloned().unwrap_or_default();
 

@@ -55,9 +55,9 @@ Any Agent Plugins client can also load the plugin directory (`plugin.json` + `sk
 | Tool | Role |
 |------|------|
 | `waz_tmp_list` | Commands loaded for a cwd |
-| `waz_tmp_show` | One command + resolved tokens |
-| `waz_tmp_build` | Fill tokens → argv |
-| `waz_resolve` | Natural language → grounded command (uses waz LLM) |
+| `waz_tmp_show` | One command + resolved tokens (`file` / `line` optional) |
+| `waz_tmp_build` | Fill tokens → argv (`file` / `line` optional; prefills cargo bin from context) |
+| `waz_resolve` | Natural language → schema command + `argv` from assemble. Does not pin cargo just because `Cargo.toml` exists. |
 | `waz_generate` | Generate a schema (`wait` defaults **true**; pass `false` only if you will poll) |
 | `waz_generate_jobs` | Job list (reaps dead PIDs) |
 | `waz_generate_status` | One job; optional `wait` |

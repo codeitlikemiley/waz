@@ -387,10 +387,12 @@ fn handle_enter(app: &mut App, ai_tx: &mpsc::Sender<AiResult>) {
             if app.editing_tokens {
                 // Validate: all required tokens must have values
                 if let Some(cmd_idx) = app.selected_command {
-                    let tokens = &app.command_list[cmd_idx].tokens;
-                    for (i, token) in tokens.iter().enumerate() {
+                    let cmd = &app.command_list[cmd_idx];
+                    for (i, token) in cmd.tokens.iter().enumerate() {
+                        if !app::token_is_visible(token, cmd, &app.token_values) {
+                            continue;
+                        }
                         if token.required && app.token_values[i].trim().is_empty() {
-                            // Jump to the first unfilled required token
                             app.active_token = i;
                             return;
                         }
@@ -471,85 +473,74 @@ fn handle_enter(app: &mut App, ai_tx: &mpsc::Sender<AiResult>) {
 
                 std::thread::spawn(move || {
                     // Detect best tool: query keywords first, then CWD project files
-                    let project_tool = crate::resolve::detect_best_tool_with_context(
-                        &query,
-                        &cwd,
-                        runtime_context.as_ref(),
-                    );
+                    let tool_match =
+                        crate::resolve::detect_tool_match(&query, &cwd, runtime_context.as_ref());
+                    let filter = tool_match
+                        .as_ref()
+                        .and_then(|m| m.filter_tool().map(|s| s.to_string()));
+                    let prefer = tool_match
+                        .as_ref()
+                        .and_then(|m| m.prefer_tool().map(|s| s.to_string()));
+                    let status_tool = tool_match
+                        .as_ref()
+                        .map(|m| m.name().to_string())
+                        .unwrap_or_else(|| "all".into());
+                    let _ = tx.send(AiResult::Status(format!(
+                        "📡 Resolving TMP ({status_tool})..."
+                    )));
 
-                    if let Some(ref tool) = project_tool {
-                        let _ =
-                            tx.send(AiResult::Status(format!("📡 Resolving {} schema...", tool)));
+                    let config2 = config.clone();
+                    let query2 = query.clone();
+                    let cwd2 = cwd.clone();
+                    let runtime_context2 = runtime_context.clone();
 
-                        // Run TMP resolve and ask_structured in PARALLEL
-                        let config2 = config.clone();
-                        let query2 = query.clone();
-                        let cwd2 = cwd.clone();
-                        let tool2 = tool.clone();
-                        let runtime_context2 = runtime_context.clone();
+                    let resolve_handle = std::thread::spawn(move || {
+                        crate::resolve::resolve_with_context(
+                            &config2,
+                            &query2,
+                            &cwd2,
+                            filter.as_deref(),
+                            runtime_context2.as_ref(),
+                            prefer.as_deref(),
+                        )
+                    });
 
-                        let resolve_handle = std::thread::spawn(move || {
-                            crate::resolve::resolve_with_context(
-                                &config2,
-                                &query2,
-                                &cwd2,
-                                Some(&tool2),
-                                runtime_context2.as_ref(),
-                            )
-                        });
+                    let config3 = config.clone();
+                    let query3 = query.clone();
+                    let cwd3 = cwd.clone();
 
-                        let config3 = config.clone();
-                        let query3 = query.clone();
-                        let cwd3 = cwd.clone();
-
-                        let ask_handle = std::thread::spawn(move || {
-                            let db_path = crate::get_db_path();
-                            let recent = crate::db::HistoryDb::open(&db_path)
-                                .ok()
-                                .and_then(|db| db.get_recent_by_cwd(&cwd3, None, 10).ok())
-                                .unwrap_or_default();
-                            crate::ask::ask_structured(&config3, &query3, &cwd3, &recent)
-                        });
-
-                        // Check TMP result first
-                        if let Ok(resolve_result) = resolve_handle.join() {
-                            match resolve_result {
-                                Ok(res)
-                                    if res.confidence == "high" || res.confidence == "medium" =>
-                                {
-                                    let _ = tx.send(AiResult::Resolve(res));
-                                    return; // Don't wait for ask — TMP won
-                                }
-                                Ok(res) => {
-                                    let _ = tx.send(AiResult::Status(format!(
-                                        "↩️ TMP low confidence ({}), using AI...",
-                                        res.confidence
-                                    )));
-                                }
-                                Err(e) => {
-                                    let _ = tx.send(AiResult::Status(format!(
-                                        "⚠ TMP: {}",
-                                        e.chars().take(60).collect::<String>()
-                                    )));
-                                }
-                            }
-                        }
-
-                        // TMP failed/low — use ask_structured result (already running in parallel!)
-                        if let Ok(ask_result) = ask_handle.join() {
-                            let _ = tx.send(AiResult::Ask(ask_result));
-                        }
-                    } else {
-                        // No tool detected — just ask AI directly
-                        let _ = tx.send(AiResult::Status("🤖 Asking AI...".to_string()));
+                    let ask_handle = std::thread::spawn(move || {
                         let db_path = crate::get_db_path();
                         let recent = crate::db::HistoryDb::open(&db_path)
                             .ok()
-                            .and_then(|db| db.get_recent_by_cwd(&cwd, None, 10).ok())
+                            .and_then(|db| db.get_recent_by_cwd(&cwd3, None, 10).ok())
                             .unwrap_or_default();
+                        crate::ask::ask_structured(&config3, &query3, &cwd3, &recent)
+                    });
 
-                        let result = crate::ask::ask_structured(&config, &query, &cwd, &recent);
-                        let _ = tx.send(AiResult::Ask(result));
+                    if let Ok(resolve_result) = resolve_handle.join() {
+                        match resolve_result {
+                            Ok(res) if res.confidence == "high" || res.confidence == "medium" => {
+                                let _ = tx.send(AiResult::Resolve(res));
+                                return;
+                            }
+                            Ok(res) => {
+                                let _ = tx.send(AiResult::Status(format!(
+                                    "↩️ TMP low confidence ({}), using AI...",
+                                    res.confidence
+                                )));
+                            }
+                            Err(e) => {
+                                let _ = tx.send(AiResult::Status(format!(
+                                    "⚠ TMP: {}",
+                                    e.chars().take(60).collect::<String>()
+                                )));
+                            }
+                        }
+                    }
+
+                    if let Ok(ask_result) = ask_handle.join() {
+                        let _ = tx.send(AiResult::Ask(ask_result));
                     }
                 });
             }
@@ -577,19 +568,36 @@ fn apply_ai_result(app: &mut App, result: AiResult) -> bool {
                 role: "assistant".to_string(),
                 content: format!("[TMP] {}", res.explanation),
             });
-            app.ai_commands = vec![app::AiCommand {
-                cmd: res.command,
-                desc: res
-                    .tokens_filled
-                    .iter()
-                    .map(|t| format!("{} = {}", t.name, t.value))
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                placeholders: vec![],
-            }];
-            app.ai_selecting = true;
-            app.ai_selected_cmd = 0;
-            true
+            if !app.tmp_loaded {
+                load_tmp_commands(app);
+                app.tmp_loaded = true;
+            }
+            let fills: Vec<(String, String)> = res
+                .tokens_filled
+                .iter()
+                .map(|t| (t.name.clone(), t.value.clone()))
+                .collect();
+            if app.apply_schema_command(&res.command, &fills) {
+                true
+            } else {
+                let cmd = if res.argv.is_empty() {
+                    res.command
+                } else {
+                    res.argv
+                };
+                app.ai_commands = vec![app::AiCommand {
+                    cmd,
+                    desc: fills
+                        .iter()
+                        .map(|(n, v)| format!("{n} = {v}"))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    placeholders: vec![],
+                }];
+                app.ai_selecting = true;
+                app.ai_selected_cmd = 0;
+                true
+            }
         }
         AiResult::Ask(result) => {
             app.ai_status.clear();
@@ -599,6 +607,15 @@ fn apply_ai_result(app: &mut App, result: AiResult) -> bool {
                         role: "assistant".to_string(),
                         content: resp.explanation,
                     });
+                    if !app.tmp_loaded {
+                        load_tmp_commands(app);
+                        app.tmp_loaded = true;
+                    }
+                    if let Some(first) = resp.commands.first() {
+                        if app.apply_schema_command(&first.cmd, &[]) {
+                            return true;
+                        }
+                    }
                     app.ai_commands = resp
                         .commands
                         .into_iter()
