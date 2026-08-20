@@ -29,6 +29,7 @@ pub fn import_history(db: &HistoryDb, shell: Option<&str>) -> io::Result<ImportR
         Some("zsh") => import_zsh_history(db, &home),
         Some("bash") => import_bash_history(db, &home),
         Some("fish") => import_fish_history(db, &home),
+        Some("powershell") | Some("pwsh") | Some("ps1") => import_powershell_history(db, &home),
         Some(s) => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!("Unsupported shell: {}", s),
@@ -53,6 +54,13 @@ pub fn import_history(db: &HistoryDb, shell: Option<&str>) -> io::Result<ImportR
 
             if let Ok(r) = import_fish_history(db, &home) {
                 eprintln!("  fish: {}", r);
+                total.imported += r.imported;
+                total.skipped += r.skipped;
+                total.errors += r.errors;
+            }
+
+            if let Ok(r) = import_powershell_history(db, &home) {
+                eprintln!("  powershell: {}", r);
                 total.imported += r.imported;
                 total.skipped += r.skipped;
                 total.errors += r.errors;
@@ -157,11 +165,108 @@ fn import_bash_history(db: &HistoryDb, home: &PathBuf) -> io::Result<ImportResul
         ));
     }
 
-    let file = fs::File::open(&hist_path)?;
+    import_plain_history_file(db, &hist_path, "import_bash", &home.to_string_lossy())
+}
+
+/// Import PSReadLine history (one command per line).
+fn import_powershell_history(db: &HistoryDb, home: &PathBuf) -> io::Result<ImportResult> {
+    let hist_path = powershell_history_path(home).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            "No PowerShell PSReadLine history file found",
+        )
+    })?;
+
+    eprintln!("  Reading powershell history from: {}", hist_path.display());
+    import_plain_history_file(
+        db,
+        &hist_path,
+        "import_powershell",
+        &home.to_string_lossy(),
+    )
+}
+
+fn powershell_history_path(home: &PathBuf) -> Option<PathBuf> {
+    powershell_history_candidates(home)
+        .into_iter()
+        .find(|p| p.exists())
+}
+
+fn powershell_history_candidates(home: &PathBuf) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    if let Ok(path) = std::env::var("WAZ_PWSH_HISTFILE") {
+        candidates.push(PathBuf::from(path));
+    }
+
+    candidates.push(
+        home.join(".local")
+            .join("share")
+            .join("powershell")
+            .join("PSReadLine")
+            .join("ConsoleHost_history.txt"),
+    );
+
+    if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
+        candidates.push(
+            PathBuf::from(xdg)
+                .join("powershell")
+                .join("PSReadLine")
+                .join("ConsoleHost_history.txt"),
+        );
+    }
+
+    candidates.push(
+        home.join("Documents")
+            .join("PowerShell")
+            .join("PSReadLine")
+            .join("ConsoleHost_history.txt"),
+    );
+    candidates.push(
+        home.join("Documents")
+            .join("WindowsPowerShell")
+            .join("PSReadLine")
+            .join("ConsoleHost_history.txt"),
+    );
+
+    if let Some(data) = dirs::data_dir() {
+        candidates.push(
+            data.join("Microsoft")
+                .join("Windows")
+                .join("PowerShell")
+                .join("PSReadLine")
+                .join("ConsoleHost_history.txt"),
+        );
+        candidates.push(
+            data.join("Microsoft")
+                .join("PowerShell")
+                .join("PSReadLine")
+                .join("ConsoleHost_history.txt"),
+        );
+    }
+
+    candidates.push(
+        home.join("AppData")
+            .join("Roaming")
+            .join("Microsoft")
+            .join("Windows")
+            .join("PowerShell")
+            .join("PSReadLine")
+            .join("ConsoleHost_history.txt"),
+    );
+
+    candidates
+}
+
+fn import_plain_history_file(
+    db: &HistoryDb,
+    hist_path: &PathBuf,
+    session_id: &str,
+    home_str: &str,
+) -> io::Result<ImportResult> {
+    let file = fs::File::open(hist_path)?;
     let reader = io::BufReader::new(file);
     let mut result = ImportResult::default();
-    let session_id = "import_bash";
-    let home_str = home.to_string_lossy().to_string();
 
     for line in reader.lines() {
         let line = match line {
@@ -177,7 +282,7 @@ fn import_bash_history(db: &HistoryDb, home: &PathBuf) -> io::Result<ImportResul
             continue;
         }
 
-        match db.insert_command_with_timestamp(&line, &home_str, session_id, 0, 0) {
+        match db.insert_command_with_timestamp(&line, home_str, session_id, 0, 0) {
             Ok(_) => result.imported += 1,
             Err(_) => result.errors += 1,
         }
@@ -240,4 +345,47 @@ fn import_fish_history(db: &HistoryDb, home: &PathBuf) -> io::Result<ImportResul
     }
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::HistoryDb;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_file(name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("waz-{name}-{unique}.txt"))
+    }
+
+    #[test]
+    fn powershell_history_candidates_include_unix_and_windows_paths() {
+        let home = PathBuf::from("/Users/demo");
+        let candidates = powershell_history_candidates(&home);
+        assert!(candidates
+            .iter()
+            .any(|p| p.ends_with("ConsoleHost_history.txt")));
+        assert!(candidates
+            .iter()
+            .any(|p| p.to_string_lossy().contains("PSReadLine")));
+        assert!(candidates
+            .iter()
+            .any(|p| p.to_string_lossy().contains("WindowsPowerShell")));
+    }
+
+    #[test]
+    fn import_plain_history_skips_blank_and_comments() {
+        let path = temp_file("pwsh-hist");
+        fs::write(&path, "git status\n\n# comment\nGet-ChildItem\n").unwrap();
+        let db = HistoryDb::open_in_memory().unwrap();
+        let result = import_plain_history_file(&db, &path, "import_powershell", "/tmp").unwrap();
+        assert_eq!(result.imported, 2);
+        assert_eq!(result.skipped, 2);
+        let _ = fs::remove_file(&path);
+    }
 }

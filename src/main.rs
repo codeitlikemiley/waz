@@ -74,14 +74,14 @@ enum Commands {
 
     /// Import existing shell history into the waz database.
     Import {
-        /// Shell to import from (zsh, bash, fish). Auto-detects if omitted.
+        /// Shell to import from (zsh, bash, fish, powershell). Auto-detects if omitted.
         #[arg(long)]
         shell: Option<String>,
     },
 
     /// Print shell integration script to stdout.
     Init {
-        /// Shell to generate integration for (zsh, bash, fish).
+        /// Shell to generate integration for (zsh, bash, fish, powershell).
         shell: String,
     },
 
@@ -359,8 +359,12 @@ fn main() {
                 "zsh" => include_str!("../shell/waz.zsh"),
                 "bash" => include_str!("../shell/waz.bash"),
                 "fish" => include_str!("../shell/waz.fish"),
+                "powershell" | "pwsh" | "ps1" => include_str!("../shell/waz.ps1"),
                 _ => {
-                    eprintln!("Unsupported shell: {}. Supported: zsh, bash, fish", shell);
+                    eprintln!(
+                        "Unsupported shell: {}. Supported: zsh, bash, fish, powershell",
+                        shell
+                    );
                     std::process::exit(1);
                 }
             };

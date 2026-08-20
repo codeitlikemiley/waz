@@ -58,6 +58,13 @@ eval "$(waz init bash)"
 waz init fish | source
 ```
 
+**PowerShell** (`$PROFILE`, pwsh 7+ or Windows PowerShell 5.1 with PSReadLine):
+```powershell
+Invoke-Expression (& waz init powershell | Out-String)
+```
+
+`waz init pwsh` and `waz init ps1` are aliases for the same script.
+
 ### Ghostty Keybinding (Recommended)
 
 For Ghostty users, add this to your config to launch the TUI with **Cmd+I**:
@@ -73,11 +80,12 @@ This sends a custom escape sequence that the waz shell integration picks up.
 Bootstrap predictions from your existing shell history:
 
 ```bash
-waz import              # auto-detect all shells
+waz import              # auto-detect all shells (zsh, bash, fish, powershell)
 waz import --shell zsh  # import from specific shell
+waz import --shell powershell
 ```
 
-Supports custom `$HISTFILE` locations (e.g., `~/.config/zsh/.zsh_history`).
+Supports custom `$HISTFILE` locations (e.g., `~/.config/zsh/.zsh_history`). PowerShell uses PSReadLine's `ConsoleHost_history.txt` (override with `WAZ_PWSH_HISTFILE`).
 
 ## Usage
 
@@ -89,8 +97,11 @@ Once installed, waz works automatically:
 - **Right arrow** → Accept full suggestion
 - **Alt+F** → Accept next word
 
-### Bash / Fish
+### Bash / Fish / PowerShell
 - **Ctrl+Space** → Fill in the predicted command
+- **Ctrl+T** → Command palette TUI (PowerShell; also Zsh)
+
+PowerShell does not have Zsh-style ghost text — PSReadLine fills the line on **Ctrl+Space** instead. Natural-language unknown commands open the TUI, same idea as Zsh/Bash.
 
 ### CLI Commands
 
@@ -734,6 +745,7 @@ model = "your-model-name"
 │  │  (ZLE)  │  │(readline)│  │  (events)  │         │
 │  └────┬────┘  └────┬─────┘  └─────┬──────┘         │
 │       │            │              │                 │
+│  PowerShell (PSReadLine): Ctrl+Space / Ctrl+T       │
 │  Cmd+I / Ctrl+T launches unified TUI                │
 │  Ghost-text autosuggestions via predictions          │
 │  Output hints via `waz hint` (Tier 0)               │
