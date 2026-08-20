@@ -19,7 +19,7 @@ Waz stores **verified command shapes** (binary + tokens + live values) in TMP sc
 4. `waz_tmp_build` with `--set name=value` pairs (or `waz_resolve` for natural language).
 5. Return the `argv` string. Do not invent flags that were not in the schema.
 
-If the tool is missing from the list, call `waz_generate` (background) for that binary, then retry list/show. Do not hand-write a schema.
+If the tool is missing from the list, call `waz_generate` and **wait until it finishes** (`wait` defaults to true). Then retry list/show. Do not call `waz_tmp_list` immediately after a background generate (`wait=false`) — poll `waz_generate_status` with `wait=true` (or `waz generate --wait --job <id>`) until `done` or `error`. Do not hand-write a schema.
 
 ## Rules
 

@@ -49,6 +49,7 @@ Return **only** a JSON array (no markdown fences, no commentary). Each element:
 10. Boolean flags default to `"false"` and `required: false`.
 11. Required positionals: `required: true`, `flag: null`.
 12. `group` is the tool name (the binary).
+13. Repeatable positionals/flags (`git add` paths): `"repeat": true` so multiple `--set path=` values append.
 
 ## Completeness checklist
 

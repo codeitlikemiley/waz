@@ -111,21 +111,44 @@ fn tools() -> Value {
         },
         {
             "name": "waz_generate",
-            "description": "Start (or wait for) AI generation of a TMP schema for a CLI on PATH. Default is background so the user is not blocked.",
+            "description": "Generate a TMP schema for a CLI on PATH. Default wait=true so the schema exists before you list/show. Pass wait=false only if you will poll waz_generate_status.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "tool": { "type": "string" },
                     "force": { "type": "boolean" },
-                    "wait": { "type": "boolean", "description": "If true, block until the schema is written" }
+                    "wait": { "type": "boolean", "description": "Block until the schema is written. Default true." }
                 },
                 "required": ["tool"]
             }
         },
         {
             "name": "waz_generate_jobs",
-            "description": "List background schema-generation jobs.",
+            "description": "List background schema-generation jobs (reaps dead PIDs).",
             "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "waz_generate_status",
+            "description": "Show one generate job. Optionally wait until it finishes.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "job_id": { "type": "string" },
+                    "wait": { "type": "boolean", "description": "If true, poll until done/error/cancelled" }
+                },
+                "required": ["job_id"]
+            }
+        },
+        {
+            "name": "waz_generate_cancel",
+            "description": "Cancel a background generate job.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "job_id": { "type": "string" }
+                },
+                "required": ["job_id"]
+            }
         },
         {
             "name": "waz_plugin_list",
@@ -182,14 +205,31 @@ fn call_tool(params: &Value) -> Value {
         "waz_generate" => {
             let tool = str_arg(&args, "tool").unwrap_or_default();
             let force = args.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
-            let wait = args.get("wait").and_then(|v| v.as_bool()).unwrap_or(false);
+            let wait = generate_wait_arg(&args);
             match crate::generate::start_generate(&tool, force, wait, None, None) {
                 Ok(v) => v,
                 Err(e) => return tool_error(&e),
             }
         }
-        "waz_generate_jobs" => {
-            serde_json::to_value(crate::generate::list_jobs()).unwrap_or(json!([]))
+        "waz_generate_jobs" => serde_json::to_value(crate::jobs::list_jobs()).unwrap_or(json!([])),
+        "waz_generate_status" => {
+            let id = str_arg(&args, "job_id").unwrap_or_default();
+            let wait = args.get("wait").and_then(|v| v.as_bool()).unwrap_or(false);
+            let result = if wait {
+                crate::jobs::wait_job(&id, None)
+            } else {
+                crate::jobs::get_job(&id)
+            };
+            match result {
+                Ok(job) => serde_json::to_value(job).unwrap_or(json!({})),
+                Err(e) => return tool_error(&e),
+            }
+        }
+        "waz_generate_cancel" => {
+            match crate::jobs::cancel_job(&str_arg(&args, "job_id").unwrap_or_default()) {
+                Ok(job) => serde_json::to_value(job).unwrap_or(json!({})),
+                Err(e) => return tool_error(&e),
+            }
         }
         "waz_plugin_list" => {
             let plugins = crate::plugin::discover();
@@ -226,6 +266,10 @@ fn str_arg(args: &Value, key: &str) -> Option<String> {
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
+}
+
+fn generate_wait_arg(args: &Value) -> bool {
+    args.get("wait").and_then(|v| v.as_bool()).unwrap_or(true)
 }
 
 fn read_message(reader: &mut impl BufRead) -> Result<Option<Value>, String> {
@@ -314,7 +358,26 @@ mod tests {
         assert!(names.contains(&"waz_tmp_list"));
         assert!(names.contains(&"waz_tmp_build"));
         assert!(names.contains(&"waz_generate"));
+        assert!(names.contains(&"waz_generate_status"));
+        assert!(names.contains(&"waz_generate_cancel"));
         assert!(names.contains(&"waz_resolve"));
+    }
+
+    #[test]
+    fn generate_wait_defaults_true() {
+        assert!(generate_wait_arg(&json!({})));
+        assert!(generate_wait_arg(&json!({ "wait": true })));
+        assert!(!generate_wait_arg(&json!({ "wait": false })));
+    }
+
+    #[test]
+    fn generate_cancel_unknown_id_is_error() {
+        let v = handle_method(
+            "tools/call",
+            &json!({ "name": "waz_generate_cancel", "arguments": { "job_id": "not-a-job" } }),
+        )
+        .unwrap();
+        assert_eq!(v["isError"], true);
     }
 
     #[test]

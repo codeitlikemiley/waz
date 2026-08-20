@@ -58,8 +58,10 @@ Any Agent Plugins client can also load the plugin directory (`plugin.json` + `sk
 | `waz_tmp_show` | One command + resolved tokens |
 | `waz_tmp_build` | Fill tokens → argv |
 | `waz_resolve` | Natural language → grounded command (uses waz LLM) |
-| `waz_generate` | Start schema generation (background by default) |
-| `waz_generate_jobs` | Job list |
+| `waz_generate` | Generate a schema (`wait` defaults **true**; pass `false` only if you will poll) |
+| `waz_generate_jobs` | Job list (reaps dead PIDs) |
+| `waz_generate_status` | One job; optional `wait` |
+| `waz_generate_cancel` | Cancel a background job |
 | `waz_plugin_list` | Loaded plugins |
 
 `list` / `show` / `build` are **local** (no LLM). `resolve` / `generate` use **waz’s pinned provider** — see [ai.md](ai.md). The agent app can be Gemini while generate uses Ollama.
