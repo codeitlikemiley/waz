@@ -270,8 +270,8 @@ impl CompleteOptions {
         Self {
             system: None,
             temperature: 0.2,
-            max_tokens: 4096,
-            timeout_secs: 30,
+            max_tokens: 8192,
+            timeout_secs: 90,
             stop: vec![],
         }
     }

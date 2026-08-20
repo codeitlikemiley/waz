@@ -6,8 +6,10 @@ pub mod generate;
 pub mod hint;
 mod import;
 mod llm;
+mod mcp;
 mod normalize;
 mod oauth;
+mod plugin;
 mod predict;
 mod resolve;
 mod run;
@@ -192,10 +194,11 @@ enum Commands {
         output: String,
     },
 
-    /// Generate a TMP schema for a CLI tool using AI.
+    /// Generate a TMP schema for a CLI tool using AI (background by default).
     Generate {
         /// Name of the CLI tool (e.g. brew, kubectl, docker).
-        tool: String,
+        #[arg(required_unless_present = "jobs")]
+        tool: Option<String>,
 
         /// Force regeneration even if schema exists.
         #[arg(long)]
@@ -228,7 +231,24 @@ enum Commands {
         /// Launch verification TUI to review and approve schema commands.
         #[arg(long)]
         verify: bool,
+
+        /// Run in the foreground (blocks the terminal until the schema is written).
+        #[arg(long)]
+        wait: bool,
+
+        /// List background generate jobs.
+        #[arg(long)]
+        jobs: bool,
     },
+
+    /// Agent Plugins: list bundled/user plugins (skills + MCP).
+    Plugin {
+        #[command(subcommand)]
+        action: PluginAction,
+    },
+
+    /// MCP stdio server for Codex, Claude Code, and other Agent Plugins clients.
+    Mcp,
 
     /// Manage TMP schemas (list, share, import).
     Schema {
@@ -336,6 +356,18 @@ enum SchemaAction {
         #[arg(trailing_var_arg = true)]
         words: Vec<String>,
     },
+}
+
+#[derive(Subcommand)]
+enum PluginAction {
+    /// List discovered plugins.
+    List,
+    /// Install the bundled waz plugin into the user plugins directory.
+    Install,
+    /// Print Codex / Claude / Gemini / Cursor MCP install snippets.
+    Doctor,
+    /// Write MCP config into an agent client (gemini, claude, codex, cursor, all).
+    Connect { client: String },
 }
 
 #[derive(Subcommand)]
@@ -679,7 +711,28 @@ fn main() {
             provider,
             init,
             verify,
+            wait,
+            jobs,
         } => {
+            if jobs {
+                let jobs = generate::list_jobs();
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&jobs).unwrap_or_else(|_| "[]".into())
+                );
+                return;
+            }
+
+            let tool = match tool {
+                Some(t) => t,
+                None => {
+                    eprintln!(
+                        "Specify a tool, e.g. `waz generate docker`, or `waz generate --jobs`."
+                    );
+                    std::process::exit(1);
+                }
+            };
+
             // Handle --verify (launch verification TUI)
             if verify {
                 if let Err(e) = tui::verify::launch(&tool) {
@@ -764,6 +817,28 @@ fn main() {
             // Merge CLI flags with [generate] config: CLI > config > defaults
             let effective_model = model.as_deref().or(config.generate.model.as_deref());
             let effective_provider = provider.as_deref().or(config.generate.provider.as_deref());
+
+            if !wait {
+                match generate::start_generate(
+                    &tool,
+                    force,
+                    false,
+                    effective_model,
+                    effective_provider,
+                ) {
+                    Ok(info) => {
+                        println!("{}", serde_json::to_string_pretty(&info).unwrap());
+                        eprintln!(
+                            "Started background generate for '{tool}'. Your shell is free — `waz generate --jobs` to check."
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("❌ {e}");
+                        std::process::exit(1);
+                    }
+                }
+                return;
+            }
 
             match generate::generate_schema(&config, &tool, effective_model, effective_provider) {
                 Ok(commands) => {
@@ -1044,5 +1119,75 @@ fn main() {
                 std::process::exit(1);
             }
         },
+
+        Commands::Plugin { action } => match action {
+            PluginAction::List => {
+                let plugins = plugin::discover();
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(
+                        &plugins
+                            .iter()
+                            .map(|p| serde_json::json!({
+                                "name": p.manifest.name,
+                                "version": p.manifest.version,
+                                "description": p.manifest.description,
+                                "source": p.source,
+                                "root": p.root,
+                                "skills": p.skills.iter().map(|s| serde_json::json!({
+                                    "name": s.name,
+                                    "description": s.description,
+                                })).collect::<Vec<_>>(),
+                                "mcp": p.has_mcp,
+                            }))
+                            .collect::<Vec<_>>()
+                    )
+                    .unwrap_or_else(|_| "[]".into())
+                );
+            }
+            PluginAction::Install => match plugin::install_bundled() {
+                Ok(root) => {
+                    eprintln!("Installed Agent Plugin at {}", root.display());
+                    eprintln!("Skills: tmp-use (agents), tmp-schema (generate). MCP: `waz mcp`.");
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    std::process::exit(1);
+                }
+            },
+            PluginAction::Doctor => {
+                let root =
+                    plugin::install_bundled().unwrap_or_else(|_| plugin::plugins_dir().join("waz"));
+                println!("Agent Plugins package: {}", root.display());
+                println!();
+                println!("Preferred: waz plugin connect <gemini|claude|codex|cursor|all>");
+                println!(
+                    "That writes MCP config so the client does not need Agent Plugins support."
+                );
+                println!();
+                println!("Manual snippets:");
+                println!("  Gemini CLI  ~/.gemini/settings.json  mcpServers.waz");
+                println!("  Claude Code ~/.claude.json           mcpServers.waz");
+                println!("  Codex       ~/.codex/config.toml     [mcp_servers.waz]");
+                println!("  Cursor      ~/.cursor/mcp.json       mcpServers.waz");
+            }
+            PluginAction::Connect { client } => match plugin::connect_client(&client) {
+                Ok(msg) => {
+                    eprintln!("Connected waz MCP:\n{msg}");
+                    eprintln!("Restart the agent CLI/app so it picks up the server.");
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    std::process::exit(1);
+                }
+            },
+        },
+
+        Commands::Mcp => {
+            if let Err(e) = mcp::run() {
+                eprintln!("MCP server error: {e}");
+                std::process::exit(1);
+            }
+        }
     }
 }

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "waz",
+  "version": "0.1.9",
+  "description": "TMP schema skills and MCP tools for the waz CLI command palette.",
+  "author": {
+    "name": "Uriah Galang",
+    "url": "https://github.com/codeitlikemiley/waz"
+  },
+  "homepage": "https://github.com/codeitlikemiley/waz",
+  "repository": "https://github.com/codeitlikemiley/waz",
+  "license": "MIT",
+  "keywords": ["tmp", "cli", "schema", "mcp", "skills"],
+  "extensions": {
+    "io.codeitlikemiley.waz": {
+      "kind": "bundled"
+    }
+  }
+}
